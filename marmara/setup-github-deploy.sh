@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# One-time Google Cloud setup so GitHub Actions (MepCity/trypost) can build into
+# One-time Google Cloud setup so GitHub Actions (Marmara-Yapay-Zeka-Kulubu/trypost) can build into
 # Artifact Registry and deploy to the VMs, without any stored key.
 # Run once in Cloud Shell as a project owner: bash marmara/setup-github-deploy.sh
 set -euo pipefail
 
 PROJECT_ID=mayk-web-2026
-REPO=MepCity/trypost
+REPO=Marmara-Yapay-Zeka-Kulubu/trypost
 SA_NAME=github-deployer
 POOL=github
-PROVIDER=mepcity-trypost
+PROVIDER=marmara-trypost
 AR_LOCATION=europe-west1
 AR_REPO=mayk
 
@@ -19,7 +19,7 @@ SA="$SA_NAME@$PROJECT_ID.iam.gserviceaccount.com"
 gcloud services enable iamcredentials.googleapis.com sts.googleapis.com iap.googleapis.com --quiet
 
 gcloud iam service-accounts describe "$SA" >/dev/null 2>&1 \
-  || gcloud iam service-accounts create "$SA_NAME" --display-name="GitHub deploy (MepCity/trypost)"
+  || gcloud iam service-accounts create "$SA_NAME" --display-name="GitHub deploy (Marmara-Yapay-Zeka-Kulubu/trypost)"
 
 gcloud iam workload-identity-pools describe "$POOL" --location=global >/dev/null 2>&1 \
   || gcloud iam workload-identity-pools create "$POOL" --location=global --display-name="GitHub Actions"
