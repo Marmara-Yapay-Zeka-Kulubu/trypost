@@ -1,0 +1,227 @@
+name: Marmara deploy
+
+# Marmara AI fork: test, build the production image into our Artifact Registry
+# and roll it out to a VM.
+#
+# - A push to marmara/main deploys to stage.
+# - "Run workflow" deploys any branch or commit to stage or production.
+#   Production reuses the image already built for that commit, so it gets the
+#   exact image stage ran.
+#
+# Repository variables (Settings -> Secrets and variables -> Actions -> Variables):
+#   GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_SERVICE_ACCOUNT, REVERB_APP_KEY
+# Nothing here needs a secret: GitHub signs in to Google Cloud with a
+# short-lived OIDC token (workload identity federation).
+
+on:
+  push:
+    branches: [marmara/main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Where to deploy
+        type: choice
+        options: [stage, production]
+        default: stage
+      skip_tests:
+        description: Skip the test suite (only for an image that already passed)
+        type: boolean
+        default: false
+
+concurrency:
+  group: marmara-deploy-${{ inputs.environment || 'stage' }}
+  cancel-in-progress: false
+
+env:
+  PROJECT_ID: mayk-web-2026
+  ZONE: europe-west1-b
+  REGISTRY: europe-west1-docker.pkg.dev
+  IMAGE: europe-west1-docker.pkg.dev/mayk-web-2026/mayk/trypost
+  TARGET: ${{ inputs.environment || 'stage' }}
+
+jobs:
+  tests:
+    name: Tests (MySQL, like production)
+    if: ${{ !inputs.skip_tests }}
+    runs-on: ubuntu-latest
+    env:
+      DB_CONNECTION: mysql
+      DB_DATABASE: trypost_test
+      DB_USERNAME: root
+      DB_PASSWORD: password
+      BROADCAST_CONNECTION: "null"
+      CACHE_STORE: array
+      QUEUE_CONNECTION: sync
+      SESSION_DRIVER: array
+    services:
+      database:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: password
+          MYSQL_DATABASE: trypost_test
+        ports: ['3306/tcp']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -u root -ppassword"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+      redis:
+        image: redis:7
+        ports: ['6379/tcp']
+        options: --health-cmd="redis-cli ping" --health-interval=10s --health-timeout=5s --health-retries=3
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-laravel
+        with:
+          db-port: ${{ job.services.database.ports['3306'] }}
+          redis-port: ${{ job.services.redis.ports['6379'] }}
+      - name: Run backend tests
+        env:
+          DB_PORT: ${{ job.services.database.ports['3306'] }}
+          REDIS_PORT: ${{ job.services.redis.ports['6379'] }}
+        run: ./vendor/bin/pest --compact --parallel --exclude-group=browser
+
+  build:
+    name: Build image
+    needs: [tests]
+    if: ${{ always() && (needs.tests.result == 'success' || needs.tests.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      image: ${{ steps.ref.outputs.image }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - run: gcloud auth configure-docker ${{ env.REGISTRY }} --quiet
+
+      - name: Reuse the image if this commit was already built
+        id: existing
+        run: |
+          if gcloud artifacts docker images describe "$IMAGE:${GITHUB_SHA::12}" >/dev/null 2>&1; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: docker/setup-buildx-action@v3
+        if: steps.existing.outputs.found != 'true'
+
+      - name: Build and push
+        if: steps.existing.outputs.found != 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          target: production
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.IMAGE }}:${{ github.sha }}
+          # An empty VITE_REVERB_HOST makes the bundle use the page's host, so
+          # the same image serves sosyal-stage and sosyal.
+          build-args: |
+            VITE_REVERB_APP_KEY=${{ vars.REVERB_APP_KEY }}
+            VITE_REVERB_HOST=
+            VITE_REVERB_PORT=443
+            VITE_REVERB_SCHEME=https
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Short tag
+        if: steps.existing.outputs.found != 'true'
+        run: gcloud artifacts docker tags add "$IMAGE:$GITHUB_SHA" "$IMAGE:${GITHUB_SHA::12}" --quiet
+
+      - name: Resolve the digest to deploy
+        id: ref
+        run: |
+          digest=$(gcloud artifacts docker images describe "$IMAGE:${GITHUB_SHA::12}" --format='value(image_summary.digest)')
+          echo "image=$IMAGE@$digest" >> "$GITHUB_OUTPUT"
+          echo "Image: $IMAGE@$digest (${GITHUB_SHA::12})" >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    name: Deploy to ${{ inputs.environment || 'stage' }}
+    needs: [build]
+    if: ${{ always() && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || 'stage' }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Pick the VM
+        run: |
+          if [ "$TARGET" = production ]; then
+            echo "VM=mayk-vm" >> "$GITHUB_ENV"
+            echo "DIR=/opt/trypost-marmara-prod" >> "$GITHUB_ENV"
+            echo "URL=https://sosyal.marmaraai.com/login" >> "$GITHUB_ENV"
+          else
+            echo "VM=mayk-devstage" >> "$GITHUB_ENV"
+            echo "DIR=/opt/trypost-marmara" >> "$GITHUB_ENV"
+            echo "URL=https://sosyal-stage.marmaraai.com/login" >> "$GITHUB_ENV"
+          fi
+
+      - name: Roll out (keeps the previous image for rollback)
+        env:
+          NEW_IMAGE: ${{ needs.build.outputs.image }}
+        run: |
+          gcloud compute ssh "$VM" --project "$PROJECT_ID" --zone "$ZONE" --tunnel-through-iap --quiet --command "sudo bash -s" <<EOF
+          set -euo pipefail
+          cd "$DIR"
+          stamp=\$(date +%F-%H%M%S)
+          cp .env ".env.bak-\$stamp"
+          previous=\$(grep -m1 '^TRYPOST_IMAGE=' .env | cut -d= -f2- || true)
+          echo "previous image: \$previous"
+
+          if [ "$TARGET" = production ]; then
+            mkdir -p backups
+            db=\$(docker compose ps -q mysql)
+            docker exec "\$db" sh -c 'exec mysqldump --single-transaction -uroot -p"\$MYSQL_ROOT_PASSWORD" --all-databases' | gzip > "backups/db-\$stamp.sql.gz"
+            ls -t backups/db-*.sql.gz | tail -n +11 | xargs -r rm --
+            echo "database backup: backups/db-\$stamp.sql.gz"
+          fi
+
+          gcloud auth configure-docker $REGISTRY --quiet >/dev/null 2>&1 || true
+          if grep -q '^TRYPOST_IMAGE=' .env; then
+            sed -i "s|^TRYPOST_IMAGE=.*|TRYPOST_IMAGE=$NEW_IMAGE|" .env
+          else
+            echo "TRYPOST_IMAGE=$NEW_IMAGE" >> .env
+          fi
+          docker compose pull app
+          docker compose up -d --force-recreate app
+
+          app=\$(docker compose ps -q app)
+          for i in \$(seq 1 60); do
+            status=\$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck-{{.State.Status}}{{end}}' "\$app")
+            [ "\$status" = healthy ] && break
+            if [ "\$status" = no-healthcheck-running ] && [ "\$i" -ge 6 ]; then status=healthy; break; fi
+            sleep 5
+          done
+          echo "health: \$status"
+
+          if [ "\$status" != healthy ]; then
+            echo "New image is not healthy, rolling back to \$previous"
+            docker compose logs --tail 80 app || true
+            sed -i "s|^TRYPOST_IMAGE=.*|TRYPOST_IMAGE=\$previous|" .env
+            docker compose up -d --force-recreate app
+            exit 1
+          fi
+          EOF
+
+      - name: Check the site answers
+        run: |
+          for i in $(seq 1 12); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$URL")
+            [ "$code" = 200 ] && { echo "$URL -> 200"; exit 0; }
+            sleep 5
+          done
+          echo "$URL -> $code"
+          exit 1
