@@ -1,0 +1,20 @@
+{
+  "name": "gonderi_onay_bekliyor",
+  "language": "tr",
+  "category": "UTILITY",
+  "components": [
+    {
+      "type": "BODY",
+      "text": "Onayınızı bekleyen bir gönderi var.\nKanal: {{1}}\nHazırlayan: {{2}}\nYayın zamanı: {{3}}\nMetin: {{4}}",
+      "example": { "body_text": [["LinkedIn · Marmara Yapay Zeka Kulübü", "Ahmet", "14 Kas 2026 18:00", "Yapay zekâ atölyemiz bu cuma T4 binasında..."]] }
+    },
+    {
+      "type": "BUTTONS",
+      "buttons": [
+        { "type": "QUICK_REPLY", "text": "Onayla" },
+        { "type": "QUICK_REPLY", "text": "Düzeltme iste" },
+        { "type": "QUICK_REPLY", "text": "Yorum yaz" }
+      ]
+    }
+  ]
+}
