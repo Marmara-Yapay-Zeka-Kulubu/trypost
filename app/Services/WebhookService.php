@@ -101,6 +101,25 @@ class WebhookService
     }
 
     /**
+     * The post payload plus who asked for approval and, once decided, who
+     * decided. Sent with the approval events.
+     *
+     * @return array<string, mixed>
+     */
+    public function approvalPayload(Post $post, ?User $requester, ?User $approver = null): array
+    {
+        return [
+            ...$this->postPayload($post),
+            'approval' => [
+                'requested_by' => $this->authorPayload($requester),
+                'requested_at' => $post->approval_requested_at?->toIso8601String(),
+                'decided_by' => $this->authorPayload($approver),
+                'decided_at' => $approver === null ? null : now()->toIso8601String(),
+            ],
+        ];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function postPayload(Post $post): array

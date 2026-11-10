@@ -92,6 +92,9 @@ return [
         'post_deleted' => 'Gönderi silindi',
         'post_deleted_on_network' => 'Gönderi ağda silindi',
         'post_restored' => 'Gönderi ağa geri döndü',
+        'post_approval_requested' => 'Gönderi onay bekliyor',
+        'post_approved' => 'Gönderi onaylandı',
+        'post_rejected' => 'Gönderi reddedildi',
     ],
     'event_descriptions' => [
         'post_created' => 'Yeni bir gönderi oluşturulduğunda.',
@@ -102,6 +105,9 @@ return [
         'post_deleted' => 'Bir gönderi silindiğinde.',
         'post_deleted_on_network' => 'Yayınlanmış bir gönderi ağında silindiğinde.',
         'post_restored' => 'Silinen bir gönderi ağına geri döndüğünde.',
+        'post_approval_requested' => 'Bir gönderi onaya gönderildiğinde.',
+        'post_approved' => 'Onay bekleyen bir gönderi onaylandığında.',
+        'post_rejected' => 'Onay bekleyen bir gönderi reddedildiğinde.',
     ],
     'http_reasons' => [
         'unknown' => 'Bilinmiyor',

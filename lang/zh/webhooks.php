@@ -92,6 +92,9 @@ return [
         'post_deleted' => '帖子已删除',
         'post_deleted_on_network' => '帖子已在网络上删除',
         'post_restored' => '帖子已回到网络',
+        'post_approval_requested' => '帖子待审批',
+        'post_approved' => '帖子已批准',
+        'post_rejected' => '帖子已拒绝',
     ],
     'event_descriptions' => [
         'post_created' => '创建新帖子时。',
@@ -102,6 +105,9 @@ return [
         'post_deleted' => '帖子被删除时。',
         'post_deleted_on_network' => '已发布的帖子在网络上被删除时。',
         'post_restored' => '已删除的帖子重新出现在网络上时。',
+        'post_approval_requested' => '帖子提交审批时。',
+        'post_approved' => '待审批的帖子被批准时。',
+        'post_rejected' => '待审批的帖子被拒绝时。',
     ],
     'http_reasons' => [
         'unknown' => '未知',

@@ -92,6 +92,9 @@ return [
         'post_deleted' => '投稿を削除',
         'post_deleted_on_network' => 'ネットワークで投稿を削除',
         'post_restored' => '投稿がネットワークに復帰',
+        'post_approval_requested' => '投稿が承認待ち',
+        'post_approved' => '投稿が承認されました',
+        'post_rejected' => '投稿が却下されました',
     ],
     'event_descriptions' => [
         'post_created' => '新しい投稿が作成されたとき。',
@@ -102,6 +105,9 @@ return [
         'post_deleted' => '投稿が削除されたとき。',
         'post_deleted_on_network' => '公開済みの投稿がネットワークで削除されたとき。',
         'post_restored' => '削除された投稿がネットワークに再び表示されたとき。',
+        'post_approval_requested' => '投稿が承認依頼されたとき。',
+        'post_approved' => '承認待ちの投稿が承認されたとき。',
+        'post_rejected' => '承認待ちの投稿が却下されたとき。',
     ],
     'http_reasons' => [
         'unknown' => '不明',

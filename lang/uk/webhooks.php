@@ -92,6 +92,9 @@ return [
         'post_deleted' => 'Пост видалено',
         'post_deleted_on_network' => 'Пост видалено в мережі',
         'post_restored' => 'Пост знову в мережі',
+        'post_approval_requested' => 'Допис чекає на схвалення',
+        'post_approved' => 'Допис схвалено',
+        'post_rejected' => 'Допис відхилено',
     ],
     'event_descriptions' => [
         'post_created' => 'Коли створено новий пост.',
@@ -102,6 +105,9 @@ return [
         'post_deleted' => 'Коли пост видалено.',
         'post_deleted_on_network' => 'Коли опублікований пост видалено в мережі.',
         'post_restored' => 'Коли видалений пост знову з’явився в мережі.',
+        'post_approval_requested' => 'Коли допис надіслано на схвалення.',
+        'post_approved' => 'Коли допис, що очікує, схвалено.',
+        'post_rejected' => 'Коли допис, що очікує, відхилено.',
     ],
     'http_reasons' => [
         'unknown' => 'Невідомо',

@@ -17,6 +17,9 @@ enum EventType: string
     case PostRestored = 'post.restored';
     case PostFailed = 'post.failed';
     case PostDeleted = 'post.deleted';
+    case PostApprovalRequested = 'post.approval_requested';
+    case PostApproved = 'post.approved';
+    case PostRejected = 'post.rejected';
 
     public static function fromPostStatus(PostStatus $status, ?PostStatus $previous = null): ?self
     {

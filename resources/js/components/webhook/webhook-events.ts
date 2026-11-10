@@ -12,6 +12,9 @@ export const webhookEventGroups = [
             'post.restored',
             'post.failed',
             'post.deleted',
+            'post.approval_requested',
+            'post.approved',
+            'post.rejected',
         ],
     },
 ];

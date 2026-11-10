@@ -92,6 +92,9 @@ return [
         'post_deleted' => 'Publication supprimée',
         'post_deleted_on_network' => 'Publication retirée du réseau',
         'post_restored' => 'Publication revenue sur le réseau',
+        'post_approval_requested' => 'Publication en attente de validation',
+        'post_approved' => 'Publication validée',
+        'post_rejected' => 'Publication refusée',
     ],
     'event_descriptions' => [
         'post_created' => 'Quand une publication est créée.',
@@ -102,6 +105,9 @@ return [
         'post_deleted' => 'Quand une publication est supprimée.',
         'post_deleted_on_network' => 'Quand une publication est supprimée sur son réseau.',
         'post_restored' => 'Quand une publication supprimée revient sur le réseau.',
+        'post_approval_requested' => 'Quand une publication est envoyée pour validation.',
+        'post_approved' => 'Quand une publication en attente est validée.',
+        'post_rejected' => 'Quand une publication en attente est refusée.',
     ],
     'http_reasons' => [
         'unknown' => 'Inconnu',

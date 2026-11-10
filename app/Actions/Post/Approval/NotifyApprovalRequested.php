@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Actions\Post\Approval;
 
 use App\Enums\Notification\Type;
+use App\Enums\Webhook\EventType;
 use App\Jobs\SendNotification;
 use App\Mail\PostApprovalRequested;
 use App\Models\Post;
@@ -27,6 +28,8 @@ final class NotifyApprovalRequested
         if (blank($workspace)) {
             return;
         }
+
+        $posts->each(fn (Post $post) => SendApprovalWebhook::execute($post, EventType::PostApprovalRequested, $requester));
 
         $approvers = $workspace->approvers()->reject(fn (User $approver): bool => $approver->id === $requester->id);
 

@@ -92,6 +92,9 @@ return [
         'post_deleted' => 'Beitrag gelöscht',
         'post_deleted_on_network' => 'Beitrag im Netzwerk gelöscht',
         'post_restored' => 'Beitrag wieder im Netzwerk',
+        'post_approval_requested' => 'Beitrag wartet auf Freigabe',
+        'post_approved' => 'Beitrag freigegeben',
+        'post_rejected' => 'Beitrag abgelehnt',
     ],
     'event_descriptions' => [
         'post_created' => 'Wenn ein neuer Beitrag erstellt wird.',
@@ -102,6 +105,9 @@ return [
         'post_deleted' => 'Wenn ein Beitrag gelöscht wird.',
         'post_deleted_on_network' => 'Wenn ein Beitrag in seinem Netzwerk gelöscht wird.',
         'post_restored' => 'Wenn ein gelöschter Beitrag wieder im Netzwerk ist.',
+        'post_approval_requested' => 'Wenn ein Beitrag zur Freigabe gesendet wird.',
+        'post_approved' => 'Wenn ein wartender Beitrag freigegeben wird.',
+        'post_rejected' => 'Wenn ein wartender Beitrag abgelehnt wird.',
     ],
     'http_reasons' => [
         'unknown' => 'Unbekannt',

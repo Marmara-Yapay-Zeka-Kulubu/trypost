@@ -92,6 +92,9 @@ return [
         'post_deleted' => '게시물 삭제됨',
         'post_deleted_on_network' => '네트워크에서 게시물 삭제됨',
         'post_restored' => '게시물이 네트워크에 복귀함',
+        'post_approval_requested' => '게시물 승인 대기',
+        'post_approved' => '게시물 승인됨',
+        'post_rejected' => '게시물 거절됨',
     ],
     'event_descriptions' => [
         'post_created' => '새 게시물이 생성될 때.',
@@ -102,6 +105,9 @@ return [
         'post_deleted' => '게시물이 삭제될 때.',
         'post_deleted_on_network' => '게시된 게시물이 네트워크에서 삭제될 때.',
         'post_restored' => '삭제된 게시물이 네트워크에 다시 표시될 때.',
+        'post_approval_requested' => '게시물이 승인 요청되었을 때.',
+        'post_approved' => '대기 중인 게시물이 승인되었을 때.',
+        'post_rejected' => '대기 중인 게시물이 거절되었을 때.',
     ],
     'http_reasons' => [
         'unknown' => '알 수 없음',

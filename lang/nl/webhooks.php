@@ -92,6 +92,9 @@ return [
         'post_deleted' => 'Post verwijderd',
         'post_deleted_on_network' => 'Post verwijderd op netwerk',
         'post_restored' => 'Post terug op netwerk',
+        'post_approval_requested' => 'Bericht wacht op goedkeuring',
+        'post_approved' => 'Bericht goedgekeurd',
+        'post_rejected' => 'Bericht afgewezen',
     ],
     'event_descriptions' => [
         'post_created' => 'Wanneer een nieuwe post wordt aangemaakt.',
@@ -102,6 +105,9 @@ return [
         'post_deleted' => 'Wanneer een post wordt verwijderd.',
         'post_deleted_on_network' => 'Wanneer een post op zijn netwerk wordt verwijderd.',
         'post_restored' => 'Wanneer een verwijderde post terug is op zijn netwerk.',
+        'post_approval_requested' => 'Wanneer een bericht ter goedkeuring wordt verstuurd.',
+        'post_approved' => 'Wanneer een wachtend bericht wordt goedgekeurd.',
+        'post_rejected' => 'Wanneer een wachtend bericht wordt afgewezen.',
     ],
     'http_reasons' => [
         'unknown' => 'Onbekend',

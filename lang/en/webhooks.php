@@ -92,6 +92,9 @@ return [
         'post_deleted' => 'Post deleted',
         'post_deleted_on_network' => 'Post deleted on network',
         'post_restored' => 'Post back on network',
+        'post_approval_requested' => 'Post awaiting approval',
+        'post_approved' => 'Post approved',
+        'post_rejected' => 'Post rejected',
     ],
     'event_descriptions' => [
         'post_created' => 'When a new post is created.',
@@ -102,6 +105,9 @@ return [
         'post_deleted' => 'When a post is deleted.',
         'post_deleted_on_network' => 'When a published post is deleted on its network.',
         'post_restored' => 'When a post marked deleted is back on its network.',
+        'post_approval_requested' => 'When a post is sent for approval.',
+        'post_approved' => 'When a pending post is approved.',
+        'post_rejected' => 'When a pending post is rejected.',
     ],
     'http_reasons' => [
         'unknown' => 'Unknown',

@@ -92,6 +92,9 @@ return [
         'post_deleted' => 'Post eliminato',
         'post_deleted_on_network' => 'Post eliminato sulla rete',
         'post_restored' => 'Post di nuovo sulla rete',
+        'post_approval_requested' => 'Post in attesa di approvazione',
+        'post_approved' => 'Post approvato',
+        'post_rejected' => 'Post rifiutato',
     ],
     'event_descriptions' => [
         'post_created' => 'Quando viene creato un nuovo post.',
@@ -102,6 +105,9 @@ return [
         'post_deleted' => 'Quando un post viene eliminato.',
         'post_deleted_on_network' => 'Quando un post pubblicato viene eliminato sulla rete.',
         'post_restored' => 'Quando un post eliminato torna sulla sua rete.',
+        'post_approval_requested' => 'Quando un post viene inviato per approvazione.',
+        'post_approved' => 'Quando un post in attesa viene approvato.',
+        'post_rejected' => 'Quando un post in attesa viene rifiutato.',
     ],
     'http_reasons' => [
         'unknown' => 'Sconosciuto',

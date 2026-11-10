@@ -92,6 +92,9 @@ return [
         'post_deleted' => 'Пост удалён',
         'post_deleted_on_network' => 'Пост удалён в сети',
         'post_restored' => 'Пост снова в сети',
+        'post_approval_requested' => 'Пост ждёт одобрения',
+        'post_approved' => 'Пост одобрен',
+        'post_rejected' => 'Пост отклонён',
     ],
     'event_descriptions' => [
         'post_created' => 'Когда создаётся новый пост.',
@@ -102,6 +105,9 @@ return [
         'post_deleted' => 'Когда пост удалён.',
         'post_deleted_on_network' => 'Когда опубликованный пост удалён в сети.',
         'post_restored' => 'Когда удалённый пост снова появился в сети.',
+        'post_approval_requested' => 'Когда пост отправлен на одобрение.',
+        'post_approved' => 'Когда ожидающий пост одобрен.',
+        'post_rejected' => 'Когда ожидающий пост отклонён.',
     ],
     'http_reasons' => [
         'unknown' => 'Неизвестно',

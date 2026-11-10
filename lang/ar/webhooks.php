@@ -92,6 +92,9 @@ return [
         'post_deleted' => 'تم حذف المنشور',
         'post_deleted_on_network' => 'حُذف المنشور على الشبكة',
         'post_restored' => 'عاد المنشور إلى الشبكة',
+        'post_approval_requested' => 'منشور بانتظار الموافقة',
+        'post_approved' => 'تمت الموافقة على المنشور',
+        'post_rejected' => 'تم رفض المنشور',
     ],
     'event_descriptions' => [
         'post_created' => 'عند إنشاء منشور جديد.',
@@ -102,6 +105,9 @@ return [
         'post_deleted' => 'عند حذف منشور.',
         'post_deleted_on_network' => 'عند حذف منشور على شبكته بعد نشره.',
         'post_restored' => 'عند عودة منشور محذوف إلى شبكته.',
+        'post_approval_requested' => 'عند إرسال منشور للموافقة.',
+        'post_approved' => 'عند الموافقة على منشور قيد الانتظار.',
+        'post_rejected' => 'عند رفض منشور قيد الانتظار.',
     ],
     'http_reasons' => [
         'unknown' => 'غير معروف',
