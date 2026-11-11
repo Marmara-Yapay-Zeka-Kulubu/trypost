@@ -95,6 +95,7 @@ return [
         'post_approval_requested' => 'Post czeka na akceptację',
         'post_approved' => 'Post zaakceptowany',
         'post_rejected' => 'Post odrzucony',
+        'post_feedback_requested' => 'Prośba o opinię o poście',
     ],
     'event_descriptions' => [
         'post_created' => 'Gdy zostanie utworzony nowy post.',
@@ -108,6 +109,7 @@ return [
         'post_approval_requested' => 'Gdy post zostanie wysłany do akceptacji.',
         'post_approved' => 'Gdy oczekujący post zostanie zaakceptowany.',
         'post_rejected' => 'Gdy oczekujący post zostanie odrzucony.',
+        'post_feedback_requested' => 'Gdy członek prosi o opinię o poście.',
     ],
     'http_reasons' => [
         'unknown' => 'Nieznany',

@@ -16,4 +16,6 @@ return [
     'empty' => '暂无备注。只有你的团队能看到。',
     'actions' => '备注操作',
     'load_more' => '加载更早的备注',
+    'feedback_requested' => '已征求意见：:names',
+    'feedback_requested_with_note' => '已征求意见：:names — :note',
 ];

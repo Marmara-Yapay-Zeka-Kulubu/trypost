@@ -1148,4 +1148,21 @@ return [
             'too_far' => 'Die letzte Wiederholung muss vor 2038 liegen.',
         ],
     ],
+    'feedback' => [
+        'menu' => 'Feedback einholen',
+        'title' => 'Feedback einholen',
+        'description' => 'Die ausgewählten Personen werden nach ihrer Meinung zu diesem Beitrag gefragt. Ihre Antworten landen in den Notizen.',
+        'recipients' => 'Wen fragen',
+        'note_placeholder' => 'Notiz hinzufügen (optional)',
+        'send' => 'Senden',
+        'sent' => 'Feedback-Anfrage gesendet',
+        'empty' => 'In diesem Workspace gibt es keine weiteren Mitglieder.',
+        'errors' => [
+            'load_failed' => 'Die Mitglieder des Workspace konnten nicht geladen werden. Versuche es erneut.',
+            'send_failed' => 'Die Feedback-Anfrage konnte nicht gesendet werden. Versuche es erneut.',
+            'choose_members' => 'Wähle mindestens ein Mitglied aus.',
+            'not_member' => 'Wähle Mitglieder dieses Workspace aus.',
+            'too_many' => 'Frage höchstens :max Mitglieder auf einmal.',
+        ],
+    ],
 ];

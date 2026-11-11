@@ -37,6 +37,7 @@ import PostCardThread from '@/components/publish/PostCardThread.vue';
 import PostDeletedOnNetworkPopover from '@/components/publish/PostDeletedOnNetworkPopover.vue';
 import PostDetailsDialog from '@/components/publish/PostDetailsDialog.vue';
 import PostFailurePopover from '@/components/publish/PostFailurePopover.vue';
+import PostFeedbackRequestDialog from '@/components/publish/PostFeedbackRequestDialog.vue';
 import PostMetricsBand from '@/components/publish/PostMetricsBand.vue';
 import PostPollResultsList from '@/components/publish/PostPollResultsList.vue';
 import PostRecurrenceDialog from '@/components/publish/PostRecurrenceDialog.vue';
@@ -363,6 +364,8 @@ const openDetails = (): void => {
 };
 
 const recurrenceOpen = ref(false);
+const feedbackOpen = ref(false);
+const feedbackPost = ref<PostCard>(props.post);
 
 watch(detailsOpen, (open) => emit('details', open));
 const recurrencePost = ref<PostCard>(props.post);
@@ -392,6 +395,10 @@ const runPostAction = (action: PostCardMenuAction, post: PostCard): void => {
         case 'recurrence':
             recurrencePost.value = post;
             recurrenceOpen.value = true;
+            break;
+        case 'request_feedback':
+            feedbackPost.value = post;
+            feedbackOpen.value = true;
             break;
         case 'move_drafts':
             schedulePostCard(post.id, 'draft');
@@ -940,6 +947,7 @@ defineExpose({ openDetails });
                             :post="post"
                             :test-key="post.id"
                             :timezone="timezone"
+                            feedback
                             @select="runPostAction"
                             @edit="edit"
                         />
@@ -951,6 +959,12 @@ defineExpose({ openDetails });
                             "
                             :test-key="post.id"
                             :timezone="recurrenceTimezone"
+                        />
+                        <PostFeedbackRequestDialog
+                            v-if="canCreatePost"
+                            v-model:open="feedbackOpen"
+                            :post="feedbackPost"
+                            :test-key="post.id"
                         />
                     </div>
                 </div>

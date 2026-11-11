@@ -16,4 +16,6 @@ return [
     'empty' => 'まだメモがありません。チームメンバーだけが見られます。',
     'actions' => 'メモの操作',
     'load_more' => '過去のメモを読み込む',
+    'feedback_requested' => 'フィードバックを依頼: :names',
+    'feedback_requested_with_note' => 'フィードバックを依頼: :names — :note',
 ];

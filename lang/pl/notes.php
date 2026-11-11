@@ -16,4 +16,6 @@ return [
     'empty' => 'Brak notatek. Widzi je tylko Twój zespół.',
     'actions' => 'Akcje notatki',
     'load_more' => 'Wczytaj starsze notatki',
+    'feedback_requested' => 'Prośba o opinię do: :names',
+    'feedback_requested_with_note' => 'Prośba o opinię do: :names — :note',
 ];

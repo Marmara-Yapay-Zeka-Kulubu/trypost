@@ -16,4 +16,6 @@ return [
     'empty' => '아직 메모가 없습니다. 팀원만 볼 수 있습니다.',
     'actions' => '메모 작업',
     'load_more' => '이전 메모 불러오기',
+    'feedback_requested' => '피드백 요청: :names',
+    'feedback_requested_with_note' => '피드백 요청: :names — :note',
 ];

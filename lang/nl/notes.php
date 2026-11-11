@@ -16,4 +16,6 @@ return [
     'empty' => 'Nog geen notities. Alleen je team ziet ze.',
     'actions' => 'Notitieacties',
     'load_more' => 'Oudere notities laden',
+    'feedback_requested' => 'Feedback gevraagd aan: :names',
+    'feedback_requested_with_note' => 'Feedback gevraagd aan: :names — :note',
 ];

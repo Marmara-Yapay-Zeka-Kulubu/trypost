@@ -1148,4 +1148,21 @@ return [
             'too_far' => 'Ostatnie powtórzenie musi przypadać przed 2038 rokiem.',
         ],
     ],
+    'feedback' => [
+        'menu' => 'Poproś o opinię',
+        'title' => 'Poproś o opinię',
+        'description' => 'Wybrane osoby zostaną poproszone o opinię o tym poście. Ich odpowiedzi trafią do notatek.',
+        'recipients' => 'Kogo zapytać',
+        'note_placeholder' => 'Dodaj notatkę (opcjonalnie)',
+        'send' => 'Wyślij',
+        'sent' => 'Prośba o opinię wysłana',
+        'empty' => 'W tym obszarze roboczym nie ma innych członków.',
+        'errors' => [
+            'load_failed' => 'Nie udało się wczytać członków obszaru roboczego. Spróbuj ponownie.',
+            'send_failed' => 'Nie udało się wysłać prośby o opinię. Spróbuj ponownie.',
+            'choose_members' => 'Wybierz co najmniej jednego członka.',
+            'not_member' => 'Wybierz członków tego obszaru roboczego.',
+            'too_many' => 'Naraz można zapytać maksymalnie :max członków.',
+        ],
+    ],
 ];

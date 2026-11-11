@@ -1148,4 +1148,21 @@ return [
             'too_far' => 'De laatste herhaling moet vóór 2038 vallen.',
         ],
     ],
+    'feedback' => [
+        'menu' => 'Feedback vragen',
+        'title' => 'Feedback vragen',
+        'description' => 'De mensen die je kiest, krijgen de vraag wat ze van dit bericht vinden. Hun antwoorden komen bij de notities.',
+        'recipients' => 'Wie vragen',
+        'note_placeholder' => 'Notitie toevoegen (optioneel)',
+        'send' => 'Verzenden',
+        'sent' => 'Feedbackverzoek verzonden',
+        'empty' => 'Er zijn geen andere leden in deze workspace.',
+        'errors' => [
+            'load_failed' => 'De leden van de workspace konden niet worden geladen. Probeer het opnieuw.',
+            'send_failed' => 'Het feedbackverzoek kon niet worden verzonden. Probeer het opnieuw.',
+            'choose_members' => 'Kies minstens één lid.',
+            'not_member' => 'Kies leden van deze workspace.',
+            'too_many' => 'Vraag maximaal :max leden tegelijk.',
+        ],
+    ],
 ];

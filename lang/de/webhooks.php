@@ -95,6 +95,7 @@ return [
         'post_approval_requested' => 'Beitrag wartet auf Freigabe',
         'post_approved' => 'Beitrag freigegeben',
         'post_rejected' => 'Beitrag abgelehnt',
+        'post_feedback_requested' => 'Feedback zu Beitrag angefragt',
     ],
     'event_descriptions' => [
         'post_created' => 'Wenn ein neuer Beitrag erstellt wird.',
@@ -108,6 +109,7 @@ return [
         'post_approval_requested' => 'Wenn ein Beitrag zur Freigabe gesendet wird.',
         'post_approved' => 'Wenn ein wartender Beitrag freigegeben wird.',
         'post_rejected' => 'Wenn ein wartender Beitrag abgelehnt wird.',
+        'post_feedback_requested' => 'Wenn ein Mitglied Feedback zu einem Beitrag anfragt.',
     ],
     'http_reasons' => [
         'unknown' => 'Unbekannt',

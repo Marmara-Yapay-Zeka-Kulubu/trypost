@@ -1148,4 +1148,21 @@ return [
             'too_far' => '最后一次发布必须在 2038 年之前。',
         ],
     ],
+    'feedback' => [
+        'menu' => '征求意见',
+        'title' => '征求意见',
+        'description' => '将向你选择的成员征求对这篇帖子的意见。他们的回复会添加到备注中。',
+        'recipients' => '询问对象',
+        'note_placeholder' => '添加备注（可选）',
+        'send' => '发送',
+        'sent' => '已发送意见征求',
+        'empty' => '此工作区没有其他成员。',
+        'errors' => [
+            'load_failed' => '无法加载工作区成员。请重试。',
+            'send_failed' => '无法发送意见征求。请重试。',
+            'choose_members' => '请至少选择一名成员。',
+            'not_member' => '请选择此工作区的成员。',
+            'too_many' => '一次最多可询问 :max 名成员。',
+        ],
+    ],
 ];

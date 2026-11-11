@@ -95,6 +95,7 @@ return [
         'post_approval_requested' => 'Post awaiting approval',
         'post_approved' => 'Post approved',
         'post_rejected' => 'Post rejected',
+        'post_feedback_requested' => 'Post feedback requested',
     ],
     'event_descriptions' => [
         'post_created' => 'When a new post is created.',
@@ -108,6 +109,7 @@ return [
         'post_approval_requested' => 'When a post is sent for approval.',
         'post_approved' => 'When a pending post is approved.',
         'post_rejected' => 'When a pending post is rejected.',
+        'post_feedback_requested' => 'When a member asks teammates for feedback on a post.',
     ],
     'http_reasons' => [
         'unknown' => 'Unknown',

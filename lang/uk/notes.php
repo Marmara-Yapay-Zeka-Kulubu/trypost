@@ -16,4 +16,6 @@ return [
     'empty' => 'Нотаток ще немає. Їх бачить лише ваша команда.',
     'actions' => 'Дії з нотаткою',
     'load_more' => 'Завантажити старіші нотатки',
+    'feedback_requested' => 'Запит на відгук: :names',
+    'feedback_requested_with_note' => 'Запит на відгук: :names — :note',
 ];

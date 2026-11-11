@@ -95,6 +95,7 @@ return [
         'post_approval_requested' => '投稿が承認待ち',
         'post_approved' => '投稿が承認されました',
         'post_rejected' => '投稿が却下されました',
+        'post_feedback_requested' => '投稿へのフィードバック依頼',
     ],
     'event_descriptions' => [
         'post_created' => '新しい投稿が作成されたとき。',
@@ -108,6 +109,7 @@ return [
         'post_approval_requested' => '投稿が承認依頼されたとき。',
         'post_approved' => '承認待ちの投稿が承認されたとき。',
         'post_rejected' => '承認待ちの投稿が却下されたとき。',
+        'post_feedback_requested' => 'メンバーが投稿へのフィードバックを依頼したとき。',
     ],
     'http_reasons' => [
         'unknown' => '不明',

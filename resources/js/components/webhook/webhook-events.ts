@@ -15,6 +15,7 @@ export const webhookEventGroups = [
             'post.approval_requested',
             'post.approved',
             'post.rejected',
+            'post.feedback_requested',
         ],
     },
 ];

@@ -16,4 +16,6 @@ return [
     'empty' => 'Henüz not yok. Notları yalnızca ekibin görür.',
     'actions' => 'Not işlemleri',
     'load_more' => 'Daha eski notları yükle',
+    'feedback_requested' => 'Görüş istedi: :names',
+    'feedback_requested_with_note' => 'Görüş istedi: :names — :note',
 ];

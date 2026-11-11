@@ -120,6 +120,30 @@ class WebhookService
     }
 
     /**
+     * The post payload plus who asked for feedback, the members asked and the
+     * optional note. Sent with post.feedback_requested; only ids and names,
+     * never emails.
+     *
+     * @param  iterable<int, User>  $recipients
+     * @return array<string, mixed>
+     */
+    public function feedbackPayload(Post $post, User $requester, iterable $recipients, ?string $note): array
+    {
+        return [
+            ...$this->postPayload($post),
+            'feedback' => [
+                'requested_by' => $this->authorPayload($requester),
+                'requested_at' => now()->toIso8601String(),
+                'note' => $note,
+                'recipients' => collect($recipients)
+                    ->map(fn (User $recipient): ?array => $this->authorPayload($recipient))
+                    ->values()
+                    ->all(),
+            ],
+        ];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function postPayload(Post $post): array

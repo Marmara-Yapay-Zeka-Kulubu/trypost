@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\PinterestBoardController;
 use App\Http\Controllers\Api\PlatformController;
 use App\Http\Controllers\Api\PostApprovalController;
 use App\Http\Controllers\Api\PostController;
+use App\Http\Controllers\Api\PostFeedbackRequestController;
 use App\Http\Controllers\Api\PostNoteController;
 use App\Http\Controllers\Api\PostRecurrenceController;
 use App\Http\Controllers\Api\RepurposeController;
@@ -59,6 +60,9 @@ Route::middleware(['auth:api', 'workspace.token', 'throttle:api'])->group(functi
     Route::delete('/posts/{post}/notes/{note}', [PostNoteController::class, 'destroy'])->name('api.posts.notes.destroy');
     Route::post('/posts/{post}/approve', [PostApprovalController::class, 'approve'])->name('api.posts.approve');
     Route::post('/posts/{post}/reject', [PostApprovalController::class, 'reject'])->name('api.posts.reject');
+    Route::post('/posts/{post}/feedback-requests', [PostFeedbackRequestController::class, 'store'])
+        ->middleware('throttle:20,1')
+        ->name('api.posts.feedback-requests.store');
 
     Route::get('/content-types', [PlatformController::class, 'contentTypes'])->name('api.content-types');
 

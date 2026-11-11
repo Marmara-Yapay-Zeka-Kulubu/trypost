@@ -1148,4 +1148,21 @@ return [
             'too_far' => 'A última ocorrência precisa ser antes de 2038.',
         ],
     ],
+    'feedback' => [
+        'menu' => 'Pedir feedback',
+        'title' => 'Pedir feedback',
+        'description' => 'As pessoas que você escolher recebem um pedido de opinião sobre este post. As respostas são adicionadas às notas.',
+        'recipients' => 'Para quem pedir',
+        'note_placeholder' => 'Adicione uma nota (opcional)',
+        'send' => 'Enviar',
+        'sent' => 'Pedido de feedback enviado',
+        'empty' => 'Não há outros membros neste workspace.',
+        'errors' => [
+            'load_failed' => 'Não foi possível carregar os membros do workspace. Tente de novo.',
+            'send_failed' => 'Não foi possível enviar o pedido de feedback. Tente de novo.',
+            'choose_members' => 'Escolha pelo menos um membro.',
+            'not_member' => 'Escolha membros deste workspace.',
+            'too_many' => 'Peça para no máximo :max membros por vez.',
+        ],
+    ],
 ];

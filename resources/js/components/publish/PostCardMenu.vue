@@ -8,6 +8,7 @@ import {
     IconDotsVertical,
     IconFileArrowLeft,
     IconLink,
+    IconMessageQuestion,
     IconRepeat,
     IconSend,
     IconShare3,
@@ -38,8 +39,15 @@ const props = withDefaults(
         canMoveDown?: boolean;
         movable?: boolean;
         details?: boolean;
+        feedback?: boolean;
     }>(),
-    { canMoveUp: false, canMoveDown: false, movable: true, details: true },
+    {
+        canMoveUp: false,
+        canMoveDown: false,
+        movable: true,
+        details: true,
+        feedback: true,
+    },
 );
 
 const emit = defineEmits<{ select: [action: PostCardMenuAction] }>();
@@ -116,6 +124,14 @@ const isQueued = computed(
                                 ? $t('posts.recurrence.edit')
                                 : $t('posts.recurrence.make')
                         }}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                        v-if="feedback"
+                        :data-testid="`post-feedback-open-${testKey}`"
+                        @click="emit('select', 'request_feedback')"
+                    >
+                        <IconMessageQuestion class="size-4" />
+                        {{ $t('posts.feedback.menu') }}
                     </DropdownMenuItem>
                     <DropdownMenuItem
                         v-if="details"

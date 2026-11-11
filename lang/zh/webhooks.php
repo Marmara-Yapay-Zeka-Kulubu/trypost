@@ -95,6 +95,7 @@ return [
         'post_approval_requested' => '帖子待审批',
         'post_approved' => '帖子已批准',
         'post_rejected' => '帖子已拒绝',
+        'post_feedback_requested' => '已请求帖子反馈',
     ],
     'event_descriptions' => [
         'post_created' => '创建新帖子时。',
@@ -108,6 +109,7 @@ return [
         'post_approval_requested' => '帖子提交审批时。',
         'post_approved' => '待审批的帖子被批准时。',
         'post_rejected' => '待审批的帖子被拒绝时。',
+        'post_feedback_requested' => '成员请求对帖子提供反馈时。',
     ],
     'http_reasons' => [
         'unknown' => '未知',

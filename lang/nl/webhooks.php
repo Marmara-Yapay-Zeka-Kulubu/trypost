@@ -95,6 +95,7 @@ return [
         'post_approval_requested' => 'Bericht wacht op goedkeuring',
         'post_approved' => 'Bericht goedgekeurd',
         'post_rejected' => 'Bericht afgewezen',
+        'post_feedback_requested' => 'Feedback gevraagd op bericht',
     ],
     'event_descriptions' => [
         'post_created' => 'Wanneer een nieuwe post wordt aangemaakt.',
@@ -108,6 +109,7 @@ return [
         'post_approval_requested' => 'Wanneer een bericht ter goedkeuring wordt verstuurd.',
         'post_approved' => 'Wanneer een wachtend bericht wordt goedgekeurd.',
         'post_rejected' => 'Wanneer een wachtend bericht wordt afgewezen.',
+        'post_feedback_requested' => 'Wanneer een lid om feedback op een bericht vraagt.',
     ],
     'http_reasons' => [
         'unknown' => 'Onbekend',

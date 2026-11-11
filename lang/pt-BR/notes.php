@@ -16,4 +16,6 @@ return [
     'empty' => 'Nenhuma nota ainda. Só a sua equipe vê as notas.',
     'actions' => 'Ações da nota',
     'load_more' => 'Carregar notas antigas',
+    'feedback_requested' => 'Pediu feedback para: :names',
+    'feedback_requested_with_note' => 'Pediu feedback para: :names — :note',
 ];

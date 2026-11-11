@@ -1148,4 +1148,21 @@ return [
             'too_far' => 'La dernière occurrence doit avoir lieu avant 2038.',
         ],
     ],
+    'feedback' => [
+        'menu' => 'Demander un avis',
+        'title' => 'Demander un avis',
+        'description' => 'Les personnes choisies sont invitées à donner leur avis sur cette publication. Leurs réponses sont ajoutées aux notes.',
+        'recipients' => 'Qui consulter',
+        'note_placeholder' => 'Ajouter une note (facultatif)',
+        'send' => 'Envoyer',
+        'sent' => 'Demande d\'avis envoyée',
+        'empty' => 'Il n\'y a pas d\'autres membres dans cet espace de travail.',
+        'errors' => [
+            'load_failed' => 'Impossible de charger les membres de l\'espace de travail. Réessayez.',
+            'send_failed' => 'Impossible d\'envoyer la demande d\'avis. Réessayez.',
+            'choose_members' => 'Choisissez au moins un membre.',
+            'not_member' => 'Choisissez des membres de cet espace de travail.',
+            'too_many' => 'Consultez jusqu\'à :max membres à la fois.',
+        ],
+    ],
 ];

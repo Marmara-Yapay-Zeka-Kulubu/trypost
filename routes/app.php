@@ -34,6 +34,7 @@ use App\Http\Controllers\App\PinterestBoardController;
 use App\Http\Controllers\App\PostAiAssistantController;
 use App\Http\Controllers\App\PostApprovalController;
 use App\Http\Controllers\App\PostController;
+use App\Http\Controllers\App\PostFeedbackRequestController;
 use App\Http\Controllers\App\PostGroupController;
 use App\Http\Controllers\App\PostLabelController;
 use App\Http\Controllers\App\PostNoteController;
@@ -278,6 +279,10 @@ Route::middleware(['auth', EnsureAccountReady::class, EnsureHasWorkspace::class]
     Route::post('posts/{post}/notes', [PostNoteController::class, 'store'])->name('app.posts.notes.store');
     Route::put('posts/{post}/notes/{note}', [PostNoteController::class, 'update'])->name('app.posts.notes.update');
     Route::delete('posts/{post}/notes/{note}', [PostNoteController::class, 'destroy'])->name('app.posts.notes.destroy');
+    Route::get('posts/{post}/feedback-requests/recipients', [PostFeedbackRequestController::class, 'recipients'])->name('app.posts.feedback-requests.recipients');
+    Route::post('posts/{post}/feedback-requests', [PostFeedbackRequestController::class, 'store'])
+        ->middleware('throttle:20,1')
+        ->name('app.posts.feedback-requests.store');
 
     Route::get('settings/workspace/members', [WorkspaceInviteController::class, 'index'])->name('app.members');
     Route::post('settings/workspace/members/invites', [WorkspaceInviteController::class, 'store'])->name('app.invites.store');

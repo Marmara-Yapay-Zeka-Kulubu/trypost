@@ -95,6 +95,7 @@ return [
         'post_approval_requested' => 'Publication en attente de validation',
         'post_approved' => 'Publication validée',
         'post_rejected' => 'Publication refusée',
+        'post_feedback_requested' => 'Avis demandé sur une publication',
     ],
     'event_descriptions' => [
         'post_created' => 'Quand une publication est créée.',
@@ -108,6 +109,7 @@ return [
         'post_approval_requested' => 'Quand une publication est envoyée pour validation.',
         'post_approved' => 'Quand une publication en attente est validée.',
         'post_rejected' => 'Quand une publication en attente est refusée.',
+        'post_feedback_requested' => 'Quand un membre demande un avis sur une publication.',
     ],
     'http_reasons' => [
         'unknown' => 'Inconnu',

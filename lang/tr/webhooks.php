@@ -95,6 +95,7 @@ return [
         'post_approval_requested' => 'Gönderi onay bekliyor',
         'post_approved' => 'Gönderi onaylandı',
         'post_rejected' => 'Gönderi reddedildi',
+        'post_feedback_requested' => 'Gönderi için görüş istendi',
     ],
     'event_descriptions' => [
         'post_created' => 'Yeni bir gönderi oluşturulduğunda.',
@@ -108,6 +109,7 @@ return [
         'post_approval_requested' => 'Bir gönderi onaya gönderildiğinde.',
         'post_approved' => 'Onay bekleyen bir gönderi onaylandığında.',
         'post_rejected' => 'Onay bekleyen bir gönderi reddedildiğinde.',
+        'post_feedback_requested' => 'Bir üye bir gönderi için ekibinden görüş istediğinde.',
     ],
     'http_reasons' => [
         'unknown' => 'Bilinmiyor',

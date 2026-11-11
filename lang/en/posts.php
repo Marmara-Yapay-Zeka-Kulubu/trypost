@@ -1148,4 +1148,21 @@ return [
             'too_far' => 'The last occurrence must be before 2038.',
         ],
     ],
+    'feedback' => [
+        'menu' => 'Ask for feedback',
+        'title' => 'Ask for feedback',
+        'description' => 'The people you choose are asked what they think of this post. Their replies are added to the notes.',
+        'recipients' => 'Who to ask',
+        'note_placeholder' => 'Add a note (optional)',
+        'send' => 'Send',
+        'sent' => 'Feedback request sent',
+        'empty' => 'There are no other members in this workspace.',
+        'errors' => [
+            'load_failed' => 'Couldn\'t load the workspace members. Try again.',
+            'send_failed' => 'Couldn\'t send the feedback request. Try again.',
+            'choose_members' => 'Choose at least one member to ask.',
+            'not_member' => 'Choose members of this workspace.',
+            'too_many' => 'Ask up to :max members at a time.',
+        ],
+    ],
 ];

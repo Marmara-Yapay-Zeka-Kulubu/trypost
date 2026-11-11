@@ -95,6 +95,7 @@ return [
         'post_approval_requested' => '게시물 승인 대기',
         'post_approved' => '게시물 승인됨',
         'post_rejected' => '게시물 거절됨',
+        'post_feedback_requested' => '게시물 피드백 요청됨',
     ],
     'event_descriptions' => [
         'post_created' => '새 게시물이 생성될 때.',
@@ -108,6 +109,7 @@ return [
         'post_approval_requested' => '게시물이 승인 요청되었을 때.',
         'post_approved' => '대기 중인 게시물이 승인되었을 때.',
         'post_rejected' => '대기 중인 게시물이 거절되었을 때.',
+        'post_feedback_requested' => '멤버가 게시물에 대한 피드백을 요청했을 때.',
     ],
     'http_reasons' => [
         'unknown' => '알 수 없음',

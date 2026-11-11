@@ -57,11 +57,15 @@ import { Platform } from '@/types/platform';
 import { PostOrigin, PostStatus, PublishStatus } from '@/types/post';
 import type { PostCard, PostCardMenuAction } from '@/types/publish';
 
-const props = defineProps<{
-    post: PostCard;
-    testKey: string;
-    timezone: string;
-}>();
+const props = withDefaults(
+    defineProps<{
+        post: PostCard;
+        testKey: string;
+        timezone: string;
+        feedback?: boolean;
+    }>(),
+    { feedback: false },
+);
 
 const emit = defineEmits<{
     select: [action: PostCardMenuAction, post: PostCard];
@@ -605,6 +609,7 @@ const siblingMoment = (sibling: PostCard): string | null => {
                                 :test-key="`details-${currentKey}`"
                                 :movable="false"
                                 :details="false"
+                                :feedback="feedback"
                                 @select="(action) => emit('select', action, current)"
                             />
                         </div>

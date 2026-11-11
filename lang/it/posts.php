@@ -1148,4 +1148,21 @@ return [
             'too_far' => 'L’ultima ripetizione deve essere prima del 2038.',
         ],
     ],
+    'feedback' => [
+        'menu' => 'Chiedi un parere',
+        'title' => 'Chiedi un parere',
+        'description' => 'Alle persone che scegli viene chiesto un parere su questo post. Le risposte vengono aggiunte alle note.',
+        'recipients' => 'A chi chiedere',
+        'note_placeholder' => 'Aggiungi una nota (facoltativa)',
+        'send' => 'Invia',
+        'sent' => 'Richiesta di parere inviata',
+        'empty' => 'Non ci sono altri membri in questo workspace.',
+        'errors' => [
+            'load_failed' => 'Impossibile caricare i membri del workspace. Riprova.',
+            'send_failed' => 'Impossibile inviare la richiesta di parere. Riprova.',
+            'choose_members' => 'Scegli almeno un membro.',
+            'not_member' => 'Scegli membri di questo workspace.',
+            'too_many' => 'Chiedi al massimo a :max membri alla volta.',
+        ],
+    ],
 ];

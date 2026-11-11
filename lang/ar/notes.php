@@ -16,4 +16,6 @@ return [
     'empty' => 'لا توجد ملاحظات بعد. فريقك فقط يراها.',
     'actions' => 'إجراءات الملاحظة',
     'load_more' => 'تحميل الملاحظات الأقدم',
+    'feedback_requested' => 'طلب رأي: :names',
+    'feedback_requested_with_note' => 'طلب رأي: :names — :note',
 ];

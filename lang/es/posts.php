@@ -1149,4 +1149,21 @@ return [
             'too_far' => 'La última repetición debe ser antes de 2038.',
         ],
     ],
+    'feedback' => [
+        'menu' => 'Pedir opinión',
+        'title' => 'Pedir opinión',
+        'description' => 'Se pedirá su opinión sobre esta publicación a las personas que elijas. Sus respuestas se añaden a las notas.',
+        'recipients' => 'A quién preguntar',
+        'note_placeholder' => 'Añade una nota (opcional)',
+        'send' => 'Enviar',
+        'sent' => 'Solicitud de opinión enviada',
+        'empty' => 'No hay otros miembros en este espacio de trabajo.',
+        'errors' => [
+            'load_failed' => 'No se pudieron cargar los miembros del espacio de trabajo. Inténtalo de nuevo.',
+            'send_failed' => 'No se pudo enviar la solicitud de opinión. Inténtalo de nuevo.',
+            'choose_members' => 'Elige al menos un miembro.',
+            'not_member' => 'Elige miembros de este espacio de trabajo.',
+            'too_many' => 'Pregunta a :max miembros como máximo a la vez.',
+        ],
+    ],
 ];

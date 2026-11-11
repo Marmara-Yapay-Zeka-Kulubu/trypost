@@ -20,6 +20,7 @@ enum EventType: string
     case PostApprovalRequested = 'post.approval_requested';
     case PostApproved = 'post.approved';
     case PostRejected = 'post.rejected';
+    case PostFeedbackRequested = 'post.feedback_requested';
 
     public static function fromPostStatus(PostStatus $status, ?PostStatus $previous = null): ?self
     {

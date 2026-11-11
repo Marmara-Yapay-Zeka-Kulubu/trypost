@@ -1148,4 +1148,21 @@ return [
             'too_far' => 'Son tekrar 2038’den önce olmalıdır.',
         ],
     ],
+    'feedback' => [
+        'menu' => 'Görüş iste',
+        'title' => 'Görüş iste',
+        'description' => 'Seçtiğin kişilere bu gönderi için görüşleri sorulur. Cevapları notlara eklenir.',
+        'recipients' => 'Kime sorulsun',
+        'note_placeholder' => 'Not ekle (isteğe bağlı)',
+        'send' => 'Gönder',
+        'sent' => 'Görüş isteği gönderildi',
+        'empty' => 'Çalışma alanında başka üye yok.',
+        'errors' => [
+            'load_failed' => 'Çalışma alanı üyeleri yüklenemedi. Tekrar dene.',
+            'send_failed' => 'Görüş isteği gönderilemedi. Tekrar dene.',
+            'choose_members' => 'Görüşü sorulacak en az bir üye seç.',
+            'not_member' => 'Bu çalışma alanının üyelerini seç.',
+            'too_many' => 'Tek seferde en fazla :max üyeye sorabilirsin.',
+        ],
+    ],
 ];

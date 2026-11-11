@@ -143,6 +143,7 @@ export type PostCardMenuAction =
     | 'move_down'
     | 'duplicate'
     | 'recurrence'
+    | 'request_feedback'
     | 'move_drafts'
     | 'details'
     | 'share_link'

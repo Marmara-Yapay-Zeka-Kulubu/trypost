@@ -95,6 +95,7 @@ return [
         'post_approval_requested' => 'Publicación pendiente de aprobación',
         'post_approved' => 'Publicación aprobada',
         'post_rejected' => 'Publicación rechazada',
+        'post_feedback_requested' => 'Opinión solicitada sobre publicación',
     ],
     'event_descriptions' => [
         'post_created' => 'Cuando se crea un nuevo post.',
@@ -108,6 +109,7 @@ return [
         'post_approval_requested' => 'Cuando una publicación se envía a aprobación.',
         'post_approved' => 'Cuando se aprueba una publicación pendiente.',
         'post_rejected' => 'Cuando se rechaza una publicación pendiente.',
+        'post_feedback_requested' => 'Cuando un miembro pide opinión sobre una publicación.',
     ],
     'http_reasons' => [
         'unknown' => 'Desconocido',

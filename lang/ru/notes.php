@@ -16,4 +16,6 @@ return [
     'empty' => 'Пока нет заметок. Их видит только ваша команда.',
     'actions' => 'Действия с заметкой',
     'load_more' => 'Загрузить старые заметки',
+    'feedback_requested' => 'Запрошен отзыв: :names',
+    'feedback_requested_with_note' => 'Запрошен отзыв: :names — :note',
 ];

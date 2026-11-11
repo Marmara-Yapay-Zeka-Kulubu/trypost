@@ -16,4 +16,6 @@ return [
     'empty' => 'Noch keine Notizen. Nur dein Team sieht sie.',
     'actions' => 'Notizaktionen',
     'load_more' => 'Ältere Notizen laden',
+    'feedback_requested' => 'Feedback angefragt bei: :names',
+    'feedback_requested_with_note' => 'Feedback angefragt bei: :names — :note',
 ];
