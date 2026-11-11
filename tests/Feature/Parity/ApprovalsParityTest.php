@@ -341,11 +341,12 @@ test('approving again with the same request id changes nothing on web, api and m
     $api = approvalsParityPending($this->workspace, $this->member, $this->account);
     $mcp = approvalsParityPending($this->workspace, $this->member, $this->account);
 
-    foreach (range(1, 2) as $attempt) {
-        $this->actingAs($this->owner)->put(route('app.posts.approve', $web), ['request_id' => 'echo-1'])->assertSessionHasNoErrors();
-        $this->withHeaders(parityApi($this->ownerToken))->postJson(route('api.posts.approve', $api), ['request_id' => 'echo-1'])->assertOk();
-        TryPostServer::actingAs($this->owner)->tool(ApprovePostTool::class, ['post_id' => $mcp->id, 'request_id' => 'echo-1'])->assertOk();
-    }
+    $this->actingAs($this->owner)->put(route('app.posts.approve', $web), ['request_id' => 'echo-1'])->assertSessionHasNoErrors();
+    $this->actingAs($this->owner)->put(route('app.posts.approve', $web), ['request_id' => 'echo-1'])->assertSessionHasNoErrors();
+    $this->withHeaders(parityApi($this->ownerToken))->postJson(route('api.posts.approve', $api), ['request_id' => 'echo-1'])->assertOk()->assertJsonPath('replayed', false);
+    $this->withHeaders(parityApi($this->ownerToken))->postJson(route('api.posts.approve', $api), ['request_id' => 'echo-1'])->assertOk()->assertJsonPath('replayed', true);
+    TryPostServer::actingAs($this->owner)->tool(ApprovePostTool::class, ['post_id' => $mcp->id, 'request_id' => 'echo-1'])->assertOk();
+    TryPostServer::actingAs($this->owner)->tool(ApprovePostTool::class, ['post_id' => $mcp->id, 'request_id' => 'echo-1'])->assertOk();
 
     foreach ([$web, $api, $mcp] as $post) {
         expect(approvalsParitySnapshot($post))->toBe(['status' => Status::Scheduled, 'scheduled' => true, 'approved_by' => 'approver'])
@@ -357,15 +358,17 @@ test('rejecting with the request id of an approval gives the same message on web
     $web = approvalsParityPending($this->workspace, $this->member, $this->account);
     $api = approvalsParityPending($this->workspace, $this->member, $this->account);
     $mcp = approvalsParityPending($this->workspace, $this->member, $this->account);
-    $this->actingAs($this->owner)->put(route('app.posts.approve', $web), ['request_id' => 'echo-1']);
-    $this->withHeaders(parityApi($this->ownerToken))->postJson(route('api.posts.approve', $api), ['request_id' => 'echo-1'])->assertOk();
-    TryPostServer::actingAs($this->owner)->tool(ApprovePostTool::class, ['post_id' => $mcp->id, 'request_id' => 'echo-1'])->assertOk();
-
+    $this->actingAs($this->owner)->put(route('app.posts.approve', $web), ['request_id' => 'echo-1'])->assertSessionHasNoErrors();
     $this->actingAs($this->owner)->put(route('app.posts.reject', $web), ['request_id' => 'echo-1'])
         ->assertSessionHasErrors(['post' => __('posts.approvals.errors.request_conflict')]);
+
+    $this->withHeaders(parityApi($this->ownerToken))->postJson(route('api.posts.approve', $api), ['request_id' => 'echo-1'])->assertOk();
     $response = $this->withHeaders(parityApi($this->ownerToken))
         ->postJson(route('api.posts.reject', $api), ['request_id' => 'echo-1'])
-        ->assertConflict();
+        ->assertConflict()
+        ->assertJsonPath('error', 'request_id_conflict');
+
+    TryPostServer::actingAs($this->owner)->tool(ApprovePostTool::class, ['post_id' => $mcp->id, 'request_id' => 'echo-1'])->assertOk();
     TryPostServer::actingAs($this->owner)
         ->tool(RejectPostTool::class, ['post_id' => $mcp->id, 'request_id' => 'echo-1'])
         ->assertHasErrors([$response->json('message')]);
