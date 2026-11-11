@@ -1113,6 +1113,7 @@ return [
             'not_pending' => 'Dieser Beitrag wartet nicht mehr auf Freigabe.',
             'time_passed' => 'Der gewünschte Zeitpunkt ist vorbei. Wähle einen neuen.',
             'changed' => 'Dieser Beitrag wurde geändert, nachdem du ihn geprüft hast. Prüfe die neue Version und entscheide dann.',
+            'request_conflict' => 'Mit dieser Anfrage wurde für diesen Beitrag bereits anders entschieden. Es wurde nichts geändert.',
         ],
     ],
     'recurrence' => [

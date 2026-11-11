@@ -21,6 +21,7 @@ class PostApprovalController extends Controller
             $request->user(),
             Arr::only($request->validated(), ['publish_now', 'scheduled_at']),
             $request->validated('expected_version'),
+            $request->validated('request_id'),
         );
 
         return back();
@@ -28,7 +29,7 @@ class PostApprovalController extends Controller
 
     public function reject(RejectPostRequest $request, Post $post): RedirectResponse
     {
-        RejectPost::execute($post, $request->user(), $request->validated('expected_version'));
+        RejectPost::execute($post, $request->user(), $request->validated('expected_version'), $request->validated('request_id'));
 
         return back();
     }

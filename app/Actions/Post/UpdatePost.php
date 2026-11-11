@@ -26,6 +26,7 @@ use App\Support\PostPlatformMetaRules;
 use App\Support\PostStatusRules;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
+use Closure;
 use Illuminate\Support\Arr;
 use Illuminate\Validation\ValidationException;
 
@@ -36,20 +37,24 @@ class UpdatePost
      * A pending post is changed under its approval lock (see PostApproval::whilePending()).
      * `queue_slot` (an instant, set only by MoveChannelPostToQueueSlot under the channel lock)
      * stores a single-channel post in queue mode at that slot without reflowing the queue.
+     * `$whenApproved` runs inside the write transaction once this update approves a
+     * pending post (ApprovePost records its `request_id` there).
      *
+     * @param  (Closure(Post): void)|null  $whenApproved
      * @return array{post: Post, action: PostAction|null}
      */
-    public static function execute(Workspace $workspace, Post $post, array $data, ?User $actor = null): array
+    public static function execute(Workspace $workspace, Post $post, array $data, ?User $actor = null, ?Closure $whenApproved = null): array
     {
         return $post->status === PostStatus::PendingApproval
-            ? PostApproval::whilePending($post, fn (): array => self::apply($workspace, $post, $data, $actor))
-            : self::apply($workspace, $post, $data, $actor);
+            ? PostApproval::whilePending($post, fn (): array => self::apply($workspace, $post, $data, $actor, $whenApproved))
+            : self::apply($workspace, $post, $data, $actor, $whenApproved);
     }
 
     /**
+     * @param  (Closure(Post): void)|null  $whenApproved
      * @return array{post: Post, action: PostAction|null}
      */
-    private static function apply(Workspace $workspace, Post $post, array $data, ?User $actor): array
+    private static function apply(Workspace $workspace, Post $post, array $data, ?User $actor, ?Closure $whenApproved): array
     {
         if (PostStatusRules::blocksEditing($post)) {
             return ['post' => $post, 'action' => PostAction::Finalized];
@@ -64,7 +69,7 @@ class UpdatePost
         }
 
         return $post->hasChannel()
-            ? self::updateChannelPost($workspace, $post, $data, $actor)
+            ? self::updateChannelPost($workspace, $post, $data, $actor, $whenApproved)
             : self::updateDraftWithoutChannel($post, $data);
     }
 
@@ -114,9 +119,10 @@ class UpdatePost
 
     /**
      * @param  array<string, mixed>  $data
+     * @param  (Closure(Post): void)|null  $whenApproved
      * @return array{post: Post, action: PostAction|null}
      */
-    private static function updateChannelPost(Workspace $workspace, Post $post, array $data, ?User $actor): array
+    private static function updateChannelPost(Workspace $workspace, Post $post, array $data, ?User $actor, ?Closure $whenApproved): array
     {
         $position = filled(data_get($data, 'queue')) ? QueuePosition::from(data_get($data, 'queue')) : null;
         $channel = $post->socialAccount;
@@ -190,7 +196,7 @@ class UpdatePost
             ]],
         ], $post->media ?? []));
 
-        $write = fn (): array => MediaCopyBatch::run(function (MediaCopyBatch $batch) use ($post, $channel, $data, $resolved, $scheduledAt, $mode, $position, $pending, $approvesHolder, $previousStatus, $storedStatus, $actor): array {
+        $write = fn (): array => MediaCopyBatch::run(function (MediaCopyBatch $batch) use ($post, $channel, $data, $resolved, $scheduledAt, $mode, $position, $pending, $approvesHolder, $previousStatus, $storedStatus, $actor, $whenApproved): array {
             if (self::finalizedMeanwhile($post)) {
                 return ['post' => $post, 'action' => PostAction::Finalized];
             }
@@ -218,7 +224,7 @@ class UpdatePost
                 CreateChannelPost::enqueue($channel, $post, $position);
             }
 
-            return self::finish($post, $previousStatus, $storedStatus, $occurrence, $actor);
+            return self::finish($post, $previousStatus, $storedStatus, $occurrence, $actor, $whenApproved);
         });
 
         return ($position === null && ! $approvesHolder) || $pending
@@ -262,15 +268,20 @@ class UpdatePost
     }
 
     /**
+     * @param  (Closure(Post): void)|null  $whenApproved
      * @return array{post: Post, action: PostAction|null}
      */
-    private static function finish(Post $post, PostStatus $previousStatus, PostStatus $storedStatus, ?CarbonInterface $occurrence, ?User $actor): array
+    private static function finish(Post $post, PostStatus $previousStatus, PostStatus $storedStatus, ?CarbonInterface $occurrence, ?User $actor, ?Closure $whenApproved): array
     {
         if ($actor !== null && PostApproval::isRequest($previousStatus, $storedStatus)) {
             NotifyApprovalRequested::execute(collect([$post]), $actor);
         }
 
         if ($actor !== null && PostApproval::isApproval($previousStatus, $storedStatus)) {
+            if ($whenApproved !== null) {
+                $whenApproved($post);
+            }
+
             NotifyApprovalDecision::execute($post, ApprovalDecision::Approved, $actor, $post->approvalRequester());
         }
 

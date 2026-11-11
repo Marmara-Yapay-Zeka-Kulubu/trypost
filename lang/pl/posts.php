@@ -1113,6 +1113,7 @@ return [
             'not_pending' => 'Ten post nie czeka już na zatwierdzenie.',
             'time_passed' => 'Wybrany czas minął. Wybierz nowy czas.',
             'changed' => 'Ten post został zmieniony od ostatniego sprawdzenia. Sprawdź nową wersję, a potem zdecyduj.',
+            'request_conflict' => 'To żądanie podjęło już inną decyzję w sprawie tego posta. Nic nie zostało zmienione.',
         ],
     ],
     'recurrence' => [

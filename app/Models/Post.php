@@ -281,6 +281,14 @@ class Post extends Model
     }
 
     /**
+     * Approve and reject decisions sent with a `request_id` (see PostApproval::replay()).
+     */
+    public function approvalActions(): HasMany
+    {
+        return $this->hasMany(PostApprovalAction::class);
+    }
+
+    /**
      * Posts created together with this one (one per destination), this post included.
      */
     public function groupPosts(): HasMany

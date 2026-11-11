@@ -4,18 +4,21 @@ declare(strict_types=1);
 
 namespace App\Support;
 
+use App\Enums\Post\ApprovalDecision;
 use App\Enums\Post\QueuePosition;
 use App\Enums\Post\Status as PostStatus;
+use App\Exceptions\Post\ApprovalRequestConflictException;
+use App\Exceptions\Post\PostNotPendingException;
 use App\Exceptions\Post\PostVersionMismatchException;
 use App\Exceptions\Post\QueueBusyException;
 use App\Models\Post;
+use App\Models\PostApprovalAction;
 use App\Models\User;
 use App\Models\Workspace;
 use Closure;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Validation\ValidationException;
 
 /**
  * The one approval rule shared by every post write (web, API, MCP, repurpose):
@@ -55,7 +58,7 @@ class PostApproval
     {
         return self::locked($post, function () use ($post, $work): mixed {
             if ($post->status !== PostStatus::PendingApproval) {
-                throw ValidationException::withMessages(['post' => __('posts.approvals.errors.not_pending')]);
+                throw PostNotPendingException::make();
             }
 
             return $work();
@@ -82,6 +85,47 @@ class PostApproval
         if (! hash_equals($current, $expectedVersion)) {
             throw new PostVersionMismatchException($current);
         }
+    }
+
+    /**
+     * The decision an earlier approve or reject with this `request_id` already
+     * applied to the post, when there is one. Call it first inside locked(),
+     * before whilePending(), so a retry is recognised even though the post is
+     * no longer pending or its version moved since.
+     *
+     * @throws ApprovalRequestConflictException when that request made the other decision
+     */
+    public static function replay(Post $post, ApprovalDecision $decision, ?string $requestId): ?PostApprovalAction
+    {
+        if ($requestId === null) {
+            return null;
+        }
+
+        $recorded = $post->approvalActions()->where('request_id', $requestId)->first();
+
+        if ($recorded !== null && $recorded->action !== $decision) {
+            throw new ApprovalRequestConflictException($recorded);
+        }
+
+        return $recorded;
+    }
+
+    /**
+     * Records a decision sent with a `request_id`. Call it in the transaction
+     * that writes the decision, so the row exists exactly when it was applied.
+     */
+    public static function record(Post $post, ApprovalDecision $decision, ?string $requestId, User $actor, string $contentVersion): void
+    {
+        if ($requestId === null) {
+            return;
+        }
+
+        $post->approvalActions()->create([
+            'request_id' => $requestId,
+            'action' => $decision,
+            'user_id' => $actor->id,
+            'content_version' => $contentVersion,
+        ]);
     }
 
     /**

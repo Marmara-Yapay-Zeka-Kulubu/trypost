@@ -1113,6 +1113,7 @@ return [
             'not_pending' => 'Bu gönderi artık onay beklemiyor.',
             'time_passed' => 'İstenen saat geçti. Yeni bir saat seçin.',
             'changed' => 'Bu gönderi siz inceledikten sonra değişti. Yeni sürümü inceleyip öyle karar verin.',
+            'request_conflict' => 'Bu istekle bu gönderi için zaten farklı bir karar verildi. Hiçbir şey değiştirilmedi.',
         ],
     ],
     'recurrence' => [

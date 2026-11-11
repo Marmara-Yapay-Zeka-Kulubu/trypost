@@ -23,6 +23,7 @@ class RejectPostRequest extends FormRequest
     {
         return [
             'expected_version' => ['nullable', 'string', 'max:64'],
+            'request_id' => ['nullable', 'string', 'max:100', 'regex:/^[A-Za-z0-9:._-]+\z/'],
         ];
     }
 }

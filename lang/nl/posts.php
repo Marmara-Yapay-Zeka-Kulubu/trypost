@@ -1113,6 +1113,7 @@ return [
             'not_pending' => 'Dit bericht wacht niet meer op goedkeuring.',
             'time_passed' => 'Het gevraagde tijdstip is voorbij. Kies een nieuw tijdstip.',
             'changed' => 'Dit bericht is gewijzigd nadat je het hebt bekeken. Bekijk de nieuwe versie en beslis dan.',
+            'request_conflict' => 'Met dit verzoek is al een andere beslissing over dit bericht genomen. Er is niets gewijzigd.',
         ],
     ],
     'recurrence' => [

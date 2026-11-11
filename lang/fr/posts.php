@@ -1113,6 +1113,7 @@ return [
             'not_pending' => 'Cette publication n\'attend plus d\'approbation.',
             'time_passed' => 'L\'heure demandée est passée. Choisissez une nouvelle heure.',
             'changed' => 'Cette publication a changé depuis votre vérification. Vérifiez la nouvelle version, puis décidez.',
+            'request_conflict' => 'Cette requête a déjà pris une autre décision sur cette publication. Rien n\'a été modifié.',
         ],
     ],
     'recurrence' => [

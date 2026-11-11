@@ -25,6 +25,7 @@ class ApprovePostRequest extends FormRequest
         return [
             ...ApprovalRequestRules::approve(),
             'expected_version' => ['nullable', 'string', 'max:64'],
+            'request_id' => ['nullable', 'string', 'max:100', 'regex:/^[A-Za-z0-9:._-]+\z/'],
         ];
     }
 }

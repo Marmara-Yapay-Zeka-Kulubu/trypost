@@ -1114,6 +1114,7 @@ return [
             'not_pending' => 'Esta publicación ya no está pendiente de aprobación.',
             'time_passed' => 'La hora solicitada ya pasó. Elige una nueva hora.',
             'changed' => 'Esta publicación cambió después de que la revisaras. Revisa la nueva versión y luego decide.',
+            'request_conflict' => 'Esta solicitud ya tomó una decisión distinta sobre esta publicación. No se cambió nada.',
         ],
     ],
     'recurrence' => [

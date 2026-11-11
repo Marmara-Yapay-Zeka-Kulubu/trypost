@@ -27,6 +27,7 @@ class PostVersionMismatchException extends RuntimeException
         if ($request->is('api/*') || $request->expectsJson()) {
             return response()->json([
                 'message' => $this->getMessage(),
+                'error' => 'version_mismatch',
                 'content_version' => $this->contentVersion,
             ], Response::HTTP_CONFLICT);
         }

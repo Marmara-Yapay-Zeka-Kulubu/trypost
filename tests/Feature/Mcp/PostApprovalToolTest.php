@@ -140,3 +140,35 @@ test('the approval tools refuse a post that changed since it was reviewed', func
     'approve' => [ApprovePostTool::class],
     'reject' => [RejectPostTool::class],
 ]);
+
+test('the approval tools replay a decision sent again with the same request id', function (string $tool, PostStatus $decided) {
+    $request = approvalToolRequest($this);
+    $reviewed = $request->contentVersion();
+
+    TryPostServer::actingAs($this->owner)
+        ->tool($tool, ['post_id' => $request->id, 'request_id' => 'echo-1'])
+        ->assertOk()
+        ->assertStructuredContent(fn (AssertableJson $json) => $json->where('status', $decided->value)->where('replayed', false)->missing('recorded_content_version')->etc());
+
+    TryPostServer::actingAs($this->owner)
+        ->tool($tool, ['post_id' => $request->id, 'request_id' => 'echo-1'])
+        ->assertOk()
+        ->assertStructuredContent(fn (AssertableJson $json) => $json->where('status', $decided->value)->where('replayed', true)->where('recorded_content_version', $reviewed)->etc());
+
+    expect($request->approvalActions()->count())->toBe(1);
+})->with([
+    'approve' => [ApprovePostTool::class, PostStatus::Scheduled],
+    'reject' => [RejectPostTool::class, PostStatus::Draft],
+]);
+
+test('the approval tools refuse a request id reused for the other decision', function () {
+    $request = approvalToolRequest($this);
+
+    TryPostServer::actingAs($this->owner)->tool(ApprovePostTool::class, ['post_id' => $request->id, 'request_id' => 'echo-1'])->assertOk();
+
+    TryPostServer::actingAs($this->owner)
+        ->tool(RejectPostTool::class, ['post_id' => $request->id, 'request_id' => 'echo-1'])
+        ->assertHasErrors([__('posts.approvals.errors.request_conflict')]);
+
+    expect($request->fresh()->status)->toBe(PostStatus::Scheduled);
+});

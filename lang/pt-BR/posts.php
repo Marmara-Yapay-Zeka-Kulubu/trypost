@@ -1113,6 +1113,7 @@ return [
             'not_pending' => 'Este post não está mais aguardando aprovação.',
             'time_passed' => 'O horário pedido já passou. Escolha um novo horário.',
             'changed' => 'Este post mudou depois que você o revisou. Revise a nova versão e depois decida.',
+            'request_conflict' => 'Esta solicitação já tomou uma decisão diferente sobre este post. Nada foi alterado.',
         ],
     ],
     'recurrence' => [

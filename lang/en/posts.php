@@ -1113,6 +1113,7 @@ return [
             'not_pending' => 'This post is no longer waiting for approval.',
             'time_passed' => 'The requested time has passed. Choose a new time.',
             'changed' => 'This post changed after you reviewed it. Review the new version, then decide.',
+            'request_conflict' => 'This request already made a different decision on this post. Nothing was changed.',
         ],
     ],
     'recurrence' => [

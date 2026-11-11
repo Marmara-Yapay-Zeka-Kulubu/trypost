@@ -336,6 +336,45 @@ test('approving a post that is no longer pending gives the same message on api a
         ->assertHasErrors([$response->json('errors.post.0')]);
 });
 
+test('approving again with the same request id changes nothing on web, api and mcp', function () {
+    $web = approvalsParityPending($this->workspace, $this->member, $this->account);
+    $api = approvalsParityPending($this->workspace, $this->member, $this->account);
+    $mcp = approvalsParityPending($this->workspace, $this->member, $this->account);
+
+    foreach (range(1, 2) as $attempt) {
+        $this->actingAs($this->owner)->put(route('app.posts.approve', $web), ['request_id' => 'echo-1'])->assertSessionHasNoErrors();
+        $this->withHeaders(parityApi($this->ownerToken))->postJson(route('api.posts.approve', $api), ['request_id' => 'echo-1'])->assertOk();
+        TryPostServer::actingAs($this->owner)->tool(ApprovePostTool::class, ['post_id' => $mcp->id, 'request_id' => 'echo-1'])->assertOk();
+    }
+
+    foreach ([$web, $api, $mcp] as $post) {
+        expect(approvalsParitySnapshot($post))->toBe(['status' => Status::Scheduled, 'scheduled' => true, 'approved_by' => 'approver'])
+            ->and($post->approvalActions()->count())->toBe(1);
+    }
+});
+
+test('rejecting with the request id of an approval gives the same message on web, api and mcp', function () {
+    $web = approvalsParityPending($this->workspace, $this->member, $this->account);
+    $api = approvalsParityPending($this->workspace, $this->member, $this->account);
+    $mcp = approvalsParityPending($this->workspace, $this->member, $this->account);
+    $this->actingAs($this->owner)->put(route('app.posts.approve', $web), ['request_id' => 'echo-1']);
+    $this->withHeaders(parityApi($this->ownerToken))->postJson(route('api.posts.approve', $api), ['request_id' => 'echo-1'])->assertOk();
+    TryPostServer::actingAs($this->owner)->tool(ApprovePostTool::class, ['post_id' => $mcp->id, 'request_id' => 'echo-1'])->assertOk();
+
+    $this->actingAs($this->owner)->put(route('app.posts.reject', $web), ['request_id' => 'echo-1'])
+        ->assertSessionHasErrors(['post' => __('posts.approvals.errors.request_conflict')]);
+    $response = $this->withHeaders(parityApi($this->ownerToken))
+        ->postJson(route('api.posts.reject', $api), ['request_id' => 'echo-1'])
+        ->assertConflict();
+    TryPostServer::actingAs($this->owner)
+        ->tool(RejectPostTool::class, ['post_id' => $mcp->id, 'request_id' => 'echo-1'])
+        ->assertHasErrors([$response->json('message')]);
+
+    foreach ([$web, $api, $mcp] as $post) {
+        expect($post->fresh()->status)->toBe(Status::Scheduled);
+    }
+});
+
 test('a non-approver is refused with the web authorization message through mcp', function () {
     $post = approvalsParityPending($this->workspace, $this->member, $this->account);
     $message = $this->actingAs($this->member)->put(route('app.posts.approve', $post))->assertForbidden()->exception->getMessage();
