@@ -6,6 +6,7 @@ namespace App\Support;
 
 use App\Enums\Post\QueuePosition;
 use App\Enums\Post\Status as PostStatus;
+use App\Exceptions\Post\PostVersionMismatchException;
 use App\Exceptions\Post\QueueBusyException;
 use App\Models\Post;
 use App\Models\User;
@@ -59,6 +60,28 @@ class PostApproval
 
             return $work();
         });
+    }
+
+    /**
+     * Refuses an approve or reject sent for another version of the post than
+     * the stored one (see Post::contentVersion()). Call it first inside
+     * whilePending(): the post was just re-read there under the approval lock,
+     * which every edit of a pending post holds until its write commits, and
+     * the approval then writes the very content it compared.
+     *
+     * @throws PostVersionMismatchException
+     */
+    public static function assertVersion(Post $post, ?string $expectedVersion): void
+    {
+        if ($expectedVersion === null) {
+            return;
+        }
+
+        $current = $post->contentVersion();
+
+        if (! hash_equals($current, $expectedVersion)) {
+            throw new PostVersionMismatchException($current);
+        }
     }
 
     /**

@@ -1112,6 +1112,7 @@ return [
         'errors' => [
             'not_pending' => '该帖子已不再等待审批。',
             'time_passed' => '请求的时间已过，请选择新的时间。',
+            'changed' => '该帖子在你审阅后已被修改。请先查看新版本，再做决定。',
         ],
     ],
     'recurrence' => [

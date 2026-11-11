@@ -1112,6 +1112,7 @@ return [
         'errors' => [
             'not_pending' => 'Bu gönderi artık onay beklemiyor.',
             'time_passed' => 'İstenen saat geçti. Yeni bir saat seçin.',
+            'changed' => 'Bu gönderi siz inceledikten sonra değişti. Yeni sürümü inceleyip öyle karar verin.',
         ],
     ],
     'recurrence' => [

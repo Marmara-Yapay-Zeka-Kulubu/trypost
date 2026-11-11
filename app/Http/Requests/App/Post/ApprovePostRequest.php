@@ -22,6 +22,9 @@ class ApprovePostRequest extends FormRequest
      */
     public function rules(): array
     {
-        return ApprovalRequestRules::approve();
+        return [
+            ...ApprovalRequestRules::approve(),
+            'expected_version' => ['nullable', 'string', 'max:64'],
+        ];
     }
 }

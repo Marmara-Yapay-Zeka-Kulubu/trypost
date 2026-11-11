@@ -1112,6 +1112,7 @@ return [
         'errors' => [
             'not_pending' => 'Questo post non è più in attesa di approvazione.',
             'time_passed' => 'L\'orario richiesto è passato. Scegli un nuovo orario.',
+            'changed' => 'Questo post è cambiato dopo che l\'hai controllato. Controlla la nuova versione, poi decidi.',
         ],
     ],
     'recurrence' => [

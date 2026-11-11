@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Mcp\Tools\Post;
 
 use App\Actions\Post\Approval\ApprovePost;
+use App\Exceptions\Post\PostVersionMismatchException;
 use App\Exceptions\Post\QueueBusyException;
 use App\Http\Resources\Api\PostResource;
 use App\Mcp\Concerns\AuthorizesMcpTool;
@@ -34,6 +35,7 @@ class ApprovePostTool extends Tool
         $validated = $request->validate([
             'post_id' => ['required', 'uuid'],
             ...ApprovalRequestRules::approve(),
+            'expected_version' => ['nullable', 'string', 'max:64'],
         ]);
 
         $workspace = $request->user()?->currentWorkspace;
@@ -50,9 +52,11 @@ class ApprovePostTool extends Tool
         }
 
         try {
-            $result = ApprovePost::execute($post, $request->user(), Arr::only($validated, ['publish_now', 'scheduled_at']));
+            $result = ApprovePost::execute($post, $request->user(), Arr::only($validated, ['publish_now', 'scheduled_at']), data_get($validated, 'expected_version'));
         } catch (QueueBusyException) {
             return Response::error(__('posts.errors.queue_busy'));
+        } catch (PostVersionMismatchException $exception) {
+            return Response::error("{$exception->getMessage()} (content_version: {$exception->contentVersion})");
         }
 
         /** @var Post $approved */
@@ -68,6 +72,7 @@ class ApprovePostTool extends Tool
             'post_id' => $schema->string()->required()->description('UUID of the post waiting for approval.'),
             'scheduled_at' => $schema->string()->description('Optional ISO 8601 datetime in the future to schedule at instead of the requested time.'),
             'publish_now' => $schema->boolean()->description('Publish immediately instead of the requested time.'),
+            'expected_version' => $schema->string()->description('Optional content_version of the post as it was reviewed. When the post changed since, nothing is approved and the error gives the current content_version.'),
         ];
     }
 }

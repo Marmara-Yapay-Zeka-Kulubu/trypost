@@ -1112,6 +1112,7 @@ return [
         'errors' => [
             'not_pending' => 'Ten post nie czeka już na zatwierdzenie.',
             'time_passed' => 'Wybrany czas minął. Wybierz nowy czas.',
+            'changed' => 'Ten post został zmieniony od ostatniego sprawdzenia. Sprawdź nową wersję, a potem zdecyduj.',
         ],
     ],
     'recurrence' => [

@@ -27,6 +27,7 @@ class PostResource extends JsonResource
             'post_group_id' => $this->post_group_id,
             'author' => $this->person($this->user),
             'content' => $this->content,
+            'content_version' => $this->resource->contentVersion(),
             'media' => $this->media,
             'status' => $this->status?->value,
             'schedule_mode' => $this->schedule_mode?->value,

@@ -99,3 +99,29 @@ test('approval webhooks are not sent to webhooks that did not subscribe to them'
 
     Queue::assertNotPushed(DispatchWebhook::class, fn (DispatchWebhook $job): bool => $job->eventType === EventType::PostApprovalRequested->value);
 });
+
+test('the approval request webhook carries the version that approves the post until it is edited', function () {
+    $post = requestApprovalForWebhookPost($this);
+    $sent = data_get(Queue::pushed(DispatchWebhook::class, fn (DispatchWebhook $job): bool => $job->eventType === EventType::PostApprovalRequested->value)->sole()->payload, 'content_version');
+
+    expect($sent)->toBe($post->contentVersion());
+
+    $this->actingAs($this->requester)
+        ->put(route('app.posts.update', $post), ['status' => 'scheduled', 'content_type' => ContentType::LinkedInPost->value, 'content' => 'Second try'])
+        ->assertSessionHasNoErrors();
+
+    $this->actingAs($this->owner)
+        ->put(route('app.posts.approve', $post), ['expected_version' => $sent])
+        ->assertSessionHasErrors(['post' => __('posts.approvals.errors.changed')]);
+
+    expect($post->fresh()->status)->toBe(PostStatus::PendingApproval);
+    Queue::assertNotPushed(DispatchWebhook::class, fn (DispatchWebhook $job): bool => $job->eventType === EventType::PostApproved->value);
+
+    $this->actingAs($this->owner)
+        ->put(route('app.posts.approve', $post), ['expected_version' => $post->fresh()->contentVersion()])
+        ->assertSessionHasNoErrors();
+
+    expect($post->fresh()->status)->toBe(PostStatus::Scheduled);
+    Queue::assertPushed(DispatchWebhook::class, fn (DispatchWebhook $job): bool => $job->eventType === EventType::PostApproved->value
+        && data_get($job->payload, 'content_version') === $post->fresh()->contentVersion());
+});

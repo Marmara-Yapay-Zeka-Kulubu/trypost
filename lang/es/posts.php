@@ -1113,6 +1113,7 @@ return [
         'errors' => [
             'not_pending' => 'Esta publicación ya no está pendiente de aprobación.',
             'time_passed' => 'La hora solicitada ya pasó. Elige una nueva hora.',
+            'changed' => 'Esta publicación cambió después de que la revisaras. Revisa la nueva versión y luego decide.',
         ],
     ],
     'recurrence' => [

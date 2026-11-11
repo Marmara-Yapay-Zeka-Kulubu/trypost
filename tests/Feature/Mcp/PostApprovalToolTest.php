@@ -125,3 +125,18 @@ test('the approval tools report a busy queue while another approval holds the po
     'approve' => [ApprovePostTool::class],
     'reject' => [RejectPostTool::class],
 ]);
+
+test('the approval tools refuse a post that changed since it was reviewed', function (string $tool) {
+    $request = approvalToolRequest($this);
+    $reviewed = $request->contentVersion();
+    $request->update(['content' => 'Changed after the review']);
+
+    TryPostServer::actingAs($this->owner)
+        ->tool($tool, ['post_id' => $request->id, 'expected_version' => $reviewed])
+        ->assertHasErrors([__('posts.approvals.errors.changed'), $request->fresh()->contentVersion()]);
+
+    expect($request->fresh()->status)->toBe(PostStatus::PendingApproval);
+})->with([
+    'approve' => [ApprovePostTool::class],
+    'reject' => [RejectPostTool::class],
+]);

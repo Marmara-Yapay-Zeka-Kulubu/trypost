@@ -5,9 +5,12 @@ declare(strict_types=1);
 use App\Actions\Post\CreatePosts;
 use App\Enums\Post\Status as PostStatus;
 use App\Enums\PostPlatform\ContentType;
+use App\Enums\Webhook\EventType;
+use App\Jobs\DispatchWebhook;
 use App\Models\Post;
 use App\Models\SocialAccount;
 use App\Models\User;
+use App\Models\Webhook;
 use App\Models\Workspace;
 use App\Support\PostApproval;
 use App\Support\PostingSchedule;
@@ -111,3 +114,53 @@ test('rejecting while another approval holds the post is a conflict', function (
 
     expect($request->fresh()->status)->toBe(PostStatus::PendingApproval);
 });
+
+test('approving or rejecting with the reviewed version decides the post', function (string $route, PostStatus $decided) {
+    $request = approvalApiRequest($this);
+
+    $this->withHeaders($this->ownerHeaders)
+        ->postJson(route($route, $request), ['expected_version' => $request->contentVersion()])
+        ->assertOk()
+        ->assertJsonPath('status', $decided->value);
+})->with([
+    'approve' => ['api.posts.approve', PostStatus::Scheduled],
+    'reject' => ['api.posts.reject', PostStatus::Draft],
+]);
+
+test('approving or rejecting a post that changed since it was reviewed is a conflict', function (string $route) {
+    $request = approvalApiRequest($this);
+    $reviewed = $request->contentVersion();
+    Webhook::factory()->create([
+        'workspace_id' => $this->workspace->id,
+        'events' => [EventType::PostApproved->value, EventType::PostRejected->value],
+    ]);
+    $request->update(['content' => 'Changed after the review']);
+
+    $this->withHeaders($this->ownerHeaders)
+        ->postJson(route($route, $request), ['expected_version' => $reviewed])
+        ->assertStatus(Response::HTTP_CONFLICT)
+        ->assertExactJson([
+            'message' => __('posts.approvals.errors.changed'),
+            'content_version' => $request->fresh()->contentVersion(),
+        ]);
+
+    expect($request->fresh())
+        ->status->toBe(PostStatus::PendingApproval)
+        ->approved_at->toBeNull();
+    Queue::assertNotPushed(DispatchWebhook::class);
+})->with(['api.posts.approve', 'api.posts.reject']);
+
+test('the reviewed version must be a short string', function (string $route, mixed $version) {
+    $request = approvalApiRequest($this);
+
+    $this->withHeaders($this->ownerHeaders)
+        ->postJson(route($route, $request), ['expected_version' => $version])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('expected_version');
+
+    expect($request->fresh()->status)->toBe(PostStatus::PendingApproval);
+})->with(['api.posts.approve', 'api.posts.reject'])->with([
+    'a list' => [['abc']],
+    'a number' => [123],
+    'too long' => [str_repeat('a', 65)],
+]);

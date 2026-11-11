@@ -157,6 +157,7 @@ class WebhookService
             'status' => $post->status->value,
             'created_via' => $post->created_via?->value,
             'content' => $post->content,
+            'content_version' => $post->contentVersion(),
             'scheduled_at' => $post->scheduled_at?->toIso8601String(),
             'published_at' => $post->published_at?->toIso8601String(),
             'created_at' => $post->created_at?->toIso8601String(),

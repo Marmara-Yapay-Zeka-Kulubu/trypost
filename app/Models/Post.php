@@ -19,6 +19,8 @@ use App\Enums\SocialAccount\Platform;
 use App\Enums\TikTok\PrivacyLevel;
 use App\Observers\PostObserver;
 use App\Support\Media\MediaCopyBatch;
+use App\Support\PostPlatformMetaRules;
+use App\Support\ThreadReplies;
 use Carbon\CarbonInterface;
 use Database\Factories\PostFactory;
 use Illuminate\Database\Eloquent\Attributes\ObservedBy;
@@ -31,6 +33,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -154,6 +157,78 @@ class Post extends Model
     public function coverMedia(): ?MediaItem
     {
         return $this->media_items->first(fn (MediaItem $item): bool => $item->isImage() || $item->isVideo());
+    }
+
+    /**
+     * A short fingerprint of what an approver reviews: the channel, content
+     * type, trimmed content, media (in order, with the per-post edits such as
+     * alt text), the channel options in `meta` (thread replies included) and
+     * the time. A queued post counts as "queue" whatever slot it holds, since
+     * approving it keeps its queue position and a queue reflow moves the slot
+     * without anyone editing it. Status, approval columns, labels, notes and
+     * publication fields are left out. The webhook payload and the API post
+     * resource both send it as `content_version`, and approving or rejecting
+     * with `expected_version` refuses a post that no longer matches it.
+     */
+    public function contentVersion(): string
+    {
+        $meta = Arr::except($this->meta ?? [], [...PostPlatformMetaRules::SYSTEM_KEYS, 'channel_name']);
+
+        if (array_key_exists('thread_replies', $meta)) {
+            $meta['thread_replies'] = array_map(
+                fn (array $reply): array => [...$reply, 'media' => self::mediaFingerprint($reply['media'])],
+                ThreadReplies::of($meta),
+            );
+        }
+
+        $fingerprint = self::canonicalized([
+            'social_account_id' => $this->social_account_id,
+            'content_type' => $this->content_type?->value,
+            'content' => trim((string) $this->content),
+            'media' => self::mediaFingerprint($this->media ?? []),
+            'meta' => $meta,
+            'schedule' => $this->schedule_mode === ScheduleMode::Queue
+                ? ScheduleMode::Queue->value
+                : $this->scheduled_at?->copy()->utc()->format('Y-m-d\TH:i:s\Z'),
+        ]);
+
+        return substr(hash('sha256', (string) json_encode($fingerprint, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE)), 0, 16);
+    }
+
+    /**
+     * Each item by its id (its path when it has none) plus the edits made for
+     * this post, so a re-save that rewrites the stored item changes nothing.
+     *
+     * @param  array<int, mixed>  $items
+     * @return list<array{ref: mixed, edits: array<string, mixed>}>
+     */
+    private static function mediaFingerprint(array $items): array
+    {
+        return collect($items)
+            ->filter(fn (mixed $item): bool => is_array($item))
+            ->map(fn (array $item): array => [
+                'ref' => data_get($item, 'id') ?: data_get($item, 'path'),
+                'edits' => Arr::only((array) data_get($item, 'meta', []), SyncOwnedMedia::EDITABLE_META),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Sorts every map by key, so a JSON column that stores keys in another
+     * order (PostgreSQL jsonb) gives the same fingerprint as the saved model.
+     */
+    private static function canonicalized(mixed $value): mixed
+    {
+        if (! is_array($value)) {
+            return $value;
+        }
+
+        if (! array_is_list($value)) {
+            ksort($value, SORT_STRING);
+        }
+
+        return array_map(self::canonicalized(...), $value);
     }
 
     public function workspace(): BelongsTo

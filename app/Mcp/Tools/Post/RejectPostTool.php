@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Mcp\Tools\Post;
 
 use App\Actions\Post\Approval\RejectPost;
+use App\Exceptions\Post\PostVersionMismatchException;
 use App\Exceptions\Post\QueueBusyException;
 use App\Http\Resources\Api\PostResource;
 use App\Mcp\Concerns\AuthorizesMcpTool;
@@ -31,6 +32,7 @@ class RejectPostTool extends Tool
     {
         $validated = $request->validate([
             'post_id' => ['required', 'uuid'],
+            'expected_version' => ['nullable', 'string', 'max:64'],
         ]);
 
         $workspace = $request->user()?->currentWorkspace;
@@ -47,9 +49,11 @@ class RejectPostTool extends Tool
         }
 
         try {
-            $rejected = RejectPost::execute($post, $request->user());
+            $rejected = RejectPost::execute($post, $request->user(), data_get($validated, 'expected_version'));
         } catch (QueueBusyException) {
             return Response::error(__('posts.errors.queue_busy'));
+        } catch (PostVersionMismatchException $exception) {
+            return Response::error("{$exception->getMessage()} (content_version: {$exception->contentVersion})");
         }
 
         $rejected->load(['socialAccount', 'labels']);
@@ -61,6 +65,7 @@ class RejectPostTool extends Tool
     {
         return [
             'post_id' => $schema->string()->required()->description('UUID of the post waiting for approval.'),
+            'expected_version' => $schema->string()->description('Optional content_version of the post as it was reviewed. When the post changed since, nothing is rejected and the error gives the current content_version.'),
         ];
     }
 }
