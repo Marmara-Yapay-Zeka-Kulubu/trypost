@@ -22,6 +22,7 @@ use App\Models\NotificationPreference;
 use App\Models\Offer;
 use App\Models\Plan;
 use App\Models\Post;
+use App\Models\PostApprovalAction;
 use App\Models\PostNote;
 use App\Models\PostTemplate;
 use App\Models\Repurpose;
@@ -139,6 +140,7 @@ class AppServiceProvider extends ServiceProvider
             'offer' => Offer::class,
             'plan' => Plan::class,
             'post' => Post::class,
+            'postApprovalAction' => PostApprovalAction::class,
             'repurpose' => Repurpose::class,
             'repurposeItem' => RepurposeItem::class,
             'rssFeed' => RssFeed::class,
