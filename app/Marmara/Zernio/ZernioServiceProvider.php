@@ -5,10 +5,17 @@ declare(strict_types=1);
 namespace App\Marmara\Zernio;
 
 use App\Marmara\Hooks\SocialAccountPublishGuard;
+use App\Marmara\Zernio\Analytics\Collectors\ZernioTikTokFollowerCollector;
+use App\Marmara\Zernio\Analytics\Collectors\ZernioTikTokPublicationCollector;
+use App\Marmara\Zernio\Analytics\Collectors\ZernioTikTokPublicationMetricsCollector;
+use App\Marmara\Zernio\Console\BackfillZernioAnalytics;
 use App\Marmara\Zernio\Console\ListZernioAccounts;
 use App\Marmara\Zernio\Console\ReleaseZernioPublication;
 use App\Marmara\Zernio\Console\ResolveZernioVideoIds;
 use App\Marmara\Zernio\Console\TestZernioConnection;
+use App\Services\Analytics\Collectors\Followers\TikTokFollowerCollector;
+use App\Services\Analytics\Collectors\Metrics\TikTokPublicationMetricsCollector;
+use App\Services\Analytics\Collectors\Publications\TikTokPublicationCollector;
 use App\Services\Social\TikTokCreatorInfo;
 use App\Services\Social\TikTokPublisher;
 use Illuminate\Console\Scheduling\Schedule;
@@ -53,6 +60,23 @@ class ZernioServiceProvider extends ServiceProvider
                 ? $app->make(ZernioPublishGuard::class)
                 : $app->build(SocialAccountPublishGuard::class);
         });
+
+        // TryPost's analytics factories resolve each TikTok collector with
+        // app(): a mapped account's history, post metrics and followers come
+        // from Zernio (no video.list / user.info.stats scope needed), every
+        // other TikTok account keeps the native collector (the subclasses
+        // fall back to it per account).
+        foreach ([
+            TikTokPublicationCollector::class => ZernioTikTokPublicationCollector::class,
+            TikTokPublicationMetricsCollector::class => ZernioTikTokPublicationMetricsCollector::class,
+            TikTokFollowerCollector::class => ZernioTikTokFollowerCollector::class,
+        ] as $native => $zernio) {
+            $this->app->bind($native, function (Application $app) use ($native, $zernio): object {
+                return $app->make(ZernioConfig::class)->analyticsEnabled()
+                    ? $app->make($zernio)
+                    : $app->build($native);
+            });
+        }
     }
 
     public function boot(): void
@@ -67,6 +91,7 @@ class ZernioServiceProvider extends ServiceProvider
 
         if ($this->app->runningInConsole()) {
             $this->commands([
+                BackfillZernioAnalytics::class,
                 ListZernioAccounts::class,
                 ReleaseZernioPublication::class,
                 ResolveZernioVideoIds::class,

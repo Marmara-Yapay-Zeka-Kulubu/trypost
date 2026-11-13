@@ -65,4 +65,18 @@ return [
         'status_window_minutes' => (int) env('ZERNIO_STATUS_WINDOW_MINUTES', 180),
     ],
 
+    /*
+     * Analytics of the mapped TikTok accounts read from Zernio (post history,
+     * post metrics, followers) instead of TikTok's API. Needs ZERNIO_ENABLED.
+     * `import_limit`: how many of the newest unlinked publications
+     * `marmara:zernio:analytics-backfill` imports into Sent (the scheduled
+     * pipeline keeps EXTERNAL_POSTS_IMPORT_LIMIT).
+     */
+    'analytics' => [
+        'enabled' => (bool) env('ZERNIO_ANALYTICS_ENABLED', true),
+        'page_size' => (int) env('ZERNIO_ANALYTICS_PAGE_SIZE', 50),
+        'cache_minutes' => (int) env('ZERNIO_ANALYTICS_CACHE_MINUTES', 360),
+        'import_limit' => (int) env('ZERNIO_ANALYTICS_IMPORT_LIMIT', 500),
+    ],
+
 ];

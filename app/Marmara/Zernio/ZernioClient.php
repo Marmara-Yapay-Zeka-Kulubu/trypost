@@ -80,6 +80,31 @@ class ZernioClient
     }
 
     /**
+     * Stored post analytics: one post (`postId`) or a page of posts, those
+     * published through Zernio and those synced from the platform (`source`).
+     *
+     * @param  array<string, mixed>  $query
+     *
+     * @see https://docs.zernio.com/analytics/get-analytics
+     */
+    public function analytics(array $query): Response
+    {
+        return $this->request()->get('/analytics', $query);
+    }
+
+    /**
+     * Daily follower counts per account (refreshed by Zernio once a day).
+     *
+     * @param  array<string, mixed>  $query
+     *
+     * @see https://docs.zernio.com/accounts/get-follower-stats
+     */
+    public function followerStats(array $query): Response
+    {
+        return $this->request()->get('/accounts/follower-stats', $query);
+    }
+
+    /**
      * @see https://docs.zernio.com/guides/media-uploads
      */
     public function presignMedia(string $filename, string $contentType, ?int $size = null): Response

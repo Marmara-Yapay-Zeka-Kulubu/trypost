@@ -30,7 +30,10 @@ app is audited for public posting.
 | `app/Marmara/Zernio/Models/ZernioPublication.php` + `database/migrations/` | One row per TryPost post: the current Zernio attempt (loaded by the provider with `loadMigrationsFrom`) |
 | `app/Marmara/Hooks/SocialAccountPublishGuard.php`, `PublishGuardVerdict.php` | The publish job's channel-check hook; the default keeps upstream behaviour |
 | `app/Marmara/Zernio/Exceptions/ZernioPublishException.php` | A `SocialPublishException`, so the publish job fails, waits or reports it like a native refusal |
-| `app/Marmara/Zernio/Console/*` | `marmara:zernio:accounts`, `marmara:zernio:test`, `marmara:zernio:release {post}`, `marmara:zernio:resolve-video-ids` (scheduled every 15 min by the provider) |
+| `app/Marmara/Zernio/Console/*` | `marmara:zernio:accounts`, `marmara:zernio:test`, `marmara:zernio:release {post}`, `marmara:zernio:resolve-video-ids` (scheduled every 15 min by the provider), `marmara:zernio:analytics-backfill` |
+| `app/Marmara/Zernio/Analytics/ZernioTikTokAnalytics.php` | Reads a TikTok account's post list, post metrics and followers from Zernio's stored analytics; maps metrics |
+| `app/Marmara/Zernio/Analytics/ZernioAnalyticsResponse.php` | Zernio HTTP answers as `AnalyticsCollectionException` categories (429 with Retry-After / `details.retryAfterSeconds`) |
+| `app/Marmara/Zernio/Analytics/Collectors/*` | Subclasses of TryPost's three TikTok collectors (publications, metrics, followers), rebound by the provider |
 | `config/marmara-zernio.php` | Module config (env below) |
 | `tests/Feature/Marmara/Zernio/*` | Pest tests |
 | `marmara/zernio.env.example` | Env block for the stage/production `.env` |
@@ -234,14 +237,74 @@ Written from Zernio's docs (November 2026) and tested with `Http::fake` only:
 - Zernio webhooks (`post.published`, `post.failed`, `post.tiktok.url_resolved`,
   signed with `X-Zernio-Signature`) are not consumed: polling covers status.
   A receiver could replace polling later.
+- Analytics: that the list rows of `GET /v1/analytics` carry
+  `platforms[].platformPostId` for TikTok (the OpenAPI spec types it; the
+  code falls back to the `/video/{id}` in `platformPostUrl`), how far back
+  Zernio synced the club's native TikTok posts (spec: "up to the last ~12
+  months per account"), and that the plan includes analytics (a 402/403
+  "analytics add-on required" is recorded as `permission`).
 
-### Analytics (later)
+### Analytics (TikTok through Zernio)
 
-Out of scope now. TryPost's TikTok analytics collectors call TikTok with the
-native token, which the club's unaudited app may not be allowed to use for
-public data. Zernio has an analytics add-on (`hasAnalyticsAccess` on
-`GET /v1/accounts`, `analytics.synced` webhook). A later module could add a
-collector that reads Zernio's per-post analytics for posts whose
-`platform_post_id` is a TikTok video id (or `zernio:{id}`) and writes them to
-TryPost's analytics publication rows, bound the same way (container binding of
-the TikTok collector, listed here as a touch point).
+TikTok refused the club's app the `video.list` and `user.info.stats`
+scopes, so TryPost's own TikTok collectors stop at the scope gate (history
+"provider limited", metrics and followers refused as `permission`). For a
+mapped TikTok channel the module reads the same data from Zernio, which also
+syncs the posts the club published directly on TikTok, before or without
+Zernio:
+
+| TryPost collector (rebound in the container) | Zernio endpoint |
+| --- | --- |
+| `TikTokPublicationCollector` (discovery + backfill) | `GET /v1/analytics?platform=tiktok&accountId=…&source=all&fromDate=…&sortBy=date&order=desc&limit=50&page=N` |
+| `TikTokPublicationMetricsCollector` | the metrics of the last history page that listed the post (cached `ZERNIO_ANALYTICS_CACHE_MINUTES`, 6 h), else `GET /v1/analytics?postId={video id or Zernio post id}&accountId=…` |
+| `TikTokFollowerCollector` | `GET /v1/accounts/follower-stats?accountIds=…&granularity=daily` (`currentFollowers`) |
+
+Each subclass checks the account first: an unmapped TikTok channel, or the
+module off (`ZERNIO_ENABLED=false`) or analytics off
+(`ZERNIO_ANALYTICS_ENABLED=false`), runs TryPost's native code unchanged,
+scope gates included. Nothing upstream is edited for this: the factories
+(`PublicationHistoryCollectorFactory`, `PublicationMetricsCollectorFactory`,
+`FollowerCollectorFactory`) resolve every collector with `app(...)`, and
+`CollectPublicationMetrics` checks `instanceof TikTokPublicationMetricsCollector`
+before asking `publicVideoId()` (the subclass resolves a `zernio:{id}` post
+through Zernio). If upstream ever builds a collector with `new`, add a
+container call there and list it under touch points.
+
+Historical posts flow through the normal pipeline: `AdvanceAnalyticsSyncState`
+upserts them as external publications, `QueuePublicationMetricsForPage`
+queues their first read, and `ImportExternalPosts` turns the newest
+`EXTERNAL_POSTS_IMPORT_LIMIT` unlinked ones into Sent posts (origin
+`network`, cover from Zernio's non-expiring `thumbnailUrl`). The schedule is
+TryPost's own (discovery every `PUBLICATION_DISCOVERY_INTERVAL_HOURS`,
+metrics and followers daily). Zernio syncs TikTok about hourly and caches
+post analytics 60 minutes, so nothing is gained by reading more often.
+
+Metric mapping (lifetime counts): `views` → views, `likes` → reactions,
+`comments`, `shares`; engagements are derived like the native collector
+(reactions + comments + shares + saves). Only reported by Zernio's TikTok for
+Business connection, and left out while 0: `impressions`, `reach`, `saves`,
+`follows`, `profileViews` → profile visits, `igReelsVideoViewTotalTime` →
+watch time ms, `igReelsAvgWatchTime` → average watch time ms.
+
+One-off history import (the account's backfill state is restarted from
+`--days` ago and run in the command, page by page, then up to
+`ZERNIO_ANALYTICS_IMPORT_LIMIT` (500) publications are imported into Sent
+and Zernio's daily follower counts fill the days TryPost has no reading of):
+
+    php artisan marmara:zernio:analytics-backfill --days=365
+
+Options: `--account=marmaraai`, `--import-limit=N`, `--skip-followers`. A
+backfill that the native collector ended as "provider limited" is restarted
+the same way. Zernio keeps about 12 months of synced posts and allows 366
+days per request; `--days` beyond that ends provider limited. Imports also
+respect `POST_HISTORY_RETENTION_DAYS`.
+
+Rate limits: Zernio caps stored analytics reads per team (300 requests per
+30-second window, scope `post-analytics`). A 429 becomes `rate_limited` with
+its `Retry-After` (or `details.retryAfterSeconds`), which TryPost's jobs
+retry at that time; the command waits and retries up to 5 times. A history
+page is one request for 50 posts, and metric reads mostly come from its cache.
+
+The jobs still only run for channels whose TryPost status is `connected`
+(upstream's `connected()` scope): keep the native TikTok channel connected.
+

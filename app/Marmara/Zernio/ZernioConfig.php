@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Marmara\Zernio;
 
+use App\Enums\SocialAccount\Platform;
 use App\Models\SocialAccount;
 
 /**
@@ -58,6 +59,49 @@ class ZernioConfig
         $windowSeconds = max(1, (int) config('marmara-zernio.tiktok.status_window_minutes', 180)) * 60;
 
         return max(1, intdiv($windowSeconds, $this->statusPollSeconds()));
+    }
+
+    /**
+     * Whether analytics of the mapped TikTok accounts come from Zernio.
+     */
+    public function analyticsEnabled(): bool
+    {
+        return $this->enabled() && (bool) config('marmara-zernio.analytics.enabled', true);
+    }
+
+    /**
+     * Posts per analytics list request (Zernio allows 1 to 100).
+     */
+    public function analyticsPageSize(): int
+    {
+        return min(100, max(10, (int) config('marmara-zernio.analytics.page_size', 50)));
+    }
+
+    /**
+     * How long a post's metrics read from a history page are reused by the
+     * metrics read, instead of a request per post.
+     */
+    public function analyticsCacheMinutes(): int
+    {
+        return max(0, (int) config('marmara-zernio.analytics.cache_minutes', 360));
+    }
+
+    public function analyticsImportLimit(): int
+    {
+        return max(0, (int) config('marmara-zernio.analytics.import_limit', 500));
+    }
+
+    /**
+     * The Zernio account a TryPost TikTok account's analytics come from, or
+     * null when its analytics stay native.
+     */
+    public function analyticsAccountFor(?SocialAccount $account): ?string
+    {
+        if (! $this->analyticsEnabled() || $account?->platform !== Platform::TikTok) {
+            return null;
+        }
+
+        return $this->zernioAccountFor($account);
     }
 
     /**
