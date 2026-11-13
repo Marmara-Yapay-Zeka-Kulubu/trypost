@@ -52,6 +52,16 @@ class ZernioClient
     }
 
     /**
+     * @param  array<string, mixed>  $query
+     *
+     * @see https://docs.zernio.com/posts/list-posts
+     */
+    public function listPosts(array $query): Response
+    {
+        return $this->request()->get('/posts', $query);
+    }
+
+    /**
      * @see https://docs.zernio.com/guides/media-uploads
      */
     public function presignMedia(string $filename, string $contentType, ?int $size = null): Response

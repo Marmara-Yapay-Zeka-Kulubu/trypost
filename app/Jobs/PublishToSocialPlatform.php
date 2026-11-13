@@ -15,6 +15,7 @@ use App\Exceptions\PlatformUnavailableException;
 use App\Exceptions\Social\ErrorCategory;
 use App\Exceptions\Social\SocialPublishException;
 use App\Exceptions\TokenExpiredException;
+use App\Marmara\Hooks\SocialAccountPublishGuard;
 use App\Models\Post;
 use App\Rules\ContentTypeCompatibleWithMedia;
 use App\Services\Social\BlueskyPublisher;
@@ -96,13 +97,22 @@ class PublishToSocialPlatform implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        if ($this->post->socialAccount->status === Status::Disconnected) {
+        // Marmara AI fork hook (app/Marmara/README.md): a channel published through another service is checked there, not by its native token.
+        $guard = app(SocialAccountPublishGuard::class)->check($this->post);
+
+        if ($guard->hasFailed()) {
+            $this->failAndFinalize((string) $guard->failureMessage, $guard->context);
+
+            return;
+        }
+
+        if ($guard->checksNativeConnection && $this->post->socialAccount->status === Status::Disconnected) {
             $this->failAndFinalize(__('posts.errors.account_disconnected'));
 
             return;
         }
 
-        if ($this->post->socialAccount->status === Status::TokenExpired) {
+        if ($guard->checksNativeConnection && $this->post->socialAccount->status === Status::TokenExpired) {
             $this->failAndFinalize(__('posts.errors.account_token_expired'), [
                 'category' => ErrorCategory::TokenExpired->value,
                 'failed_at' => now()->toIso8601String(),
@@ -111,7 +121,7 @@ class PublishToSocialPlatform implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        if ($this->failForMissingScopes()) {
+        if ($guard->checksNativeConnection && $this->failForMissingScopes()) {
             return;
         }
 

@@ -9,12 +9,11 @@ use App\Enums\SocialAccount\Platform;
 use App\Exceptions\PlatformUnavailableException;
 use App\Exceptions\Social\ErrorCategory;
 use App\Marmara\Zernio\Exceptions\ZernioPublishException;
+use App\Marmara\Zernio\Models\ZernioPublication;
 use App\Models\Post;
 use App\Services\Social\ContentSanitizer;
 use App\Services\Social\TikTokPublisher;
 use App\Support\PostPlatformMetaRules;
-use Carbon\CarbonImmutable;
-use Carbon\CarbonInterface;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Collection;
@@ -39,8 +38,11 @@ use Illuminate\Support\Str;
  */
 class ZernioTikTokPublisher extends TikTokPublisher
 {
-    /** posts.error_context key of the in-flight Zernio publish. */
-    public const string CHECKPOINT = 'marmara_zernio';
+    /**
+     * A create request whose answer was lost is sent again only this long
+     * after the first one: Zernio keeps an Idempotency-Key for 24 hours.
+     */
+    private const int IDEMPOTENCY_SAFE_HOURS = 23;
 
     public const string POST_ID_PREFIX = 'zernio:';
 
@@ -71,12 +73,41 @@ class ZernioTikTokPublisher extends TikTokPublisher
 
         $this->validateContentLength($post);
 
-        $checkpoint = self::checkpoint($post->error_context);
+        $attempt = ZernioPublication::query()->where('post_id', $post->id)->first();
 
-        if (filled($checkpoint['post_id'] ?? null)) {
-            return $this->resume($post, $checkpoint, $zernioAccountId);
+        if ($attempt !== null && ! $attempt->isDefinitivelyFailed()) {
+            return match (true) {
+                $attempt->last_status === ZernioPublication::STATUS_NEEDS_MANUAL_CHECK => throw $this->needsManualCheck($attempt),
+                $attempt->zernio_post_id !== null => $this->resume($post, $attempt, $zernioAccountId),
+                $attempt->last_status === ZernioPublication::STATUS_UNKNOWN
+                    && $attempt->first_attempt_at->lte(now()->subHours(self::IDEMPOTENCY_SAFE_HOURS)) => $this->recoverLostCreate($post, $attempt, $zernioAccountId),
+                default => $this->create($post, $attempt, $zernioAccountId),
+            };
         }
 
+        $attempt ??= new ZernioPublication(['post_id' => $post->id]);
+        $attempt->fill([
+            'zernio_account_id' => $zernioAccountId,
+            'zernio_post_id' => null,
+            'idempotency_key' => (string) Str::uuid(),
+            'first_attempt_at' => now(),
+            'last_attempt_at' => null,
+            'last_status' => ZernioPublication::STATUS_PREPARING,
+            'last_error' => null,
+        ])->save();
+
+        return $this->create($post, $attempt, $zernioAccountId);
+    }
+
+    /**
+     * Sends the create request of the attempt. A request already sent whose
+     * answer was lost is sent again with the same Idempotency-Key, so Zernio
+     * answers with the post it created instead of a second one.
+     *
+     * @return array{id: string, url: ?string}
+     */
+    private function create(Post $post, ZernioPublication $attempt, string $zernioAccountId): array
+    {
         $this->ensurePrivacyLevel($post);
 
         [$mediaItems, $isPhotoPost, $video] = $this->mediaFor($post);
@@ -88,40 +119,52 @@ class ZernioTikTokPublisher extends TikTokPublisher
             $mediaItems,
             $isPhotoPost,
             $video,
+            $attempt->reference(),
         );
 
-        $idempotencyKey = is_string($checkpoint['idempotency_key'] ?? null) && $checkpoint['idempotency_key'] !== ''
-            ? $checkpoint['idempotency_key']
-            : (string) Str::uuid();
-        $startedAt = CarbonImmutable::now();
+        // first_attempt_at is when the first create request left; it never
+        // moves afterwards, so a lost answer is not resent past Zernio's
+        // 24-hour idempotency window.
+        if ($attempt->last_status === ZernioPublication::STATUS_PREPARING) {
+            $attempt->first_attempt_at = now();
+        }
 
-        // Saved before the request: a worker that dies after Zernio accepted
-        // the post sends the same key again and gets the same post back.
-        $checkpoint = $this->remember($post, [
-            'idempotency_key' => $idempotencyKey,
-            'started_at' => $startedAt->toIso8601String(),
-        ]);
+        $attempt->fill([
+            'last_status' => ZernioPublication::STATUS_UNKNOWN,
+            'last_attempt_at' => now(),
+        ])->save();
 
         try {
-            $response = $this->client->createPost($payload, $idempotencyKey);
+            $response = $this->client->createPost($payload, $attempt->idempotency_key);
         } catch (ConnectionException $e) {
+            $attempt->update(['last_error' => $e->getMessage()]);
+
             throw $this->unavailable('Zernio did not answer the publish request: '.$e->getMessage());
         }
 
         if ($response->failed()) {
-            $this->failFromResponse($post, $response, 'create');
+            if ($response->serverError() || ($response->status() === 409 && data_get($response->json(), 'code') === 'idempotency_conflict')) {
+                $attempt->update(['last_error' => "HTTP {$response->status()}"]);
+
+                throw $this->unavailable("Zernio create answered HTTP {$response->status()}.", $response);
+            }
+
+            $exception = ZernioPublishException::fromApiResponse($response);
+            $attempt->update(['last_status' => ZernioPublication::STATUS_REJECTED, 'last_error' => $exception->userMessage]);
+
+            throw $exception;
         }
 
         $zernioPost = (array) (data_get($response->json(), 'post') ?? []);
         $zernioPostId = $this->postIdOf($zernioPost);
 
         if ($zernioPostId === null) {
-            $this->forget($post);
+            $attempt->update(['last_status' => ZernioPublication::STATUS_NEEDS_MANUAL_CHECK, 'last_error' => 'Zernio answered without a post id.']);
 
-            throw ZernioPublishException::misconfigured('Zernio did not return a post id.');
+            throw $this->needsManualCheck($attempt);
         }
 
-        $this->remember($post, [...$checkpoint, 'post_id' => $zernioPostId]);
+        $attempt->update(['zernio_post_id' => $zernioPostId, 'last_status' => ZernioPublication::STATUS_PROCESSING]);
 
         Log::info('Marmara Zernio: TikTok post created', [
             'post_id' => $post->id,
@@ -129,7 +172,95 @@ class ZernioTikTokPublisher extends TikTokPublisher
             'http_status' => $response->status(),
         ]);
 
-        return $this->settle($post, $zernioPost, $zernioPostId, $zernioAccountId, $startedAt, $response->body());
+        return $this->settle($post, $attempt, $zernioPost, $zernioAccountId, $response->body());
+    }
+
+    /**
+     * The create request of an attempt older than Zernio's idempotency window
+     * got no answer: it is never sent again. The post is looked up by the
+     * reference the request carried; when it cannot be found, an operator
+     * decides (`marmara:zernio:release`).
+     *
+     * @return array{id: string, url: ?string}
+     */
+    private function recoverLostCreate(Post $post, ZernioPublication $attempt, string $zernioAccountId): array
+    {
+        $found = $this->findByReference($attempt, $zernioAccountId);
+
+        if ($found === null) {
+            $attempt->update([
+                'last_status' => ZernioPublication::STATUS_NEEDS_MANUAL_CHECK,
+                'last_attempt_at' => now(),
+                'last_error' => 'The create request got no answer and Zernio has no post with its reference.',
+            ]);
+
+            throw $this->needsManualCheck($attempt);
+        }
+
+        $zernioPostId = (string) $this->postIdOf($found);
+        $attempt->update(['zernio_post_id' => $zernioPostId, 'last_status' => ZernioPublication::STATUS_PROCESSING, 'last_attempt_at' => now()]);
+
+        return $this->settle($post, $attempt, $found, $zernioAccountId, (string) json_encode($found));
+    }
+
+    /**
+     * The Zernio post carrying the attempt's reference (tag, or metadata as a
+     * fallback), or null when Zernio has none or cannot tell.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function findByReference(ZernioPublication $attempt, string $zernioAccountId): ?array
+    {
+        $reference = $attempt->reference();
+        $queries = [
+            ['tags' => $reference, 'accountId' => $zernioAccountId, 'limit' => 50],
+            [
+                'accountId' => $zernioAccountId,
+                'platform' => 'tiktok',
+                'updatedSince' => $attempt->first_attempt_at->subMinutes(10)->toIso8601ZuluString(),
+                'limit' => 100,
+            ],
+        ];
+
+        foreach ($queries as $query) {
+            try {
+                $response = $this->client->listPosts($query);
+            } catch (ConnectionException $e) {
+                throw $this->unavailable('Zernio did not answer the post lookup: '.$e->getMessage());
+            }
+
+            if ($response->serverError() || $response->status() === 429) {
+                throw $this->unavailable("Zernio post lookup answered HTTP {$response->status()}.", $response);
+            }
+
+            if ($response->failed()) {
+                continue;
+            }
+
+            $match = collect((array) data_get($response->json(), 'posts', []))->first(
+                fn (mixed $candidate): bool => is_array($candidate)
+                    && $this->postIdOf($candidate) !== null
+                    && (data_get($candidate, 'metadata.trypost_reference') === $reference
+                        || in_array($reference, (array) data_get($candidate, 'tags', []), true)),
+            );
+
+            if (is_array($match)) {
+                return $match;
+            }
+        }
+
+        return null;
+    }
+
+    private function needsManualCheck(ZernioPublication $attempt): ZernioPublishException
+    {
+        return ZernioPublishException::invalid(
+            'TikTok (via Zernio): the publish request sent '.$attempt->first_attempt_at->toIso8601String()
+            .' got no answer and is past Zernio\'s 24-hour duplicate protection, so it was not sent again.'
+            .' Needs a manual check in Zernio (reference '.$attempt->reference().'). To send it anyway, run'
+            .' "php artisan marmara:zernio:release '.$attempt->post_id.'" and retry the post.',
+            ErrorCategory::Unknown,
+        );
     }
 
     /**
@@ -177,24 +308,14 @@ class ZernioTikTokPublisher extends TikTokPublisher
     }
 
     /**
-     * @param  array<string, mixed>|null  $context
-     * @return array<string, mixed>
+     * The attempt already has a Zernio post: its status decides, nothing is
+     * created again (a posts:retry included).
+     *
+     * @return array{id: string, url: ?string}
      */
-    public static function checkpoint(?array $context): array
+    private function resume(Post $post, ZernioPublication $attempt, string $zernioAccountId): array
     {
-        $checkpoint = data_get($context, self::CHECKPOINT);
-
-        return is_array($checkpoint) ? $checkpoint : [];
-    }
-
-    /**
-     * @param  array<string, mixed>  $checkpoint
-     * @return array<string, mixed>
-     */
-    private function resume(Post $post, array $checkpoint, string $zernioAccountId): array
-    {
-        $zernioPostId = (string) $checkpoint['post_id'];
-        $startedAt = $this->startedAt($checkpoint);
+        $zernioPostId = (string) $attempt->zernio_post_id;
 
         try {
             $response = $this->client->getPost($zernioPostId);
@@ -206,41 +327,55 @@ class ZernioTikTokPublisher extends TikTokPublisher
             throw $this->pending($zernioPostId, null);
         }
 
-        if ($response->failed()) {
-            $this->forget($post);
+        if ($response->status() === 404) {
+            $attempt->update([
+                'last_status' => ZernioPublication::STATUS_FAILED,
+                'last_attempt_at' => now(),
+                'last_error' => 'Zernio no longer has this post.',
+            ]);
 
+            throw ZernioPublishException::invalid("TikTok (via Zernio): Zernio no longer has post {$zernioPostId}. Retry the post to send it again.", ErrorCategory::Unknown);
+        }
+
+        if ($response->failed()) {
             throw ZernioPublishException::fromApiResponse($response);
         }
 
         $zernioPost = (array) (data_get($response->json(), 'post') ?? $response->json() ?? []);
 
-        return $this->settle($post, $zernioPost, $zernioPostId, $zernioAccountId, $startedAt, $response->body());
+        return $this->settle($post, $attempt, $zernioPost, $zernioAccountId, $response->body());
     }
 
     /**
      * @param  array<string, mixed>  $zernioPost
      * @return array{id: string, url: ?string}
      */
-    private function settle(Post $post, array $zernioPost, string $zernioPostId, string $zernioAccountId, CarbonInterface $startedAt, string $rawResponse): array
+    private function settle(Post $post, ZernioPublication $attempt, array $zernioPost, string $zernioAccountId, string $rawResponse): array
     {
+        $zernioPostId = (string) $attempt->zernio_post_id;
         $target = $this->tiktokTarget($zernioPost, $zernioAccountId);
         $status = strtolower((string) (data_get($target, 'status') ?? data_get($zernioPost, 'status') ?? ''));
 
         if (in_array($status, self::PUBLISHED_STATUSES, true)) {
+            $attempt->update(['last_status' => ZernioPublication::STATUS_PUBLISHED, 'last_attempt_at' => now(), 'last_error' => null]);
+
             return $this->result($post, $zernioPostId, $target ?? []);
         }
 
         if (in_array($status, self::FAILED_STATUSES, true)) {
-            $this->forget($post);
+            $exception = ZernioPublishException::fromFailedTarget($target ?? $zernioPost, $rawResponse);
+            $attempt->update(['last_status' => ZernioPublication::STATUS_FAILED, 'last_attempt_at' => now(), 'last_error' => $exception->userMessage]);
 
-            throw ZernioPublishException::fromFailedTarget($target ?? $zernioPost, $rawResponse);
+            throw $exception;
         }
+
+        $attempt->update(['last_status' => ZernioPublication::STATUS_PROCESSING, 'last_attempt_at' => now()]);
 
         Log::info('Marmara Zernio: TikTok post still processing', [
             'post_id' => $post->id,
             'zernio_post_id' => $zernioPostId,
             'status' => $status,
-            'seconds_since_start' => (int) $startedAt->diffInSeconds(now()),
+            'seconds_since_first_attempt' => (int) $attempt->first_attempt_at->diffInSeconds(now()),
         ]);
 
         throw $this->pending($zernioPostId, $status !== '' ? $status : null);
@@ -449,24 +584,6 @@ class ZernioTikTokPublisher extends TikTokPublisher
         }
     }
 
-    /**
-     * A refusal of the create call. An outage or a request Zernio is still
-     * processing under the same Idempotency-Key is retried with that key;
-     * anything else ends the attempt, so the next one starts over.
-     */
-    private function failFromResponse(Post $post, Response $response, string $phase): never
-    {
-        $code = data_get($response->json(), 'code');
-
-        if ($response->serverError() || ($response->status() === 409 && $code === 'idempotency_conflict')) {
-            throw $this->unavailable("Zernio {$phase} answered HTTP {$response->status()}.", $response);
-        }
-
-        $this->forget($post);
-
-        throw ZernioPublishException::fromApiResponse($response);
-    }
-
     private function unavailable(string $message, ?Response $response = null): PlatformUnavailableException
     {
         $retryAfter = (int) ($response?->header('Retry-After') ?? 0);
@@ -487,47 +604,5 @@ class ZernioTikTokPublisher extends TikTokPublisher
             retryDelaySeconds: $this->config->statusPollSeconds(),
             maxRetries: $this->config->statusMaxChecks(),
         );
-    }
-
-    /**
-     * @param  array<string, mixed>  $checkpoint
-     */
-    private function startedAt(array $checkpoint): CarbonImmutable
-    {
-        $value = $checkpoint['started_at'] ?? null;
-
-        return is_string($value)
-            ? rescue(fn (): CarbonImmutable => CarbonImmutable::parse($value), CarbonImmutable::now(), report: false)
-            : CarbonImmutable::now();
-    }
-
-    /**
-     * @param  array<string, mixed>  $checkpoint
-     * @return array<string, mixed>
-     */
-    private function remember(Post $post, array $checkpoint): array
-    {
-        $post->writePublication([
-            'error_context' => [...($post->error_context ?? []), self::CHECKPOINT => $checkpoint],
-        ]);
-
-        return $checkpoint;
-    }
-
-    /**
-     * Drops the checkpoint once the attempt is over, so a retry creates a
-     * new Zernio post instead of resuming a failed one.
-     */
-    private function forget(Post $post): void
-    {
-        $context = $post->error_context ?? [];
-
-        if (! array_key_exists(self::CHECKPOINT, $context)) {
-            return;
-        }
-
-        unset($context[self::CHECKPOINT]);
-
-        $post->writePublication(['error_context' => $context === [] ? null : $context]);
     }
 }

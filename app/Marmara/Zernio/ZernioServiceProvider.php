@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Marmara\Zernio;
 
+use App\Marmara\Hooks\SocialAccountPublishGuard;
 use App\Marmara\Zernio\Console\ListZernioAccounts;
+use App\Marmara\Zernio\Console\ReleaseZernioPublication;
 use App\Marmara\Zernio\Console\TestZernioConnection;
 use App\Services\Social\TikTokPublisher;
 use Illuminate\Contracts\Foundation\Application;
@@ -15,7 +17,9 @@ use Illuminate\Support\ServiceProvider;
  *
  * TryPost resolves its TikTok publisher from the container
  * (PublishToSocialPlatform::getPublisher() and ResolveTikTokVideoId::handle()),
- * so the module swaps it here without editing upstream code. With
+ * so the module swaps it here without editing upstream code. The publish
+ * job's channel check goes through SocialAccountPublishGuard (the one hook
+ * this fork adds to PublishToSocialPlatform), rebound the same way. With
  * ZERNIO_ENABLED off the container builds the plain TikTokPublisher, as if
  * this provider did not exist. The flag is read when the publisher is
  * resolved, not when the app boots.
@@ -31,13 +35,24 @@ class ZernioServiceProvider extends ServiceProvider
                 ? $app->make(ZernioTikTokPublisher::class)
                 : $app->build(TikTokPublisher::class);
         });
+
+        // A Zernio-mapped channel is checked by Zernio, not its native token;
+        // every other channel keeps the default (upstream) checks.
+        $this->app->bind(SocialAccountPublishGuard::class, function (Application $app): SocialAccountPublishGuard {
+            return $app->make(ZernioConfig::class)->enabled()
+                ? $app->make(ZernioPublishGuard::class)
+                : $app->build(SocialAccountPublishGuard::class);
+        });
     }
 
     public function boot(): void
     {
+        $this->loadMigrationsFrom(__DIR__.'/database/migrations');
+
         if ($this->app->runningInConsole()) {
             $this->commands([
                 ListZernioAccounts::class,
+                ReleaseZernioPublication::class,
                 TestZernioConnection::class,
             ]);
         }

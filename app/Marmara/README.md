@@ -25,8 +25,11 @@ app is audited for public posting.
 | `app/Marmara/Zernio/ZernioTikTokPayload.php` | TryPost TikTok meta to Zernio `tiktokSettings` |
 | `app/Marmara/Zernio/ZernioClient.php` | HTTP client (Bearer API key) |
 | `app/Marmara/Zernio/ZernioConfig.php` | Reads `config/marmara-zernio.php`, account mapping, config checks |
+| `app/Marmara/Zernio/ZernioPublishGuard.php` | Checks a Zernio-mapped channel by its Zernio account health (cached 5 min) instead of the native token |
+| `app/Marmara/Zernio/Models/ZernioPublication.php` + `database/migrations/` | One row per TryPost post: the current Zernio attempt (loaded by the provider with `loadMigrationsFrom`) |
+| `app/Marmara/Hooks/SocialAccountPublishGuard.php`, `PublishGuardVerdict.php` | The publish job's channel-check hook; the default keeps upstream behaviour |
 | `app/Marmara/Zernio/Exceptions/ZernioPublishException.php` | A `SocialPublishException`, so the publish job fails, waits or reports it like a native refusal |
-| `app/Marmara/Zernio/Console/*` | `marmara:zernio:accounts`, `marmara:zernio:test` |
+| `app/Marmara/Zernio/Console/*` | `marmara:zernio:accounts`, `marmara:zernio:test`, `marmara:zernio:release {post}` |
 | `config/marmara-zernio.php` | Module config (env below) |
 | `tests/Feature/Marmara/Zernio/*` | Pest tests |
 | `marmara/zernio.env.example` | Env block for the stage/production `.env` |
@@ -35,16 +38,24 @@ Tests sit in `tests/Feature/Marmara/` rather than `tests/Marmara/`: that way
 `phpunit.xml` and `tests/Pest.php` (the `Feature` suite, `RefreshDatabase`,
 `Http::preventStrayRequests()`) cover them without edits to either file.
 
-No migration: the in-flight state is a `marmara_zernio` key in
-`posts.error_context`, next to TryPost's own publish checkpoints.
+Migration: `marmara_zernio_publications` (`post_id` unique, cascades with the
+post; `zernio_account_id`, `zernio_post_id`, `idempotency_key`,
+`first_attempt_at`, `last_attempt_at`, `last_status`, `last_error`,
+timestamps). It lives in the module (`app/Marmara/Zernio/database/migrations`)
+and runs with `php artisan migrate` like the others. The attempt is kept here,
+not in `posts.error_context`, because `posts:retry` and the publish job rewrite
+that column.
 
 ### Upstream touch points
 
 | File | Lines | Change |
 | --- | --- | --- |
 | `bootstrap/providers.php` | 5, 14-15 | `use App\Marmara\Zernio\ZernioServiceProvider;` and the provider in the list |
+| `app/Jobs/PublishToSocialPlatform.php` | 18, 100-107, 109, 115, 124 | `use App\Marmara\Hooks\SocialAccountPublishGuard;`; in `handle()` a commented call `app(SocialAccountPublishGuard::class)->check($this->post)` that can fail the post, and `$guard->checksNativeConnection &&` in front of the three native checks (disconnected, token expired, missing scopes) |
 
-That is the only upstream file edited. The module also relies, without editing
+Those are the only upstream files edited. On a merge conflict in
+`handle()`, keep upstream's checks and put the guard call and the three
+`$guard->checksNativeConnection &&` prefixes back. The module also relies, without editing
 them, on these upstream contracts. If a merge changes one, re-check the module:
 
 - `app/Jobs/PublishToSocialPlatform.php` `getPublisher()` resolves
@@ -76,9 +87,28 @@ them, on these upstream contracts. If a merge changes one, re-check the module:
    (same rule as native: no default, the user must have picked one), uploads
    the media to Zernio (`POST /media/presign` + `PUT`) or hands over the public
    TryPost URL (`ZERNIO_MEDIA_MODE=url`), and calls `POST /posts` with an
-   `Idempotency-Key` saved in `posts.error_context.marmara_zernio` first, so a
-   worker that dies mid-request does not post twice.
-3. Zernio's answer for the TikTok target:
+   `Idempotency-Key` and a reference (`tags: ["trypost-{key}"]`,
+   `metadata.trypost_reference`) saved in `marmara_zernio_publications` first.
+   Before that, the job's channel check asks `SocialAccountPublishGuard`:
+   for a mapped channel `ZernioPublishGuard` checks that the Zernio account is
+   listed and not disconnected (`GET /accounts`, cached 5 minutes) and skips
+   the native token/scope checks. If Zernio cannot be reached the check passes
+   and the publisher reports the outage.
+3. Every later publish of the same post (job retry, `posts:retry`, retry from
+   the app) reads the attempt first:
+   - it has a Zernio post id: only `GET /posts/{id}` is asked, never a new
+     create; published is recorded as published, failed fails the post (and
+     marks the attempt failed, so the next retry starts a new attempt).
+   - the create request got no answer (timeout, 5xx, idempotency conflict):
+     it is sent again with the same key while `first_attempt_at` (set when the
+     first request left, never moved) is under 23 hours old. Older, it is not
+     sent again: the post is looked up with `GET /posts?tags={reference}` (then
+     `updatedSince` + metadata); found, it is adopted; not found, the post fails
+     with "Needs a manual check in Zernio" and stays blocked until an operator
+     runs `php artisan marmara:zernio:release {post id}` after checking Zernio.
+   - the attempt failed definitively (Zernio failed it, or refused the create
+     with a 4xx): a new attempt with a new key and reference.
+4. Zernio's answer for the TikTok target:
    - `published`: the post is marked published with the TikTok video id and
      `https://www.tiktok.com/@{username}/video/{id}`, like the native
      publisher. If TikTok has not given the video id yet, the post keeps
@@ -91,12 +121,12 @@ them, on these upstream contracts. If a merge changes one, re-check the module:
      fails it.
    - `failed`/`cancelled` or a 4xx: `ZernioPublishException` with Zernio's
      message; the post fails (category from Zernio's `errorCategory` / HTTP
-     status), the checkpoint is dropped, so a retry creates a new Zernio post.
+     status) and the attempt is marked failed, so a retry creates a new one.
      A 429 makes the post wait for the limit like any network limit; a 5xx or
      timeout is retried with the same idempotency key.
-4. TryPost's own state, `post.published`/`post.failed` webhooks, emails,
+5. TryPost's own state, `post.published`/`post.failed` webhooks, emails,
    analytics publication rows and retries run as for any other publish,
-   because the job is unchanged.
+   as for any publish.
 
 TikTok settings sent (`tiktokSettings`, see
 https://docs.zernio.com/platforms/tiktok/posts): `privacy_level`,
@@ -116,15 +146,20 @@ every level the creator allows.
 
 ### The native TikTok connection
 
-Keep the TikTok account connected in TryPost (Channels): the post needs a
-TikTok channel, and the account's username builds the post URL. The Zernio
-path never uses the native access token: it does not refresh it and does not
-call TikTok. But the publish job (upstream, not changed on purpose) still
-refuses to publish when the channel is `disconnected` or `token_expired`, or
-lacks the `video.publish` scope, before any publisher runs. So if TryPost marks
-the native TikTok connection expired, reconnect it natively; Zernio publishing
-resumes. Making the Zernio path independent of the native token would mean
-editing `PublishToSocialPlatform::handle()`, which this module avoids.
+Keep the TikTok channel in TryPost (Channels): the post needs a TikTok
+channel, and its username builds the post URL. Publishing does not depend on
+its native token: the Zernio path never refreshes or uses it, and through the
+guard hook the job no longer blocks a mapped channel that is `disconnected`,
+`token_expired` or missing `video.publish`; Zernio's account health decides.
+A failed native token refresh (scheduled refresh, `RefreshExpiringTokens`)
+may still mark the channel expired and email about it, but it does not fail
+the Zernio publish.
+
+One upstream path still needs the native channel `connected`:
+`ResolveTikTokVideoId` and the `social:resolve-tiktok-video-ids` sweep only
+look at posts whose channel is connected. A post published while TikTok had
+not reported the video id keeps the profile URL until the channel is
+reconnected (the publish itself is unaffected).
 
 ### Enable on stage
 
@@ -164,8 +199,12 @@ Written from Zernio's docs (November 2026) and tested with `Http::fake` only:
   `ZernioTikTokPayload`.
 - Photos wider than 1080px: the native publisher resizes them; this module
   sends them as they are and relies on Zernio.
-- A manual `posts:retry` drops the Zernio checkpoint, so it creates a new Zernio
-  post even if the old one is still processing.
+- `GET /posts?tags=` and `updatedSince` on the list endpoint, and that
+  `tags`/`metadata` come back on reads, are taken from the docs; if the lookup
+  fails the post goes to "manual check", never to a resend.
+- The Zernio account fields used for health (`status`, `isActive`,
+  `needsReconnect`) are guesses: the docs leave the account schema empty. An
+  account that is listed and not visibly disconnected counts as healthy.
 - Zernio webhooks (`post.published`, `post.failed`, `post.tiktok.url_resolved`,
   signed with `X-Zernio-Signature`) are not consumed: polling covers status.
   A receiver could replace polling later.

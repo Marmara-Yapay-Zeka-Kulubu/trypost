@@ -21,7 +21,7 @@ class ZernioTikTokPayload
      * @param  list<array{type: string, url: string}>  $mediaItems
      * @return array<string, mixed>
      */
-    public function build(Post $post, string $zernioAccountId, ?string $caption, array $mediaItems, bool $isPhotoPost, ?MediaItem $video = null): array
+    public function build(Post $post, string $zernioAccountId, ?string $caption, array $mediaItems, bool $isPhotoPost, ?MediaItem $video, string $reference): array
     {
         $meta = $post->meta ?? [];
 
@@ -66,8 +66,11 @@ class ZernioTikTokPayload
             ],
             'tiktokSettings' => $settings,
             'publishNow' => true,
+            // Lets a lost create answer be found again (GET /posts?tags=...).
+            'tags' => [$reference],
             'metadata' => [
                 'trypost_post_id' => (string) $post->id,
+                'trypost_reference' => $reference,
             ],
         ];
 
