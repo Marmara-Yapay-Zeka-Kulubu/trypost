@@ -25,11 +25,12 @@ app is audited for public posting.
 | `app/Marmara/Zernio/ZernioTikTokPayload.php` | TryPost TikTok meta to Zernio `tiktokSettings` |
 | `app/Marmara/Zernio/ZernioClient.php` | HTTP client (Bearer API key) |
 | `app/Marmara/Zernio/ZernioConfig.php` | Reads `config/marmara-zernio.php`, account mapping, config checks |
-| `app/Marmara/Zernio/ZernioPublishGuard.php` | Checks a Zernio-mapped channel by its Zernio account health (cached 5 min) instead of the native token |
+| `app/Marmara/Zernio/ZernioPublishGuard.php` | Checks a Zernio-mapped channel by its Zernio account health (cached 5 min) instead of the native token; lets its video id resolve without the native connection |
+| `app/Marmara/Zernio/ZernioTikTokCreatorInfo.php` | Extends `TikTokCreatorInfo`: the composer's TikTok options of a mapped channel come from Zernio |
 | `app/Marmara/Zernio/Models/ZernioPublication.php` + `database/migrations/` | One row per TryPost post: the current Zernio attempt (loaded by the provider with `loadMigrationsFrom`) |
 | `app/Marmara/Hooks/SocialAccountPublishGuard.php`, `PublishGuardVerdict.php` | The publish job's channel-check hook; the default keeps upstream behaviour |
 | `app/Marmara/Zernio/Exceptions/ZernioPublishException.php` | A `SocialPublishException`, so the publish job fails, waits or reports it like a native refusal |
-| `app/Marmara/Zernio/Console/*` | `marmara:zernio:accounts`, `marmara:zernio:test`, `marmara:zernio:release {post}` |
+| `app/Marmara/Zernio/Console/*` | `marmara:zernio:accounts`, `marmara:zernio:test`, `marmara:zernio:release {post}`, `marmara:zernio:resolve-video-ids` (scheduled every 15 min by the provider) |
 | `config/marmara-zernio.php` | Module config (env below) |
 | `tests/Feature/Marmara/Zernio/*` | Pest tests |
 | `marmara/zernio.env.example` | Env block for the stage/production `.env` |
@@ -53,6 +54,8 @@ that column.
 | `bootstrap/providers.php` | 5, 14-15 | `use App\Marmara\Zernio\ZernioServiceProvider;` and the provider in the list |
 | `app/Jobs/PublishToSocialPlatform.php` | 18, 100-107, 109, 115, 124 | `use App\Marmara\Hooks\SocialAccountPublishGuard;`; in `handle()` a commented call `app(SocialAccountPublishGuard::class)->check($this->post)` that can fail the post, and `$guard->checksNativeConnection &&` in front of the three native checks (disconnected, token expired, missing scopes) |
 
+| `app/Jobs/ResolveTikTokVideoId.php` | 8, 54-57 | `use App\Marmara\Hooks\SocialAccountPublishGuard;`; in `handle()` a commented `requiresConnectedChannel($this->post)` call, and the "channel connected" check only applies when it is true |
+
 Those are the only upstream files edited. On a merge conflict in
 `handle()`, keep upstream's checks and put the guard call and the three
 `$guard->checksNativeConnection &&` prefixes back. The module also relies, without editing
@@ -65,8 +68,12 @@ them, on these upstream contracts. If a merge changes one, re-check the module:
   publisher. If upstream ever builds the publisher with `new`, add back a
   container call there and list it here.
 - `app/Jobs/ResolveTikTokVideoId.php` `handle(TikTokPublisher $publisher, ...)`
-  (line ~49) gets the same binding, so `publicVideoId()` resolves video ids of
+  (line ~50) gets the same binding, so `publicVideoId()` resolves video ids of
   Zernio posts.
+- `App\Services\Social\TikTokCreatorInfo` is resolved from the container
+  (composer account data, the API creator-info endpoint, the MCP tool,
+  repurpose); the provider binds it to `ZernioTikTokCreatorInfo` when enabled.
+  It relies on `fetch()` / `fetchOrFail()` and the returned array shape.
 - `App\Services\Social\TikTokPublisher`: not final, `publish(Post): array`,
   `publicVideoId(Post): ?string`, `static postUrl()`, the protected
   `validateContentLength()` from `HasSocialHttpClient`.
@@ -155,11 +162,30 @@ A failed native token refresh (scheduled refresh, `RefreshExpiringTokens`)
 may still mark the channel expired and email about it, but it does not fail
 the Zernio publish.
 
-One upstream path still needs the native channel `connected`:
-`ResolveTikTokVideoId` and the `social:resolve-tiktok-video-ids` sweep only
-look at posts whose channel is connected. A post published while TikTok had
-not reported the video id keeps the profile URL until the channel is
-reconnected (the publish itself is unaffected).
+The TikTok video id of a Zernio post resolves without the native connection
+too: `ResolveTikTokVideoId` skips the "channel connected" check for a mapped
+channel (hook above), and since upstream's `social:resolve-tiktok-video-ids`
+sweep only selects connected channels, the module schedules
+`marmara:zernio:resolve-video-ids` every 15 minutes for Zernio posts
+(`platform_post_id` `zernio:…`, public, last 30 days) whose native channel is
+not connected.
+
+### Composer options (creator info)
+
+The editor's TikTok privacy and interaction options come from
+`TikTokCreatorInfo`. For a mapped channel `ZernioTikTokCreatorInfo` reads
+`GET /v1/accounts/{id}/tiktok/creator-info?mediaType=video`
+(https://docs.zernio.com/accounts/get-tiktok-creator-info) and maps it to the
+same shape: `privacyLevels[].value` to `privacy_level_options` (empty when
+`creator.canPostMore` is false), `postingLimits.interactionSettings.allow_*.enabled
+=== false` to `comment_disabled` / `duet_disabled` / `stitch_disabled`,
+`postingLimits.maxVideoDurationSec`, `creator.nickname` / `avatarUrl`, and the
+TryPost username. Cached 5 minutes like upstream. A 429 (daily limit) is
+reported like the native one. If Zernio cannot be asked (timeout, 5xx, key
+refused), the fallback offers only `PUBLIC_TO_EVERYONE` with every switch
+enabled, not cached: Zernio's Business app connections publish videos public
+only, so that option is always valid. The native app's SELF_ONLY-only answer
+is never used for a mapped channel.
 
 ### Enable on stage
 

@@ -62,6 +62,14 @@ class ZernioClient
     }
 
     /**
+     * @see https://docs.zernio.com/accounts/get-tiktok-creator-info
+     */
+    public function creatorInfo(string $accountId, string $mediaType): Response
+    {
+        return $this->request()->get('/accounts/'.rawurlencode($accountId).'/tiktok/creator-info', ['mediaType' => $mediaType]);
+    }
+
+    /**
      * @see https://docs.zernio.com/guides/media-uploads
      */
     public function presignMedia(string $filename, string $contentType, ?int $size = null): Response

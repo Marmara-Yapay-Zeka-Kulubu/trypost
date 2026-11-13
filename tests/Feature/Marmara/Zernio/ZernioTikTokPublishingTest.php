@@ -387,8 +387,12 @@ test('with Zernio disabled the mapped account publishes through the native TikTo
     Http::assertNotSent(fn (Request $request): bool => str_starts_with($request->url(), ZERNIO_API));
 });
 
-test('a Zernio channel publishes although its native TikTok token expired or lost the publish scope', function (array $nativeState) {
-    $this->account->forceFill($nativeState)->save();
+test('a Zernio channel publishes although its native TikTok token expired or lost the publish scope', function (string $nativeState) {
+    $this->account->forceFill(match ($nativeState) {
+        'token expired' => ['status' => AccountStatus::TokenExpired, 'token_expires_at' => now()->subDay()],
+        'disconnected' => ['status' => AccountStatus::Disconnected],
+        'missing scope' => ['scopes' => ['user.info.basic']],
+    })->save();
     $post = zernioTikTokPost($this->account, $this->user);
 
     Http::fake([
@@ -400,11 +404,7 @@ test('a Zernio channel publishes although its native TikTok token expired or los
 
     expect($post->fresh()->publish_status)->toBe(PlatformStatus::Published);
     Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), 'tiktokapis.com') || str_contains($request->url(), 'open.tiktokapis'));
-})->with([
-    'token expired' => [['status' => AccountStatus::TokenExpired, 'token_expires_at' => now()->subDay()]],
-    'disconnected natively' => [['status' => AccountStatus::Disconnected]],
-    'missing video.publish scope' => [['scopes' => ['user.info.basic']]],
-]);
+})->with(['token expired', 'disconnected', 'missing scope']);
 
 test('a Zernio channel whose Zernio account is gone fails before anything is sent', function () {
     $post = zernioTikTokPost($this->account, $this->user);
@@ -539,7 +539,7 @@ test('a create request with no answer older than the idempotency window is never
     Http::assertNotSent(fn (Request $request): bool => $request->method() === 'POST');
     Http::assertSent(fn (Request $request): bool => $request->method() === 'GET'
         && str_starts_with($request->url(), ZERNIO_API.'/posts?')
-        && $request['tags'] === 'trypost-b0b0b0b0-0000-4000-8000-000000000003');
+        && str_contains(urldecode($request->url()), 'tags=trypost-b0b0b0b0-0000-4000-8000-000000000003'));
 });
 
 test('a create request with no answer older than the window adopts the Zernio post found by its reference', function () {

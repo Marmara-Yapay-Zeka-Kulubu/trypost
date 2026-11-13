@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Jobs;
 
 use App\Actions\Post\AssignTikTokVideoId;
+use App\Marmara\Hooks\SocialAccountPublishGuard;
 use App\Models\Post;
 use App\Services\Social\TikTokPublisher;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -50,7 +51,10 @@ class ResolveTikTokVideoId implements ShouldBeUnique, ShouldQueue
     {
         $this->post->refresh();
 
-        if (! $this->post->awaitsTikTokVideoId() || ! $this->post->socialAccount()->connected()->exists()) {
+        // Marmara AI fork hook (app/Marmara/README.md): a channel published through another service resolves without its native connection.
+        $needsConnectedChannel = app(SocialAccountPublishGuard::class)->requiresConnectedChannel($this->post);
+
+        if (! $this->post->awaitsTikTokVideoId() || ($needsConnectedChannel && ! $this->post->socialAccount()->connected()->exists())) {
             return;
         }
 

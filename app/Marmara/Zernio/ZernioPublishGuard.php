@@ -54,6 +54,16 @@ class ZernioPublishGuard extends SocialAccountPublishGuard
         };
     }
 
+    /**
+     * A Zernio-mapped channel's video id comes from Zernio, so its native
+     * connection does not matter.
+     */
+    public function requiresConnectedChannel(Post $post): bool
+    {
+        return $this->config->zernioAccountFor($post->socialAccount) === null
+            && parent::requiresConnectedChannel($post);
+    }
+
     public static function forget(string $zernioAccountId): void
     {
         Cache::forget(self::cacheKey($zernioAccountId));
