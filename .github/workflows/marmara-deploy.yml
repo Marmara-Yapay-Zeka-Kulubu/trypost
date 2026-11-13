@@ -12,6 +12,10 @@ name: Marmara deploy
 #   GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_SERVICE_ACCOUNT, REVERB_APP_KEY
 # Nothing here needs a secret: GitHub signs in to Google Cloud with a
 # short-lived OIDC token (workload identity federation).
+#
+# App settings live in the VM's .env, which a deploy keeps (it only rewrites
+# TRYPOST_IMAGE). Optional modules document their variables in marmara/, e.g.
+# marmara/zernio.env.example (ZERNIO_*: public TikTok publishing via Zernio).
 
 on:
   push:
