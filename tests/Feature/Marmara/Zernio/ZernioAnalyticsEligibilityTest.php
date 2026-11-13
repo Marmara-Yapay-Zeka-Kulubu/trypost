@@ -25,6 +25,7 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Storage;
 
 const ZERNIO_EL_API = 'https://zernio.com/api/v1';
 const ZERNIO_EL_TIKTOK = '6af764170fb0c006b7a777e1';
@@ -178,11 +179,14 @@ test('a Zernio account reported disconnected expires the mapped channel', functi
 });
 
 test('marmara:zernio:link creates a connected LinkedIn page channel for a Zernio-only page and the checks keep it', function () {
+    Storage::fake();
+    fakePublicDns();
     $workspace = Workspace::query()->findOrFail($this->account->workspace_id);
     Http::fake([
         ZERNIO_EL_API.'/accounts*' => Http::response(['accounts' => [
             ['_id' => ZERNIO_EL_LINKEDIN, 'platform' => 'linkedin', 'username' => 'marmara-ai-kulubu', 'displayName' => 'Marmara Yapay Zeka Kulübü', 'profilePicture' => 'https://media.zernio.test/li.png', 'platformUserId' => 'urn:li:organization:104857600', 'isActive' => true],
         ]]),
+        'media.zernio.test/*' => Http::response('png-bytes', 200, ['Content-Type' => 'image/png']),
         '*' => Http::response([], 500),
     ]);
 
@@ -195,7 +199,9 @@ test('marmara:zernio:link creates a connected LinkedIn page channel for a Zernio
     expect($page->status)->toBe(AccountStatus::Connected)
         ->and($page->username)->toBe('marmara-ai-kulubu')
         ->and($page->display_name)->toBe('Marmara Yapay Zeka Kulübü')
-        ->and($page->avatar_url)->toBe('https://media.zernio.test/li.png')
+        // Stored like a native connect's avatar: a path on TryPost's disk, not the remote URL.
+        ->and($page->getRawOriginal('avatar_url'))->toStartWith('social-accounts/')->toEndWith('.png')
+        ->and($page->avatar_url)->toBe(Storage::url($page->getRawOriginal('avatar_url')))
         ->and($page->platform_user_id)->toBe('urn:li:organization:104857600')
         ->and(data_get($page->meta, 'organization_id'))->toBe('104857600')
         ->and(data_get($page->meta, 'managed_by'))->toBe('zernio')
@@ -215,6 +221,40 @@ test('marmara:zernio:link creates a connected LinkedIn page channel for a Zernio
         ->assertSuccessful();
 
     expect(SocialAccount::query()->where('platform', Platform::LinkedInPage)->count())->toBe(1);
+    Storage::assertExists($page->getRawOriginal('avatar_url'));
+});
+
+test('marmara:zernio:link never links a personal LinkedIn profile as a page', function (array $zernioAccount) {
+    Http::fake([ZERNIO_EL_API.'/accounts*' => Http::response(['accounts' => [
+        ['_id' => ZERNIO_EL_LINKEDIN, 'platform' => 'linkedin', 'username' => 'a-member', 'isActive' => true, ...$zernioAccount],
+    ]])]);
+
+    $this->artisan('marmara:zernio:link', ['zernioAccountId' => ZERNIO_EL_LINKEDIN, '--workspace' => $this->account->workspace_id])
+        ->expectsOutputToContain('company page')
+        ->assertFailed();
+
+    expect(SocialAccount::query()->where('platform', Platform::LinkedInPage)->exists())->toBeFalse();
+})->with([
+    'accountType personal' => [['accountType' => 'personal']],
+    'member urn' => [['platformUserId' => 'urn:li:person:AbC123']],
+    'profile url' => [['profileUrl' => 'https://www.linkedin.com/in/a-member']],
+    'nothing says it is a page' => [[]],
+]);
+
+test('marmara:zernio:link leaves the avatar empty when it cannot be downloaded', function () {
+    Storage::fake();
+    fakePublicDns();
+    Http::fake([
+        ZERNIO_EL_API.'/accounts*' => Http::response(['accounts' => [
+            ['_id' => ZERNIO_EL_LINKEDIN, 'platform' => 'linkedin', 'username' => 'marmara-ai-kulubu', 'accountType' => 'organization', 'profilePicture' => 'https://media.zernio.test/gone.png', 'isActive' => true],
+        ]]),
+        'media.zernio.test/*' => Http::response('', 404),
+    ]);
+
+    $this->artisan('marmara:zernio:link', ['zernioAccountId' => ZERNIO_EL_LINKEDIN, '--workspace' => $this->account->workspace_id])
+        ->assertSuccessful();
+
+    expect(SocialAccount::query()->where('platform', Platform::LinkedInPage)->sole()->getRawOriginal('avatar_url'))->toBeNull();
 });
 
 test('a post whose Zernio analytics are pending is neither cached nor written as zeros', function () {

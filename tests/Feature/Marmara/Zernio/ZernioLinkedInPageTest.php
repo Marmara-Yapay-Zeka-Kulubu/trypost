@@ -115,7 +115,7 @@ function zernioLinkedInFakes(array $target = ['platformPostId' => ZERNIO_LI_URN,
 {
     return [
         ZERNIO_LI_API.'/accounts*' => Http::response(['accounts' => [
-            ['_id' => ZERNIO_LI_ACCOUNT, 'platform' => 'linkedin', 'username' => 'marmaraai', 'status' => 'connected'],
+            ['_id' => ZERNIO_LI_ACCOUNT, 'platform' => 'linkedin', 'username' => 'marmaraai', 'status' => 'connected', 'accountType' => 'organization'],
         ]]),
         ZERNIO_LI_API.'/posts' => Http::response(zernioLinkedInPostBody('published', $target), 201),
     ];
@@ -167,6 +167,22 @@ test('a mapped LinkedIn page text post is published through Zernio, even with th
         && str_starts_with($request['tags'][0], 'trypost-'));
     Http::assertSent(fn (Request $request): bool => $request->url() === ZERNIO_LI_API.'/accounts?platform=linkedin');
     Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), 'api.linkedin.com'));
+});
+
+test('a linkedin-page mapping that points at a personal profile is refused before anything is sent', function () {
+    $post = zernioLinkedInPost($this->page, $this->user);
+    Http::fake([
+        ZERNIO_LI_API.'/accounts*' => Http::response(['accounts' => [
+            ['_id' => ZERNIO_LI_ACCOUNT, 'platform' => 'linkedin', 'username' => 'a-member', 'status' => 'connected', 'accountType' => 'personal'],
+        ]]),
+        ZERNIO_LI_API.'/posts' => Http::response(zernioLinkedInPostBody('published', ['platformPostId' => ZERNIO_LI_URN]), 201),
+    ]);
+
+    (new PublishToSocialPlatform($post))->handle();
+
+    expect($post->fresh()->publish_status)->toBe(PlatformStatus::Failed)
+        ->and($post->fresh()->error_message)->toContain('is not a LinkedIn company page');
+    Http::assertNotSent(fn (Request $request): bool => $request->url() === ZERNIO_LI_API.'/posts');
 });
 
 test('a text post with the link preview turned off asks Zernio not to add one', function () {

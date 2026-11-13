@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Marmara\Zernio;
 
+use App\Enums\SocialAccount\Platform;
 use App\Exceptions\Social\ErrorCategory;
 use App\Marmara\Hooks\PublishGuardVerdict;
 use App\Marmara\Hooks\SocialAccountPublishGuard;
@@ -32,8 +33,23 @@ class ZernioPublishGuard extends SocialAccountPublishGuard
         }
 
         $prefix = ZernioPublishException::prefix($account->platform->value);
+        $zernioPlatform = ZernioConfig::zernioPlatform($account->platform);
+        $health = $this->health->status($zernioAccountId, $zernioPlatform);
+        $zernioAccount = $this->health->account($zernioAccountId, $zernioPlatform);
 
-        return match ($this->health->status($zernioAccountId, ZernioConfig::zernioPlatform($account->platform))) {
+        // A linkedin-page mapping must point at a company page: a member's
+        // personal profile (or an account Zernio does not show as one) is
+        // refused before anything is sent.
+        if ($account->platform === Platform::LinkedInPage
+            && $zernioAccount !== null
+            && ZernioAccountHealth::isLinkedInOrganization($zernioAccount) !== true) {
+            return PublishGuardVerdict::failed(
+                "{$prefix}the Zernio account {$zernioAccountId} is not a LinkedIn company page. Map a page connected to Zernio as an organization.",
+                $this->failureContext('zernio_account_not_organization'),
+            );
+        }
+
+        return match ($health) {
             ZernioAccountHealth::MISSING => PublishGuardVerdict::failed(
                 "{$prefix}the Zernio account {$zernioAccountId} is not connected. Reconnect it in Zernio.",
                 $this->failureContext('zernio_account_missing'),

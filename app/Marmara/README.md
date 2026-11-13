@@ -328,13 +328,21 @@ publish guard) nor for analytics or the connection checks:
 `marmara:zernio:link {zernioAccountId} {--workspace=} {--account=}` creates
 the TryPost channel of an account connected only to Zernio (TikTok or a
 LinkedIn page): platform from Zernio, `username`, `display_name`,
-`avatar_url` (Zernio `profilePicture`), `platform_user_id` (Zernio
+`avatar_url` (Zernio `profilePicture`, downloaded to TryPost's storage with
+`uploadFromUrl()` like a native connect; left empty if the download fails),
+`platform_user_id` (Zernio
 `platformUserId`, else `zernio:{id}`), `meta.organization_id` for a LinkedIn
 page when Zernio reports `urn:li:organization:{id}`, status `connected`, a
 placeholder `access_token` (the column is required; it is never used), no
 refresh token and no `token_expires_at`, so the token refresh sweep never
 selects it and `meta.managed_by=zernio` makes the verifier skip native
-refreshes. An existing channel (`--account`, or the same username on the
+refreshes. A LinkedIn account is linked only when Zernio shows it as a company page
+(`accountType: organization`, `metadata.organizationInfo`, an
+`urn:li:organization:` id or a `/company/` profile URL); a personal profile,
+or an account Zernio does not show as a page, is refused. The publish guard
+applies the same rule: a `linkedin-page:` mapping whose Zernio account is not
+shown as a company page fails the post before anything is sent.
+An existing channel (`--account`, or the same username on the
 platform in the workspace) is updated and marked connected instead. The
 command prints the `ZERNIO_ACCOUNTS` entry to add (it does not edit .env);
 the channel is only published and measured through Zernio once that entry

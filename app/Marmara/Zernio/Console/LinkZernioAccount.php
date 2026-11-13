@@ -81,6 +81,16 @@ class LinkZernioAccount extends Command
             return self::FAILURE;
         }
 
+        // Only a company page becomes a LinkedIn page channel: a member's
+        // personal profile is never linked as one.
+        if ($platform === Platform::LinkedInPage && ZernioAccountHealth::isLinkedInOrganization($zernio) !== true) {
+            $this->error(ZernioAccountHealth::isLinkedInOrganization($zernio) === false
+                ? "The Zernio account {$zernioAccountId} is a personal LinkedIn profile, not a company page. Switch it to the page in Zernio (organization posting) or connect the page."
+                : "Zernio does not show the account {$zernioAccountId} as a LinkedIn company page, so it is not linked. Switch it to the page in Zernio (organization posting) first.");
+
+            return self::FAILURE;
+        }
+
         $workspace = $this->workspace();
 
         if ($workspace === null) {
@@ -94,10 +104,13 @@ class LinkZernioAccount extends Command
             return self::FAILURE;
         }
 
+        $picture = data_get($zernio, 'profilePicture');
         $values = array_filter([
             'username' => $username !== '' ? $username : null,
             'display_name' => data_get($zernio, 'displayName') ?: null,
-            'avatar_url' => data_get($zernio, 'profilePicture') ?: null,
+            // Copied to TryPost's storage like a native connect does: the
+            // column holds a storage path. A failed download leaves it as is.
+            'avatar_url' => is_string($picture) && $picture !== '' ? uploadFromUrl($picture) : null,
         ], fn (mixed $value): bool => is_string($value) && $value !== '');
         $meta = array_filter([
             'zernio_account_id' => $zernioAccountId,
