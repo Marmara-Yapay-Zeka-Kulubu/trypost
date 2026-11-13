@@ -200,7 +200,7 @@ class BuildWorkspaceAnalyticsReport
             ->when($accountIds !== null, fn (Builder $states): Builder => $states->whereIn('social_account_id', $accountIds))
             ->whereHas('socialAccount', fn (Builder $accounts): Builder => $accounts
                 ->whereBelongsTo($workspace)
-                ->connected()
+                ->connectedForAnalytics() // Marmara AI fork hook (app/Marmara/README.md)
                 ->includedInAnalytics())
             ->select([
                 'social_account_id', 'collector', 'status',

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Marmara\Zernio;
 
+use App\Marmara\Hooks\AnalyticsAccountGuard;
 use App\Marmara\Hooks\AnalyticsPlatformGate;
 use App\Marmara\Hooks\SocialAccountPublishGuard;
 use App\Marmara\Zernio\Analytics\Collectors\ZernioTikTokFollowerCollector;
@@ -12,8 +13,10 @@ use App\Marmara\Zernio\Analytics\Collectors\ZernioTikTokPublicationMetricsCollec
 use App\Marmara\Zernio\Analytics\Factories\ZernioFollowerCollectorFactory;
 use App\Marmara\Zernio\Analytics\Factories\ZernioPublicationHistoryCollectorFactory;
 use App\Marmara\Zernio\Analytics\Factories\ZernioPublicationMetricsCollectorFactory;
+use App\Marmara\Zernio\Analytics\ZernioAnalyticsAccountGuard;
 use App\Marmara\Zernio\Analytics\ZernioAnalyticsPlatformGate;
 use App\Marmara\Zernio\Console\BackfillZernioAnalytics;
+use App\Marmara\Zernio\Console\LinkZernioAccount;
 use App\Marmara\Zernio\Console\ListZernioAccounts;
 use App\Marmara\Zernio\Console\ReleaseZernioPublication;
 use App\Marmara\Zernio\Console\ResolveZernioVideoIds;
@@ -24,6 +27,7 @@ use App\Services\Analytics\Collectors\Metrics\PublicationMetricsCollectorFactory
 use App\Services\Analytics\Collectors\Metrics\TikTokPublicationMetricsCollector;
 use App\Services\Analytics\Collectors\Publications\PublicationHistoryCollectorFactory;
 use App\Services\Analytics\Collectors\Publications\TikTokPublicationCollector;
+use App\Services\Social\ConnectionVerifier;
 use App\Services\Social\LinkedInPagePublisher;
 use App\Services\Social\TikTokCreatorInfo;
 use App\Services\Social\TikTokPublisher;
@@ -71,6 +75,15 @@ class ZernioServiceProvider extends ServiceProvider
                 : $app->build(LinkedInPagePublisher::class);
         });
 
+        // TryPost's connection checks and token refreshes judge a mapped
+        // channel by its Zernio account, so a dead native token no longer
+        // flips it to token_expired / disconnected.
+        $this->app->bind(ConnectionVerifier::class, function (Application $app): ConnectionVerifier {
+            return $app->make(ZernioConfig::class)->enabled()
+                ? $app->make(ZernioConnectionVerifier::class)
+                : $app->build(ConnectionVerifier::class);
+        });
+
         // A Zernio-mapped channel is checked by Zernio, not its native token;
         // every other channel keeps the default (upstream) checks.
         $this->app->bind(SocialAccountPublishGuard::class, function (Application $app): SocialAccountPublishGuard {
@@ -105,6 +118,9 @@ class ZernioServiceProvider extends ServiceProvider
             PublicationMetricsCollectorFactory::class => ZernioPublicationMetricsCollectorFactory::class,
             FollowerCollectorFactory::class => ZernioFollowerCollectorFactory::class,
             AnalyticsPlatformGate::class => ZernioAnalyticsPlatformGate::class,
+            // A mapped channel stays measured while its Zernio account is
+            // usable, whatever its native status (SocialAccount::connectedForAnalytics()).
+            AnalyticsAccountGuard::class => ZernioAnalyticsAccountGuard::class,
         ] as $native => $zernio) {
             $this->app->bind($native, function (Application $app) use ($native, $zernio): object {
                 return $app->make(ZernioConfig::class)->analyticsEnabled()
@@ -127,6 +143,7 @@ class ZernioServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 BackfillZernioAnalytics::class,
+                LinkZernioAccount::class,
                 ListZernioAccounts::class,
                 ReleaseZernioPublication::class,
                 ResolveZernioVideoIds::class,

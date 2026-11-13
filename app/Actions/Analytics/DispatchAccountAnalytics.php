@@ -19,7 +19,7 @@ class DispatchAccountAnalytics
     {
         try {
             $connectedChannel = SocialAccount::query()
-                ->connected()
+                ->connectedForAnalytics() // Marmara AI fork hook (app/Marmara/README.md)
                 ->includedInAnalytics()
                 ->find($socialAccount->id);
 

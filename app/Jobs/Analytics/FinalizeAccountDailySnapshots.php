@@ -45,7 +45,7 @@ class FinalizeAccountDailySnapshots implements ShouldQueue
             ?? CarbonImmutable::now('UTC')->subDays($this->daysAgo)->toDateString();
 
         SocialAccount::query()
-            ->connected()
+            ->connectedForAnalytics() // Marmara AI fork hook (app/Marmara/README.md)
             ->includedInAnalytics()
             ->lazyById(200)
             ->each(function (SocialAccount $account) use ($date): void {

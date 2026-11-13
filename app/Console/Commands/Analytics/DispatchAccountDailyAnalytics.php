@@ -21,7 +21,7 @@ class DispatchAccountDailyAnalytics extends Command
         $date = CarbonImmutable::now('UTC')->toDateString();
 
         SocialAccount::query()
-            ->connected()
+            ->connectedForAnalytics() // Marmara AI fork hook (app/Marmara/README.md)
             ->with('workspace.account.subscriptions')
             ->lazyById(200)
             ->each(function (SocialAccount $channel) use ($collectors, $date): void {

@@ -27,7 +27,7 @@ class DispatchPublicationDiscovery extends Command
         $except = (array) $this->option('except-platform');
 
         SocialAccount::query()
-            ->connected()
+            ->connectedForAnalytics() // Marmara AI fork hook (app/Marmara/README.md)
             ->includedInAnalytics()
             ->when($only !== [], fn (Builder $query): Builder => $query->whereIn('platform', $only))
             ->when($except !== [], fn (Builder $query): Builder => $query->whereNotIn('platform', $except))

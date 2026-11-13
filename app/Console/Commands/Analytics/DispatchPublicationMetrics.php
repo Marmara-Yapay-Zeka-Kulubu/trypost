@@ -25,7 +25,7 @@ class DispatchPublicationMetrics extends Command
         $now = CarbonImmutable::now('UTC');
 
         SocialAccount::query()
-            ->connected()
+            ->connectedForAnalytics() // Marmara AI fork hook (app/Marmara/README.md)
             ->includedInAnalytics()
             ->with('workspace.account.subscriptions')
             ->lazyById(100)

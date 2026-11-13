@@ -51,7 +51,7 @@ class BootstrapAccountAnalytics implements ShouldQueue
     public function handleFor(string $socialAccountId): void
     {
         $account = SocialAccount::query()
-            ->connected()
+            ->connectedForAnalytics() // Marmara AI fork hook (app/Marmara/README.md)
             ->includedInAnalytics()
             ->find($socialAccountId);
 

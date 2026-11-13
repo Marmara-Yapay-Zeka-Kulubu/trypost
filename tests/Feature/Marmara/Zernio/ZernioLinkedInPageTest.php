@@ -222,8 +222,23 @@ test('more than one thread comment is refused before anything is sent', function
 
     (new PublishToSocialPlatform($post))->handle();
 
+    // TryPost's own LinkedIn limit (one comment) refuses it first, with its own message.
     expect($post->fresh()->publish_status)->toBe(PlatformStatus::Failed)
-        ->and($post->fresh()->error_message)->toContain('LinkedIn (via Zernio)');
+        ->and(ZernioPublication::query()->where('post_id', $post->id)->exists())->toBeFalse();
+    Http::assertNotSent(fn (Request $request): bool => $request->url() === ZERNIO_LI_API.'/posts');
+});
+
+test('a thread comment with media is refused by the Zernio channel before anything is sent', function () {
+    $post = zernioLinkedInPost($this->page, $this->user, ['thread_replies' => [[
+        'text' => 'bir',
+        'media' => [zernioLinkedInMedia('c1', 'image', 'image/jpeg', 'c.jpg')],
+    ]]]);
+    Http::fake(zernioLinkedInFakes());
+
+    (new PublishToSocialPlatform($post))->handle();
+
+    expect($post->fresh()->publish_status)->toBe(PlatformStatus::Failed)
+        ->and($post->fresh()->error_message)->toContain('LinkedIn (via Zernio): only one text comment');
     Http::assertNotSent(fn (Request $request): bool => $request->url() === ZERNIO_LI_API.'/posts');
 });
 

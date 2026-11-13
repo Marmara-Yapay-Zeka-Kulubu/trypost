@@ -51,7 +51,7 @@ class FinalizeAccountDailySnapshot implements ShouldQueue
         AnalyticsJobLog $log,
     ): void {
         $channel = SocialAccount::query()
-            ->connected()
+            ->connectedForAnalytics() // Marmara AI fork hook (app/Marmara/README.md)
             ->includedInAnalytics()
             ->find($this->socialAccountId);
 

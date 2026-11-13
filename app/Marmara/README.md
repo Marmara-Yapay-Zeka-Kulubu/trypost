@@ -32,12 +32,15 @@ own mapping (see "Per-platform switch" below).
 | `app/Marmara/Zernio/ZernioTikTokPayload.php` | TryPost TikTok meta to Zernio `tiktokSettings` |
 | `app/Marmara/Zernio/ZernioClient.php` | HTTP client (Bearer API key) |
 | `app/Marmara/Zernio/ZernioConfig.php` | Reads `config/marmara-zernio.php`, account mapping, config checks |
+| `app/Marmara/Zernio/ZernioAccountHealth.php` | Zernio account health (`GET /v1/accounts`, cached 5 min), shared by the guards and the verifier |
+| `app/Marmara/Zernio/ZernioConnectionVerifier.php` | Extends `ConnectionVerifier`: a mapped channel's connection checks answer from Zernio |
+| `app/Marmara/Hooks/AnalyticsAccountGuard.php`, `app/Marmara/Zernio/Analytics/ZernioAnalyticsAccountGuard.php` | The analytics channel filter hook; the default keeps upstream behaviour |
 | `app/Marmara/Zernio/ZernioPublishGuard.php` | Checks a Zernio-mapped channel by its Zernio account health (cached 5 min) instead of the native token; lets its video id resolve without the native connection |
 | `app/Marmara/Zernio/ZernioTikTokCreatorInfo.php` | Extends `TikTokCreatorInfo`: the composer's TikTok options of a mapped channel come from Zernio |
 | `app/Marmara/Zernio/Models/ZernioPublication.php` + `database/migrations/` | One row per TryPost post: the current Zernio attempt (loaded by the provider with `loadMigrationsFrom`) |
 | `app/Marmara/Hooks/SocialAccountPublishGuard.php`, `PublishGuardVerdict.php` | The publish job's channel-check hook; the default keeps upstream behaviour |
 | `app/Marmara/Zernio/Exceptions/ZernioPublishException.php` | A `SocialPublishException`, so the publish job fails, waits or reports it like a native refusal |
-| `app/Marmara/Zernio/Console/*` | `marmara:zernio:accounts`, `marmara:zernio:test`, `marmara:zernio:release {post}`, `marmara:zernio:resolve-video-ids` (scheduled every 15 min by the provider), `marmara:zernio:analytics-backfill` |
+| `app/Marmara/Zernio/Console/*` | `marmara:zernio:accounts`, `marmara:zernio:test`, `marmara:zernio:release {post}`, `marmara:zernio:resolve-video-ids` (scheduled every 15 min by the provider), `marmara:zernio:analytics-backfill`, `marmara:zernio:link` |
 | `app/Marmara/Zernio/Analytics/ZernioPostAnalytics.php` | Reads a TikTok account's post list, post metrics and followers from Zernio's stored analytics; maps metrics |
 | `app/Marmara/Zernio/Analytics/ZernioAnalyticsResponse.php` | Zernio HTTP answers as `AnalyticsCollectionException` categories (429 with Retry-After / `details.retryAfterSeconds`) |
 | `app/Marmara/Zernio/Analytics/Collectors/*` | Subclasses of TryPost's three TikTok collectors (publications, metrics, followers), and the three LinkedIn page collectors TryPost lacks |
@@ -66,6 +69,8 @@ that column.
 | `bootstrap/providers.php` | 5, 14-15 | `use App\Marmara\Zernio\ZernioServiceProvider;` and the provider in the list |
 | `app/Jobs/PublishToSocialPlatform.php` | 18, 100-107, 109, 115, 124 | `use App\Marmara\Hooks\SocialAccountPublishGuard;`; in `handle()` a commented call `app(SocialAccountPublishGuard::class)->check($this->post)` that can fail the post, and `$guard->checksNativeConnection &&` in front of the three native checks (disconnected, token expired, missing scopes) |
 
+| `app/Models/SocialAccount.php` | 19, 624-638 | `use App\Marmara\Hooks\AnalyticsAccountGuard;` and a commented `scopeConnectedForAnalytics()`: `connected()`, or `orWhereIn(id, AnalyticsAccountGuard::alsoUsableAccountIds())`. The default guard returns `[]`, i.e. exactly `connected()` |
+| `app/Jobs/Analytics/{AbstractPublicationSync,BootstrapAccountAnalytics,CollectPublicationMetrics,CollectAccountDailySnapshot,FinalizeAccountDailySnapshot,FinalizeAccountDailySnapshots}.php`, `app/Console/Commands/Analytics/{DispatchPublicationDiscovery,DispatchPublicationMetrics,DispatchAccountDailyAnalytics}.php`, `app/Actions/Analytics/{DispatchAccountAnalytics,BuildFollowerAnalyticsReport,BuildWorkspaceAnalyticsReport}.php` | one line each | `->connected()` became `->connectedForAnalytics() // Marmara AI fork hook` in the channel query. On a conflict keep upstream's line and swap the scope back in |
 | `app/Enums/SocialAccount/Platform.php` | 10, 51-53 | `use App\Marmara\Hooks\AnalyticsPlatformGate;`; in `isIncludedInAnalytics()` a commented arm `self::LinkedInPage => app(AnalyticsPlatformGate::class)->includes($this)` (LinkedInPage taken out of the `false` arm). The default gate answers false, i.e. upstream behaviour |
 | `app/Jobs/ResolveTikTokVideoId.php` | 8, 54-57 | `use App\Marmara\Hooks\SocialAccountPublishGuard;`; in `handle()` a commented `requiresConnectedChannel($this->post)` call, and the "channel connected" check only applies when it is true |
 
@@ -84,6 +89,10 @@ them, on these upstream contracts. If a merge changes one, re-check the module:
   the same way; the provider binds it to `ZernioLinkedInPagePublisher` when
   `ZERNIO_ENABLED=true`. It relies on `publish(Post): array` and the
   protected `validateContentLength()`.
+- `ConnectionVerifier` is resolved from the container by every caller
+  (`app(...)` or injection); the provider binds it to
+  `ZernioConnectionVerifier` when `ZERNIO_ENABLED=true`. It relies on
+  `verify()`, `verifyAccessToken()`, `refreshToken()` and their exceptions.
 - The analytics jobs get `PublicationHistoryCollectorFactory`,
   `PublicationMetricsCollectorFactory` and `FollowerCollectorFactory` by
   injection or `app()`, and the factories resolve each TikTok collector with
@@ -180,8 +189,9 @@ its native token: the Zernio path never refreshes or uses it, and through the
 guard hook the job no longer blocks a mapped channel that is `disconnected`,
 `token_expired` or missing `video.publish`; Zernio's account health decides.
 A failed native token refresh (scheduled refresh, `RefreshExpiringTokens`)
-may still mark the channel expired and email about it, but it does not fail
-the Zernio publish.
+no longer marks a mapped channel expired: its connection checks answer from
+Zernio (`ZernioConnectionVerifier`, see "Channels without a working native
+connection").
 
 The TikTok video id of a Zernio post resolves without the native connection
 too: `ResolveTikTokVideoId` skips the "channel connected" check for a mapped
@@ -290,8 +300,45 @@ derived (reactions + comments + shares + clicks); followers from
 `/v1/accounts/follower-stats`. `marmara:zernio:analytics-backfill` covers
 LinkedIn pages too.
 
-The TryPost LinkedIn page channel must exist (posts target it) and the
-analytics jobs only run for `connected` channels, as for TikTok.
+The TryPost LinkedIn page channel must exist (posts target it). If the
+club's LinkedIn app cannot connect the page natively, create the channel
+from Zernio with `marmara:zernio:link` (below).
+
+### Channels without a working native connection
+
+A mapped channel does not depend on its native token, for publishing (the
+publish guard) nor for analytics or the connection checks:
+
+- `ZernioConnectionVerifier` (bound for `ConnectionVerifier`, which
+  `VerifyWorkspaceConnections`, `VerifyUpcomingPostConnections`,
+  `RefreshSocialToken` and the publishers resolve from the container)
+  answers a mapped channel's `verify()` from Zernio's account health: a
+  healthy Zernio account keeps the channel `connected` and brings a
+  `token_expired` one back; a Zernio account reported disconnected or
+  missing expires it (with TryPost's usual notice). Its native token is
+  still refreshed when possible, but a refused refresh no longer expires the
+  channel.
+- The analytics jobs, dispatchers and reports select channels with
+  `SocialAccount::connectedForAnalytics()` instead of `connected()` (hook
+  below): `connected`, or a mapped channel whose Zernio account is usable
+  (`AnalyticsAccountGuard`, rebound to `ZernioAnalyticsAccountGuard`).
+- Zernio's account health (`GET /v1/accounts`, cached 5 minutes) is in
+  `ZernioAccountHealth`, shared by the three.
+
+`marmara:zernio:link {zernioAccountId} {--workspace=} {--account=}` creates
+the TryPost channel of an account connected only to Zernio (TikTok or a
+LinkedIn page): platform from Zernio, `username`, `display_name`,
+`avatar_url` (Zernio `profilePicture`), `platform_user_id` (Zernio
+`platformUserId`, else `zernio:{id}`), `meta.organization_id` for a LinkedIn
+page when Zernio reports `urn:li:organization:{id}`, status `connected`, a
+placeholder `access_token` (the column is required; it is never used), no
+refresh token and no `token_expires_at`, so the token refresh sweep never
+selects it and `meta.managed_by=zernio` makes the verifier skip native
+refreshes. An existing channel (`--account`, or the same username on the
+platform in the workspace) is updated and marked connected instead. The
+command prints the `ZERNIO_ACCOUNTS` entry to add (it does not edit .env);
+the channel is only published and measured through Zernio once that entry
+is in place and the container is recreated.
 
 ### Enable on stage
 
@@ -414,6 +461,12 @@ its `Retry-After` (or `details.retryAfterSeconds`), which TryPost's jobs
 retry at that time; the command waits and retries up to 5 times. A history
 page is one request for 50 posts, and metric reads mostly come from its cache.
 
-The jobs still only run for channels whose TryPost status is `connected`
-(upstream's `connected()` scope): keep the native TikTok channel connected.
+Pending data: a post whose Zernio copy is not synced yet (`syncStatus`
+`pending` / `partial`) is not cached from the history page and its metrics
+read answers `delayed` (read again later that day, nothing written), so
+Zernio's placeholder zeros never become measurements. `unavailable` (Zernio
+can never sync it) is `unsupported`, which ends its baseline reads.
+
+A channel whose native token expired is still measured while its Zernio
+account is usable (see "Channels without a working native connection").
 

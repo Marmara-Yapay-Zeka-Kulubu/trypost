@@ -35,7 +35,7 @@ class BuildFollowerAnalyticsReport
         $connectedAccounts = SocialAccount::query()
             ->where('workspace_id', $workspace->id)
             ->when($channelKeys !== null, fn (EloquentBuilder $accounts): EloquentBuilder => $accounts->whereKey(array_keys($channelKeys)))
-            ->connected()
+            ->connectedForAnalytics() // Marmara AI fork hook (app/Marmara/README.md)
             ->includedInAnalytics()
             ->where('created_at', '<=', $current->observedThrough->endOfDay())
             ->get(['platform', 'platform_user_id', 'created_at']);

@@ -98,7 +98,7 @@ class CollectPublicationMetrics implements ShouldQueue
 
         $publication = AnalyticsPublication::query()->available()->find($this->publicationId);
         $channel = $publication ? SocialAccount::query()
-            ->connected()
+            ->connectedForAnalytics() // Marmara AI fork hook (app/Marmara/README.md)
             ->includedInAnalytics()
             ->find($publication->social_account_id) : null;
 

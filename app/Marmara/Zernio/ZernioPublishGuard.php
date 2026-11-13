@@ -9,8 +9,6 @@ use App\Marmara\Hooks\PublishGuardVerdict;
 use App\Marmara\Hooks\SocialAccountPublishGuard;
 use App\Marmara\Zernio\Exceptions\ZernioPublishException;
 use App\Models\Post;
-use Illuminate\Support\Facades\Cache;
-use Throwable;
 
 /**
  * A channel mapped to Zernio (TikTok, LinkedIn Page) is checked by Zernio's
@@ -19,18 +17,9 @@ use Throwable;
  */
 class ZernioPublishGuard extends SocialAccountPublishGuard
 {
-    /** How long a healthy or missing Zernio account answer is reused. */
-    private const int CACHE_SECONDS = 300;
-
-    private const string HEALTHY = 'healthy';
-
-    private const string UNHEALTHY = 'unhealthy';
-
-    private const string MISSING = 'missing';
-
     public function __construct(
         private readonly ZernioConfig $config,
-        private readonly ZernioClient $client,
+        private readonly ZernioAccountHealth $health,
     ) {}
 
     public function check(Post $post): PublishGuardVerdict
@@ -44,12 +33,12 @@ class ZernioPublishGuard extends SocialAccountPublishGuard
 
         $prefix = ZernioPublishException::prefix($account->platform->value);
 
-        return match ($this->health($zernioAccountId, ZernioConfig::zernioPlatform($account->platform))) {
-            self::MISSING => PublishGuardVerdict::failed(
+        return match ($this->health->status($zernioAccountId, ZernioConfig::zernioPlatform($account->platform))) {
+            ZernioAccountHealth::MISSING => PublishGuardVerdict::failed(
                 "{$prefix}the Zernio account {$zernioAccountId} is not connected. Reconnect it in Zernio.",
                 $this->failureContext('zernio_account_missing'),
             ),
-            self::UNHEALTHY => PublishGuardVerdict::failed(
+            ZernioAccountHealth::UNHEALTHY => PublishGuardVerdict::failed(
                 "{$prefix}the Zernio account {$zernioAccountId} needs to be reconnected in Zernio.",
                 $this->failureContext('zernio_account_disconnected'),
             ),
@@ -70,54 +59,7 @@ class ZernioPublishGuard extends SocialAccountPublishGuard
 
     public static function forget(string $zernioAccountId): void
     {
-        Cache::forget(self::cacheKey($zernioAccountId));
-    }
-
-    private function health(string $zernioAccountId, string $zernioPlatform): ?string
-    {
-        $cached = Cache::get(self::cacheKey($zernioAccountId));
-
-        if (is_string($cached)) {
-            return $cached;
-        }
-
-        $health = $this->fetchHealth($zernioAccountId, $zernioPlatform);
-
-        if ($health !== null) {
-            Cache::put(self::cacheKey($zernioAccountId), $health, self::CACHE_SECONDS);
-        }
-
-        return $health;
-    }
-
-    private function fetchHealth(string $zernioAccountId, string $zernioPlatform): ?string
-    {
-        try {
-            $response = $this->client->listAccounts(['platform' => $zernioPlatform], quick: true);
-        } catch (Throwable) {
-            return null;
-        }
-
-        if ($response->failed()) {
-            return null;
-        }
-
-        $account = collect((array) data_get($response->json(), 'accounts', []))
-            ->first(fn (mixed $account): bool => is_array($account)
-                && (string) (data_get($account, '_id') ?? data_get($account, 'id')) === $zernioAccountId);
-
-        if ($account === null) {
-            return self::MISSING;
-        }
-
-        $status = strtolower((string) data_get($account, 'status', ''));
-
-        $unhealthy = in_array($status, ['disconnected', 'expired', 'error', 'inactive'], true)
-            || data_get($account, 'isActive') === false
-            || data_get($account, 'needsReconnect') === true
-            || data_get($account, 'disconnected') === true;
-
-        return $unhealthy ? self::UNHEALTHY : self::HEALTHY;
+        ZernioAccountHealth::forget($zernioAccountId);
     }
 
     /**
@@ -130,10 +72,5 @@ class ZernioPublishGuard extends SocialAccountPublishGuard
             'reason' => $reason,
             'failed_at' => now()->toIso8601String(),
         ];
-    }
-
-    private static function cacheKey(string $zernioAccountId): string
-    {
-        return "marmara-zernio:account-health:{$zernioAccountId}";
     }
 }

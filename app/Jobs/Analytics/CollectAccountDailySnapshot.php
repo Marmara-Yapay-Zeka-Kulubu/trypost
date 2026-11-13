@@ -71,7 +71,7 @@ class CollectAccountDailySnapshot implements ShouldQueue
         }
 
         $channel = SocialAccount::query()
-            ->connected()
+            ->connectedForAnalytics() // Marmara AI fork hook (app/Marmara/README.md)
             ->find($this->socialAccountId);
 
         if (! $channel?->workspace->account->hasAppAccess()

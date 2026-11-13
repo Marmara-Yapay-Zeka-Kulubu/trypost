@@ -158,7 +158,8 @@ test('the backfill job reads historical TikTok posts from Zernio, upserts them a
 
     $publications = AnalyticsPublication::query()->where('social_account_id', $this->account->id)->get()->keyBy('remote_id');
 
-    expect($publications->keys()->sort()->values()->all())->toBe(['7400000000000000001', '7400000000000000002'])
+    // keyBy() turns numeric ids into integer keys: compare the stored strings.
+    expect($publications->pluck('remote_id')->sort()->values()->all())->toBe(['7400000000000000001', '7400000000000000002'])
         ->and($publications['7400000000000000001']->permalink)->toBe('https://www.tiktok.com/@marmaraai/video/7400000000000000001')
         ->and($publications['7400000000000000002']->content_type)->toBe(PublicationContentType::Carousel)
         ->and(data_get($publications['7400000000000000001']->preview_metadata, 'thumbnail_url'))->toBe('https://storage.zernio.test/covers/ext-1.jpg')

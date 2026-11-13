@@ -109,6 +109,7 @@ class ZernioPostAnalytics
         ]), 'post analytics')->json();
 
         $target = $this->platformEntry((array) data_get($body, 'platformAnalytics', []), ZernioConfig::zernioPlatform($platform), $zernioAccountId);
+        $this->assertReady(data_get($target, 'syncStatus') ?? data_get($body, 'syncStatus'));
         $analytics = data_get($target, 'analytics') ?? data_get($body, 'analytics');
 
         if (! is_array($analytics)) {
@@ -116,6 +117,32 @@ class ZernioPostAnalytics
         }
 
         return $analytics;
+    }
+
+    /**
+     * Zernio's sync state of a post's analytics (`synced`, `pending`,
+     * `partial`, `unavailable`). Absent counts as synced.
+     */
+    private function isReady(mixed $syncStatus): bool
+    {
+        return $syncStatus === null || $syncStatus === '' || $syncStatus === 'synced';
+    }
+
+    /**
+     * A post whose analytics Zernio has not synced yet is read again later
+     * (`delayed`, like a network that has not produced metrics yet); one
+     * Zernio can never sync (`unavailable`) is refused as unsupported, which
+     * ends its baseline reads after a few attempts. Nothing is written.
+     */
+    private function assertReady(mixed $syncStatus): void
+    {
+        if ($this->isReady($syncStatus)) {
+            return;
+        }
+
+        throw $syncStatus === 'unavailable'
+            ? AnalyticsCollectionException::unsupported('Zernio cannot sync analytics for this post')
+            : new AnalyticsCollectionException('delayed', "Zernio post analytics are {$syncStatus}");
     }
 
     /**
@@ -214,7 +241,9 @@ class ZernioPostAnalytics
 
         $analytics = data_get($entry, 'analytics') ?? data_get($row, 'analytics');
 
-        if (is_array($analytics) && $this->config->analyticsCacheMinutes() > 0) {
+        // Zeros of a copy Zernio has not synced yet are not measurements: not
+        // cached, so the metrics read asks again and waits (assertReady()).
+        if (is_array($analytics) && $this->isReady(data_get($entry, 'syncStatus')) && $this->config->analyticsCacheMinutes() > 0) {
             Cache::put($this->cacheKey($zernioAccountId, $postId), $analytics, now()->addMinutes($this->config->analyticsCacheMinutes()));
         }
 

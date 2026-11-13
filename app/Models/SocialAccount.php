@@ -16,6 +16,7 @@ use App\Enums\SocialAccount\Status;
 use App\Exceptions\SocialAccount\NetworkAlreadyConnectedException;
 use App\Jobs\SendNotification;
 use App\Mail\AccountDisconnected;
+use App\Marmara\Hooks\AnalyticsAccountGuard;
 use App\Models\Scopes\SocialAccountOrderScope;
 use App\Observers\ComposerVersionObserver;
 use App\Observers\SocialAccountObserver;
@@ -618,6 +619,21 @@ class SocialAccount extends Model
     public function scopeConnected(Builder $query): Builder
     {
         return $query->where('status', Status::Connected);
+    }
+
+    /**
+     * Marmara AI fork hook (app/Marmara/README.md): connected, or measured
+     * through another service although the native connection is not.
+     */
+    public function scopeConnectedForAnalytics(Builder $query): Builder
+    {
+        $alsoUsable = app(AnalyticsAccountGuard::class)->alsoUsableAccountIds();
+
+        return $alsoUsable === []
+            ? $query->connected()
+            : $query->where(fn (Builder $accounts): Builder => $accounts
+                ->where('status', Status::Connected)
+                ->orWhereIn($this->qualifyColumn('id'), $alsoUsable));
     }
 
     public function scopeIncludedInAnalytics(Builder $query): Builder
