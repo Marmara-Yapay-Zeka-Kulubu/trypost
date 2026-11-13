@@ -6,6 +6,7 @@ use App\Enums\PostPlatform\ContentType;
 use App\Enums\SocialAccount\Status as AccountStatus;
 use App\Enums\TikTok\PrivacyLevel;
 use App\Jobs\ResolveTikTokVideoId;
+use App\Marmara\Zernio\ZernioClient;
 use App\Models\Post;
 use App\Models\SocialAccount;
 use App\Services\Social\TikTokCreatorInfo;
@@ -167,4 +168,46 @@ test('without Zernio a native channel that is not connected is still skipped by 
 
     expect($post->fresh()->platform_post_id)->toBe('zernio:'.$this->zernioPostId);
     Http::assertNothingSent();
+});
+
+test('a creator info request that times out falls back to Everyone within the short editor budget', function () {
+    $budgets = [];
+
+    Http::fake([
+        $this->zernioApi.'/accounts/*' => function (Request $request, array $options) use (&$budgets) {
+            $budgets[] = [$options['connect_timeout'] ?? null, $options['timeout'] ?? null];
+
+            return Http::failedConnection('cURL error 28: Operation timed out after 5000 milliseconds')($request);
+        },
+    ]);
+
+    $info = app(TikTokCreatorInfo::class)->interactive()->fetchOrFail($this->account);
+
+    expect($info['privacy_level_options'])->toBe(['PUBLIC_TO_EVERYONE'])
+        ->and(app(TikTokCreatorInfo::class)->fetch($this->account)['privacy_level_options'])->toBe(['PUBLIC_TO_EVERYONE'])
+        ->and($budgets)->toBe([
+            [ZernioClient::QUICK_CONNECT_TIMEOUT_SECONDS, ZernioClient::QUICK_TIMEOUT_SECONDS],
+            [ZernioClient::QUICK_CONNECT_TIMEOUT_SECONDS, ZernioClient::QUICK_TIMEOUT_SECONDS],
+        ]);
+});
+
+test('the publish guard health check uses the short budget and creating a post keeps the configured one', function () {
+    $budgets = [];
+    $record = function (string $name, array $body) use (&$budgets) {
+        return function (Request $request, array $options) use (&$budgets, $name, $body) {
+            $budgets[$name] = $options['timeout'] ?? null;
+
+            return Http::response($body);
+        };
+    };
+
+    Http::fake([
+        $this->zernioApi.'/accounts?*' => $record('accounts', ['accounts' => []]),
+        $this->zernioApi.'/posts' => $record('create', ['post' => ['_id' => $this->zernioPostId]]),
+    ]);
+
+    app(ZernioClient::class)->listAccounts(['platform' => 'tiktok'], quick: true);
+    app(ZernioClient::class)->createPost(['publishNow' => true], 'key-1');
+
+    expect($budgets)->toBe(['accounts' => ZernioClient::QUICK_TIMEOUT_SECONDS, 'create' => 30]);
 });

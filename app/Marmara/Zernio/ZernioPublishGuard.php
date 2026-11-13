@@ -89,7 +89,7 @@ class ZernioPublishGuard extends SocialAccountPublishGuard
     private function fetchHealth(string $zernioAccountId): ?string
     {
         try {
-            $response = $this->client->listAccounts(['platform' => 'tiktok']);
+            $response = $this->client->listAccounts(['platform' => 'tiktok'], quick: true);
         } catch (Throwable) {
             return null;
         }

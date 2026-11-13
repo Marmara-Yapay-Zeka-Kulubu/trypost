@@ -19,16 +19,26 @@ use Illuminate\Support\Facades\Http;
  */
 class ZernioClient
 {
+    /**
+     * Budget of a read someone is waiting on (the post editor, the publish
+     * job's channel check): the same 3 s connect / 5 s total that upstream's
+     * interactive TikTok calls use (HasSocialHttpClient::socialHttp()).
+     */
+    public const int QUICK_CONNECT_TIMEOUT_SECONDS = 3;
+
+    public const int QUICK_TIMEOUT_SECONDS = 5;
+
     public function __construct(private readonly ZernioConfig $config) {}
 
     /**
      * @param  array<string, mixed>  $query
+     * @param  bool  $quick  the short budget, for the publish guard's health check
      *
      * @see https://docs.zernio.com/accounts/list-accounts
      */
-    public function listAccounts(array $query = []): Response
+    public function listAccounts(array $query = [], bool $quick = false): Response
     {
-        return $this->request()->get('/accounts', $query);
+        return ($quick ? $this->quickRequest() : $this->request())->get('/accounts', $query);
     }
 
     /**
@@ -66,7 +76,7 @@ class ZernioClient
      */
     public function creatorInfo(string $accountId, string $mediaType): Response
     {
-        return $this->request()->get('/accounts/'.rawurlencode($accountId).'/tiktok/creator-info', ['mediaType' => $mediaType]);
+        return $this->quickRequest()->get('/accounts/'.rawurlencode($accountId).'/tiktok/creator-info', ['mediaType' => $mediaType]);
     }
 
     /**
@@ -92,6 +102,13 @@ class ZernioClient
         return Http::timeout($this->config->timeout() * 5)
             ->withBody($stream, $contentType)
             ->put($uploadUrl);
+    }
+
+    private function quickRequest(): PendingRequest
+    {
+        return $this->request()
+            ->connectTimeout(self::QUICK_CONNECT_TIMEOUT_SECONDS)
+            ->timeout(self::QUICK_TIMEOUT_SECONDS);
     }
 
     private function request(): PendingRequest

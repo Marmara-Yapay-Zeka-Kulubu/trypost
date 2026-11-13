@@ -343,6 +343,7 @@ test('a Zernio outage is retried with the same idempotency key', function () {
         ->and(zernioAttempt($post)->first_attempt_at->equalTo($attempt->first_attempt_at))->toBeTrue();
     $keys = Http::recorded(fn (Request $request): bool => $request->method() === 'POST')
         ->map(fn (array $pair): ?string => $pair[0]->header('Idempotency-Key')[0] ?? null)
+        ->values()
         ->all();
     expect($keys)->toBe([$attempt->idempotency_key, $attempt->idempotency_key]);
 });
