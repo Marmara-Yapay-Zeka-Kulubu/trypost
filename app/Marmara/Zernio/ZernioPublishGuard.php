@@ -7,14 +7,15 @@ namespace App\Marmara\Zernio;
 use App\Exceptions\Social\ErrorCategory;
 use App\Marmara\Hooks\PublishGuardVerdict;
 use App\Marmara\Hooks\SocialAccountPublishGuard;
+use App\Marmara\Zernio\Exceptions\ZernioPublishException;
 use App\Models\Post;
 use Illuminate\Support\Facades\Cache;
 use Throwable;
 
 /**
- * A TikTok channel mapped to Zernio is checked by Zernio's account health,
- * not by the native TikTok token TryPost holds for it: the native token may
- * expire or lose its scopes without affecting the Zernio publish.
+ * A channel mapped to Zernio (TikTok, LinkedIn Page) is checked by Zernio's
+ * account health, not by the native token TryPost holds for it: the native
+ * token may expire or lose its scopes without affecting the Zernio publish.
  */
 class ZernioPublishGuard extends SocialAccountPublishGuard
 {
@@ -34,19 +35,22 @@ class ZernioPublishGuard extends SocialAccountPublishGuard
 
     public function check(Post $post): PublishGuardVerdict
     {
-        $zernioAccountId = $this->config->zernioAccountFor($post->socialAccount);
+        $account = $post->socialAccount;
+        $zernioAccountId = $this->config->zernioAccountFor($account);
 
         if ($zernioAccountId === null) {
             return parent::check($post);
         }
 
-        return match ($this->health($zernioAccountId)) {
+        $prefix = ZernioPublishException::prefix($account->platform->value);
+
+        return match ($this->health($zernioAccountId, ZernioConfig::zernioPlatform($account->platform))) {
             self::MISSING => PublishGuardVerdict::failed(
-                "TikTok (via Zernio): the Zernio account {$zernioAccountId} is not connected. Reconnect it in Zernio.",
+                "{$prefix}the Zernio account {$zernioAccountId} is not connected. Reconnect it in Zernio.",
                 $this->failureContext('zernio_account_missing'),
             ),
             self::UNHEALTHY => PublishGuardVerdict::failed(
-                "TikTok (via Zernio): the Zernio account {$zernioAccountId} needs to be reconnected in Zernio.",
+                "{$prefix}the Zernio account {$zernioAccountId} needs to be reconnected in Zernio.",
                 $this->failureContext('zernio_account_disconnected'),
             ),
             // Unknown (Zernio unreachable, key refused): the publisher reports it.
@@ -69,7 +73,7 @@ class ZernioPublishGuard extends SocialAccountPublishGuard
         Cache::forget(self::cacheKey($zernioAccountId));
     }
 
-    private function health(string $zernioAccountId): ?string
+    private function health(string $zernioAccountId, string $zernioPlatform): ?string
     {
         $cached = Cache::get(self::cacheKey($zernioAccountId));
 
@@ -77,7 +81,7 @@ class ZernioPublishGuard extends SocialAccountPublishGuard
             return $cached;
         }
 
-        $health = $this->fetchHealth($zernioAccountId);
+        $health = $this->fetchHealth($zernioAccountId, $zernioPlatform);
 
         if ($health !== null) {
             Cache::put(self::cacheKey($zernioAccountId), $health, self::CACHE_SECONDS);
@@ -86,10 +90,10 @@ class ZernioPublishGuard extends SocialAccountPublishGuard
         return $health;
     }
 
-    private function fetchHealth(string $zernioAccountId): ?string
+    private function fetchHealth(string $zernioAccountId, string $zernioPlatform): ?string
     {
         try {
-            $response = $this->client->listAccounts(['platform' => 'tiktok'], quick: true);
+            $response = $this->client->listAccounts(['platform' => $zernioPlatform], quick: true);
         } catch (Throwable) {
             return null;
         }

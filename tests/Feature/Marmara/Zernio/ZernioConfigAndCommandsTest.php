@@ -49,7 +49,7 @@ test('the configuration lists what an operator must fix', function () {
 
     expect($config->problems())->toBe([
         'ZERNIO_API_KEY is empty.',
-        'No TikTok account is mapped: set ZERNIO_TIKTOK_TRYPOST_ACCOUNT + ZERNIO_TIKTOK_ACCOUNT_ID, or ZERNIO_TIKTOK_ACCOUNTS.',
+        'No account is mapped: set ZERNIO_ACCOUNTS (or ZERNIO_TIKTOK_TRYPOST_ACCOUNT + ZERNIO_TIKTOK_ACCOUNT_ID).',
     ]);
 
     config()->set('marmara-zernio.api_key', 'not-a-key');
@@ -57,7 +57,7 @@ test('the configuration lists what an operator must fix', function () {
 
     expect($config->problems())->toBe([
         'ZERNIO_API_KEY does not look like a Zernio key (it starts with sk_).',
-        'Zernio account id for marmaraai should be a 24-character id, got abc.',
+        'Zernio account id for tiktok:marmaraai should be a 24-character id, got abc.',
     ]);
 
     config()->set('marmara-zernio.enabled', false);
@@ -81,10 +81,10 @@ test('marmara:zernio:accounts lists the connected Zernio accounts and their TryP
     ]);
 
     $this->artisan('marmara:zernio:accounts')
-        ->expectsOutputToContain('66b2e19d8c3f5a7e9d0b1c2d')
+        ->expectsOutputToContain('tiktok:@MarmaraAI')
         ->assertSuccessful();
 
-    Http::assertSent(fn ($request): bool => $request->url() === 'https://zernio.com/api/v1/accounts?platform=tiktok'
+    Http::assertSent(fn ($request): bool => $request->url() === 'https://zernio.com/api/v1/accounts'
         && $request->hasHeader('Authorization', 'Bearer sk_test_key'));
 });
 

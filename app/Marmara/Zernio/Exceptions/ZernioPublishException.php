@@ -9,15 +9,16 @@ use App\Exceptions\Social\SocialPublishException;
 use Illuminate\Http\Client\Response;
 
 /**
- * A TikTok publish Zernio refused or reported as failed. It is a
- * SocialPublishException, so PublishToSocialPlatform fails, waits for a limit
- * or reports it exactly as it does a native TikTok refusal.
+ * A publish Zernio refused or reported as failed (TikTok or LinkedIn Page).
+ * It is a SocialPublishException, so PublishToSocialPlatform fails, waits for
+ * a limit or reports it exactly as it does a native refusal. `$platform` is
+ * the TryPost platform value; it defaults to TikTok, the module's first one.
  *
  * @see https://docs.zernio.com/guides/error-handling
  */
 class ZernioPublishException extends SocialPublishException
 {
-    private const string PREFIX = 'TikTok (via Zernio): ';
+    private string $zernioPlatform = 'tiktok';
 
     /**
      * Zernio error codes caused by the connected account or its content,
@@ -33,7 +34,7 @@ class ZernioPublishException extends SocialPublishException
         'rate_limited',
     ];
 
-    public static function fromApiResponse(mixed $response): static
+    public static function fromApiResponse(mixed $response, string $platform = 'tiktok'): static
     {
         /** @var Response $response */
         $code = data_get($response->json(), 'code');
@@ -49,12 +50,12 @@ class ZernioPublishException extends SocialPublishException
             default => ErrorCategory::Unknown,
         };
 
-        $exception = new static(
-            userMessage: self::PREFIX.$message,
+        $exception = (new static(
+            userMessage: self::prefix($platform).$message,
             category: $category,
             platformErrorCode: $code ?? (string) $response->status(),
             rawResponse: $response->body(),
-        );
+        ))->onPlatform($platform);
 
         return $exception
             ->withNetworkReset($response)
@@ -62,18 +63,18 @@ class ZernioPublishException extends SocialPublishException
     }
 
     /**
-     * A TikTok target Zernio marked failed or cancelled.
+     * A platform target Zernio marked failed or cancelled.
      *
      * @param  array<string, mixed>  $target
      */
-    public static function fromFailedTarget(array $target, ?string $rawResponse = null): static
+    public static function fromFailedTarget(array $target, ?string $rawResponse = null, string $platform = 'tiktok'): static
     {
         $message = self::firstFilled(
             data_get($target, 'errorMessage'),
             data_get($target, 'error.message'),
             data_get($target, 'error'),
             data_get($target, 'platformError.message'),
-        ) ?? 'Zernio reported the TikTok publish as '.(data_get($target, 'status') ?: 'failed').'.';
+        ) ?? 'Zernio reported the publish as '.(data_get($target, 'status') ?: 'failed').'.';
 
         $errorCategory = strtolower((string) self::firstFilled(data_get($target, 'errorCategory'), ''));
 
@@ -85,37 +86,57 @@ class ZernioPublishException extends SocialPublishException
             default => ErrorCategory::Unknown,
         };
 
-        $exception = new static(
-            userMessage: self::PREFIX.$message,
+        $exception = (new static(
+            userMessage: self::prefix($platform).$message,
             category: $category,
             platformErrorCode: $errorCategory !== '' ? $errorCategory : null,
             rawResponse: $rawResponse,
-        );
+        ))->onPlatform($platform);
 
         $source = strtolower((string) self::firstFilled(data_get($target, 'errorSource'), ''));
 
         return $exception->asNetworkRejectionIf($source === 'user' || $source === 'platform');
     }
 
-    public static function misconfigured(string $problem): static
+    public static function misconfigured(string $problem, string $platform = 'tiktok'): static
     {
-        return new static(
-            userMessage: self::PREFIX.$problem,
+        return (new static(
+            userMessage: self::prefix($platform).$problem,
             category: ErrorCategory::ServerError,
-        );
+        ))->onPlatform($platform);
     }
 
-    public static function invalid(string $problem, ErrorCategory $category = ErrorCategory::MediaFormat): static
+    public static function invalid(string $problem, ErrorCategory $category = ErrorCategory::MediaFormat, string $platform = 'tiktok'): static
     {
-        return new static(
+        return (new static(
             userMessage: $problem,
             category: $category,
-        );
+        ))->onPlatform($platform);
     }
 
     public function platform(): string
     {
-        return 'tiktok';
+        return $this->zernioPlatform;
+    }
+
+    public function onPlatform(string $platform): static
+    {
+        $this->zernioPlatform = $platform;
+
+        return $this;
+    }
+
+    /**
+     * "TikTok (via Zernio): ", "LinkedIn (via Zernio): ".
+     */
+    public static function prefix(string $platform): string
+    {
+        $label = match ($platform) {
+            'linkedin', 'linkedin-page' => 'LinkedIn',
+            default => 'TikTok',
+        };
+
+        return "{$label} (via Zernio): ";
     }
 
     private static function firstFilled(mixed ...$values): ?string

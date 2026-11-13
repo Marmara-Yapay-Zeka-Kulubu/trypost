@@ -12,6 +12,7 @@ use App\Enums\Analytics\MetricPrecision;
 use App\Enums\Analytics\MetricTimeBasis;
 use App\Enums\Analytics\MetricUnit;
 use App\Enums\Analytics\PublicationContentType;
+use App\Enums\SocialAccount\Platform;
 use App\Exceptions\Analytics\AnalyticsCollectionException;
 use App\Marmara\Zernio\Exceptions\ZernioPublishException;
 use App\Marmara\Zernio\ZernioClient;
@@ -24,21 +25,21 @@ use Illuminate\Support\Facades\Cache;
 use Throwable;
 
 /**
- * Reads a TikTok account's posts, post metrics and followers from Zernio's
- * stored analytics. `GET /v1/analytics` lists the posts published through
- * Zernio and the ones Zernio syncs from TikTok (`source=all`: posts the club
- * published natively, before or without Zernio), up to ~12 months back and
- * at most 366 days per request.
+ * Reads a mapped account's posts, post metrics and followers from Zernio's
+ * stored analytics (TikTok, LinkedIn Page). `GET /v1/analytics` lists the
+ * posts published through Zernio and the ones Zernio syncs from the platform
+ * (`source=all`: posts the club published natively, before or without
+ * Zernio), up to ~12 months back and at most 366 days per request.
  *
  * @see https://docs.zernio.com/analytics/get-analytics
  * @see https://docs.zernio.com/accounts/get-follower-stats
  */
-class ZernioTikTokAnalytics
+class ZernioPostAnalytics
 {
     /** Zernio's maximum range for one analytics request. */
     public const int MAX_RANGE_DAYS = 365;
 
-    private const string CACHE_PREFIX = 'marmara-zernio:tiktok-analytics:';
+    private const string CACHE_PREFIX = 'marmara-zernio:post-analytics:';
 
     public function __construct(
         private readonly ZernioClient $client,
@@ -46,15 +47,15 @@ class ZernioTikTokAnalytics
     ) {}
 
     /**
-     * One page of the account's TikTok posts, newest first, published on or
-     * after `$since`. Each post's metrics are cached for the metrics read.
+     * One page of the account's posts, newest first, published on or after
+     * `$since`. Each post's metrics are cached for the metrics read.
      *
      * @return array{publications: list<DiscoveredPublication>, pages: int, skipped: int}
      */
     public function page(SocialAccount $account, string $zernioAccountId, CarbonImmutable $since, int $page): array
     {
         $response = $this->call(fn (): Response => $this->client->analytics([
-            'platform' => 'tiktok',
+            'platform' => ZernioConfig::zernioPlatform($account->platform),
             'accountId' => $zernioAccountId,
             'source' => 'all',
             'fromDate' => $since->toDateString(),
@@ -88,13 +89,13 @@ class ZernioTikTokAnalytics
     }
 
     /**
-     * The TikTok metrics of one video: from the last history page that listed
-     * it, else one `GET /v1/analytics?postId=` (a TikTok video id or a Zernio
-     * post id).
+     * The metrics of one post: from the last history page that listed it,
+     * else one `GET /v1/analytics?postId=` (the platform's post id or a
+     * Zernio post id).
      *
      * @return array<string, mixed>
      */
-    public function postAnalytics(string $zernioAccountId, string $postId): array
+    public function postAnalytics(Platform $platform, string $zernioAccountId, string $postId): array
     {
         $cached = Cache::get($this->cacheKey($zernioAccountId, $postId));
 
@@ -107,7 +108,7 @@ class ZernioTikTokAnalytics
             'accountId' => $zernioAccountId,
         ]), 'post analytics')->json();
 
-        $target = $this->platformEntry((array) data_get($body, 'platformAnalytics', []), $zernioAccountId);
+        $target = $this->platformEntry((array) data_get($body, 'platformAnalytics', []), ZernioConfig::zernioPlatform($platform), $zernioAccountId);
         $analytics = data_get($target, 'analytics') ?? data_get($body, 'analytics');
 
         if (! is_array($analytics)) {
@@ -156,17 +157,20 @@ class ZernioTikTokAnalytics
     }
 
     /**
-     * Zernio's post metrics as TryPost metric values. Views, likes, comments
-     * and shares are what every TikTok connection reports; the rest only come
-     * with Zernio's TikTok for Business connection and are 0 otherwise, so a
-     * 0 there means "not reported" and is left out.
+     * Zernio's post metrics as TryPost metric values (lifetime counts).
+     *
+     * TikTok: views, likes, comments and shares are what every TikTok
+     * connection reports; the rest only come with Zernio's TikTok for Business
+     * connection and are 0 otherwise, so a 0 there means "not reported" and is
+     * left out. LinkedIn pages: impressions, unique impressions (reach),
+     * reactions, comments, reshares and clicks; video views when reported.
      *
      * @param  array<string, mixed>  $analytics
      * @return list<MetricValue>
      */
-    public function metrics(array $analytics): array
+    public function metrics(Platform $platform, array $analytics): array
     {
-        $metrics = [
+        $metrics = $platform === Platform::TikTok ? [
             $this->metric(MetricKey::Views, $analytics, 'views'),
             $this->metric(MetricKey::Reactions, $analytics, 'likes'),
             $this->metric(MetricKey::Comments, $analytics, 'comments'),
@@ -178,6 +182,14 @@ class ZernioTikTokAnalytics
             $this->metric(MetricKey::ProfileVisits, $analytics, 'profileViews', onlyPositive: true),
             $this->metric(MetricKey::WatchTimeMilliseconds, $analytics, 'igReelsVideoViewTotalTime', MetricUnit::Milliseconds, onlyPositive: true),
             $this->metric(MetricKey::AverageWatchTimeMilliseconds, $analytics, 'igReelsAvgWatchTime', MetricUnit::Milliseconds, onlyPositive: true),
+        ] : [
+            $this->metric(MetricKey::Impressions, $analytics, 'impressions'),
+            $this->metric(MetricKey::Reach, $analytics, 'reach'),
+            $this->metric(MetricKey::Reactions, $analytics, 'likes'),
+            $this->metric(MetricKey::Comments, $analytics, 'comments'),
+            $this->metric(MetricKey::Shares, $analytics, 'shares'),
+            $this->metric(MetricKey::Clicks, $analytics, 'clicks'),
+            $this->metric(MetricKey::Views, $analytics, 'views', onlyPositive: true),
         ];
 
         return array_values(array_filter($metrics, fn (?MetricValue $metric): bool => $metric !== null));
@@ -188,19 +200,22 @@ class ZernioTikTokAnalytics
      */
     private function publication(SocialAccount $account, string $zernioAccountId, array $row, CarbonImmutable $since): ?DiscoveredPublication
     {
-        $entry = $this->platformEntry((array) data_get($row, 'platforms', []), $zernioAccountId);
+        $tiktok = $account->platform === Platform::TikTok;
+        $entry = $this->platformEntry((array) data_get($row, 'platforms', []), ZernioConfig::zernioPlatform($account->platform), $zernioAccountId);
         $url = data_get($entry, 'platformPostUrl') ?? data_get($row, 'platformPostUrl');
-        $videoId = $this->videoId(data_get($entry, 'platformPostId'), $url);
+        $postId = $tiktok
+            ? $this->videoId(data_get($entry, 'platformPostId'), $url)
+            : $this->platformPostId(data_get($entry, 'platformPostId'));
         $publishedAt = $this->date(data_get($row, 'publishedAt'));
 
-        if ($videoId === null || $publishedAt === null || $publishedAt->lessThan($since->startOfDay())) {
+        if ($postId === null || $publishedAt === null || $publishedAt->lessThan($since->startOfDay())) {
             return null;
         }
 
         $analytics = data_get($entry, 'analytics') ?? data_get($row, 'analytics');
 
         if (is_array($analytics) && $this->config->analyticsCacheMinutes() > 0) {
-            Cache::put($this->cacheKey($zernioAccountId, $videoId), $analytics, now()->addMinutes($this->config->analyticsCacheMinutes()));
+            Cache::put($this->cacheKey($zernioAccountId, $postId), $analytics, now()->addMinutes($this->config->analyticsCacheMinutes()));
         }
 
         $mediaType = data_get($row, 'mediaType');
@@ -208,21 +223,19 @@ class ZernioTikTokAnalytics
             'image' => PublicationContentType::Image,
             'carousel' => PublicationContentType::Carousel,
             'video' => PublicationContentType::Video,
+            'text' => $tiktok ? null : PublicationContentType::Text,
             default => null,
         };
         $thumbnail = data_get($row, 'thumbnailUrl');
-        $username = ltrim((string) $account->username, '@');
 
         return new DiscoveredPublication(
-            providerPostId: $videoId,
+            providerPostId: $postId,
             publishedAt: $publishedAt,
-            contentType: $contentType ?? PublicationContentType::Video,
-            providerContentType: is_string($mediaType) ? $mediaType : 'video',
-            permalink: is_string($url) && $url !== ''
-                ? $url
-                : ($username !== '' ? "https://www.tiktok.com/@{$username}/video/{$videoId}" : null),
+            contentType: $contentType ?? ($tiktok ? PublicationContentType::Video : PublicationContentType::Unknown),
+            providerContentType: is_string($mediaType) ? $mediaType : ($tiktok ? 'video' : null),
+            permalink: is_string($url) && $url !== '' ? $url : $this->permalink($account, $postId),
             excerpt: is_string(data_get($row, 'content')) ? data_get($row, 'content') : null,
-            // Zernio serves TikTok covers from its own storage: the URL does not expire.
+            // Zernio serves covers from its own storage: the URL does not expire.
             previewMetadata: is_string($thumbnail) && $thumbnail !== '' ? ['thumbnail_url' => $thumbnail, 'expires_at' => null] : null,
             providerMetadata: array_filter([
                 'zernio_post_id' => data_get($row, '_id'),
@@ -232,21 +245,41 @@ class ZernioTikTokAnalytics
         );
     }
 
+    private function permalink(SocialAccount $account, string $postId): ?string
+    {
+        if ($account->platform !== Platform::TikTok) {
+            return str_starts_with($postId, 'urn:li:') ? "https://www.linkedin.com/feed/update/{$postId}" : null;
+        }
+
+        $username = ltrim((string) $account->username, '@');
+
+        return $username !== '' ? "https://www.tiktok.com/@{$username}/video/{$postId}" : null;
+    }
+
     /**
-     * The TikTok copy of a post for this account: Zernio lists one entry per
-     * platform the post went to.
+     * A LinkedIn post URN (urn:li:share:…, urn:li:ugcPost:…), the id TryPost's
+     * LinkedIn publisher stores too.
+     */
+    private function platformPostId(mixed $value): ?string
+    {
+        return is_scalar($value) && trim((string) $value) !== '' ? trim((string) $value) : null;
+    }
+
+    /**
+     * The copy of a post on this platform and account: Zernio lists one entry
+     * per platform the post went to.
      *
      * @param  array<int, mixed>  $entries
      * @return array<string, mixed>|null
      */
-    private function platformEntry(array $entries, string $zernioAccountId): ?array
+    private function platformEntry(array $entries, string $zernioPlatform, string $zernioAccountId): ?array
     {
-        $tiktok = array_values(array_filter(
+        $copies = array_values(array_filter(
             $entries,
-            fn (mixed $entry): bool => is_array($entry) && in_array(data_get($entry, 'platform'), ['tiktok', null], true),
+            fn (mixed $entry): bool => is_array($entry) && in_array(data_get($entry, 'platform'), [$zernioPlatform, null], true),
         ));
 
-        foreach ($tiktok as $entry) {
+        foreach ($copies as $entry) {
             $accountId = data_get($entry, 'accountId');
             $accountId = is_array($accountId) ? (data_get($accountId, '_id') ?? data_get($accountId, 'id')) : $accountId;
 
@@ -255,7 +288,7 @@ class ZernioTikTokAnalytics
             }
         }
 
-        return $tiktok[0] ?? null;
+        return $copies[0] ?? null;
     }
 
     private function videoId(mixed $platformPostId, mixed $url): ?string

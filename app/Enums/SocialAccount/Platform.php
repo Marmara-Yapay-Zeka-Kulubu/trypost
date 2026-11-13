@@ -7,6 +7,7 @@ namespace App\Enums\SocialAccount;
 use App\Enums\Media\Type as MediaType;
 use App\Enums\TikTok\PrivacyLevel;
 use App\Enums\YouTube\Category;
+use App\Marmara\Hooks\AnalyticsPlatformGate;
 use App\Support\Hashtags;
 use App\Support\Social\XPoll;
 use Illuminate\Support\Str;
@@ -47,7 +48,9 @@ enum Platform: string
     public function isIncludedInAnalytics(): bool
     {
         return match ($this) {
-            self::LinkedIn, self::LinkedInPage, self::Telegram,
+            // Marmara AI fork hook (app/Marmara/README.md): LinkedIn pages count while a module measures them.
+            self::LinkedInPage => app(AnalyticsPlatformGate::class)->includes($this),
+            self::LinkedIn, self::Telegram,
             self::Discord, self::GoogleBusiness => false,
             default => true,
         };

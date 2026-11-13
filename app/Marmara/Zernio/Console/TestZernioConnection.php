@@ -18,7 +18,8 @@ class TestZernioConnection extends Command
 
     public function handle(ZernioClient $client, ZernioConfig $config): int
     {
-        $this->line('Zernio publishing: '.($config->enabled() ? 'enabled' : 'disabled (ZERNIO_ENABLED=false, TikTok publishes natively)'));
+        $this->line('Zernio publishing: '.($config->enabled() ? 'enabled' : 'disabled (ZERNIO_ENABLED=false, every channel publishes natively)'));
+        $this->line('Zernio analytics: '.($config->analyticsEnabled() ? 'enabled' : 'disabled'));
         $this->line('Base URL: '.$config->baseUrl());
         $this->line('Media mode: '.$config->mediaMode());
 
@@ -27,7 +28,7 @@ class TestZernioConnection extends Command
         }
 
         try {
-            $response = $client->listAccounts(['platform' => 'tiktok']);
+            $response = $client->listAccounts();
         } catch (ZernioPublishException $e) {
             $this->error($e->userMessage);
 
@@ -59,12 +60,14 @@ class TestZernioConnection extends Command
 
         $missing = false;
 
-        foreach ($config->tiktokAccounts() as $trypostAccount => $zernioAccountId) {
-            if (in_array($zernioAccountId, $zernioIds, true)) {
-                $this->info("TryPost {$trypostAccount} -> Zernio TikTok account {$zernioAccountId}: connected.");
-            } else {
-                $this->error("TryPost {$trypostAccount} -> Zernio account {$zernioAccountId}: not among this key's TikTok accounts.");
-                $missing = true;
+        foreach ($config->allAccounts() as $platform => $accounts) {
+            foreach ($accounts as $trypostAccount => $zernioAccountId) {
+                if (in_array($zernioAccountId, $zernioIds, true)) {
+                    $this->info("TryPost {$platform}:{$trypostAccount} -> Zernio account {$zernioAccountId}: connected.");
+                } else {
+                    $this->error("TryPost {$platform}:{$trypostAccount} -> Zernio account {$zernioAccountId}: not among this key's accounts.");
+                    $missing = true;
+                }
             }
         }
 

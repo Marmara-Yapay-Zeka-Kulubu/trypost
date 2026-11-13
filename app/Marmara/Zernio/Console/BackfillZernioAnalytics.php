@@ -14,11 +14,10 @@ use App\Enums\Analytics\MetricPrecision;
 use App\Enums\Analytics\ObservationProvenance;
 use App\Enums\Analytics\SyncCollector;
 use App\Enums\Analytics\SyncStatus;
-use App\Enums\SocialAccount\Platform;
 use App\Enums\SocialAccount\Status as AccountStatus;
 use App\Exceptions\Analytics\AnalyticsCollectionException;
 use App\Jobs\Post\ImportExternalPostMedia;
-use App\Marmara\Zernio\Analytics\ZernioTikTokAnalytics;
+use App\Marmara\Zernio\Analytics\ZernioPostAnalytics;
 use App\Marmara\Zernio\ZernioConfig;
 use App\Models\AnalyticsAccountDailySnapshot;
 use App\Models\AnalyticsPublication;
@@ -30,9 +29,9 @@ use Illuminate\Console\Command;
 use Illuminate\Http\Client\ConnectionException;
 
 /**
- * One-off historical import for the Zernio-mapped TikTok accounts: restarts
- * the account's publication backfill (TryPost's own sync state) from
- * `--days` ago and runs it here page by page through the normal pipeline
+ * One-off historical import for the Zernio-mapped channels (TikTok, LinkedIn
+ * Page): restarts the account's publication backfill (TryPost's own sync
+ * state) from `--days` ago and runs it here page by page through the normal pipeline
  * (upsert, first metric reads queued, external posts imported into Sent),
  * then fills the daily follower history Zernio holds.
  */
@@ -48,14 +47,14 @@ class BackfillZernioAnalytics extends Command
         {--import-limit= : Newest unlinked publications to import into Sent (default ZERNIO_ANALYTICS_IMPORT_LIMIT)}
         {--skip-followers : Do not write the daily follower history}';
 
-    protected $description = 'Import the TikTok post history, metrics and follower history of the Zernio-mapped accounts';
+    protected $description = 'Import the post history, metrics and follower history of the Zernio-mapped channels';
 
     public function handle(
         ZernioConfig $config,
         AdvanceAnalyticsSyncState $sync,
         PublicationHistoryCollectorFactory $collectors,
         QueuePublicationMetricsForPage $metrics,
-        ZernioTikTokAnalytics $analytics,
+        ZernioPostAnalytics $analytics,
         WriteAccountDailySnapshot $writer,
         ResolveAnalyticsAccountKey $accountKeys,
     ): int {
@@ -70,7 +69,7 @@ class BackfillZernioAnalytics extends Command
         $only = ltrim(trim((string) $this->option('account')), '@');
 
         $accounts = SocialAccount::query()
-            ->where('platform', Platform::TikTok)
+            ->whereIn('platform', ZernioConfig::supportedPlatforms())
             ->get()
             ->filter(fn (SocialAccount $account): bool => $config->analyticsAccountFor($account) !== null)
             ->filter(fn (SocialAccount $account): bool => $only === ''
@@ -79,13 +78,13 @@ class BackfillZernioAnalytics extends Command
             ->values();
 
         if ($accounts->isEmpty()) {
-            $this->warn('No TryPost TikTok channel is mapped to a Zernio account'.($only !== '' ? " for {$only}" : '').'.');
+            $this->warn('No TryPost channel is mapped to a Zernio account'.($only !== '' ? " for {$only}" : '').'.');
 
             return self::FAILURE;
         }
 
-        if ($days > ZernioTikTokAnalytics::MAX_RANGE_DAYS) {
-            $this->warn('Zernio keeps about 12 months of TikTok posts: older posts are not available.');
+        if ($days > ZernioPostAnalytics::MAX_RANGE_DAYS) {
+            $this->warn('Zernio keeps about 12 months of synced posts: older posts are not available.');
         }
 
         $rows = [];
@@ -244,7 +243,7 @@ class BackfillZernioAnalytics extends Command
         SocialAccount $account,
         string $zernioAccountId,
         int $days,
-        ZernioTikTokAnalytics $analytics,
+        ZernioPostAnalytics $analytics,
         WriteAccountDailySnapshot $writer,
         ResolveAnalyticsAccountKey $accountKeys,
     ): int {

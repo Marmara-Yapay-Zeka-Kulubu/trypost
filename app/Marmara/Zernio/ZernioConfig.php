@@ -8,8 +8,9 @@ use App\Enums\SocialAccount\Platform;
 use App\Models\SocialAccount;
 
 /**
- * Reads config/marmara-zernio.php. A TryPost TikTok account publishes through
- * Zernio only when the module is enabled and the account is mapped.
+ * Reads config/marmara-zernio.php. A TryPost account publishes (and, with
+ * analytics on, is measured) through Zernio only when the module is enabled
+ * and the account is in its platform's mapping.
  */
 class ZernioConfig
 {
@@ -92,27 +93,49 @@ class ZernioConfig
     }
 
     /**
-     * The Zernio account a TryPost TikTok account's analytics come from, or
-     * null when its analytics stay native.
+     * The Zernio account a mapped TryPost account's analytics come from, or
+     * null when its analytics stay with TryPost's own collectors.
      */
     public function analyticsAccountFor(?SocialAccount $account): ?string
     {
-        if (! $this->analyticsEnabled() || $account?->platform !== Platform::TikTok) {
-            return null;
-        }
-
-        return $this->zernioAccountFor($account);
+        return $this->analyticsEnabled() ? $this->zernioAccountFor($account) : null;
     }
 
     /**
+     * The TryPost platforms this module can route through Zernio.
+     *
+     * @return list<Platform>
+     */
+    public static function supportedPlatforms(): array
+    {
+        return [Platform::TikTok, Platform::LinkedInPage];
+    }
+
+    /**
+     * Zernio's name for a TryPost platform (its `platform` field and filter).
+     */
+    public static function zernioPlatform(Platform $platform): string
+    {
+        return match ($platform) {
+            Platform::LinkedIn, Platform::LinkedInPage => 'linkedin',
+            default => $platform->value,
+        };
+    }
+
+    /**
+     * TryPost account => Zernio account id of one platform: the
+     * `ZERNIO_ACCOUNTS` entries for it and, for TikTok, the older
+     * `ZERNIO_TIKTOK_*` variables. A platform without entries publishes and
+     * collects natively.
+     *
      * @return array<string, string>
      */
-    public function tiktokAccounts(): array
+    public function accounts(Platform $platform): array
     {
-        $accounts = config('marmara-zernio.tiktok.accounts', []);
+        $accounts = (array) config('marmara-zernio.accounts.'.$platform->value, []);
 
-        if (! is_array($accounts)) {
-            return [];
+        if ($platform === Platform::TikTok) {
+            $accounts = [...$accounts, ...(array) config('marmara-zernio.tiktok.accounts', [])];
         }
 
         return array_filter(
@@ -123,12 +146,90 @@ class ZernioConfig
     }
 
     /**
-     * The Zernio account id a TryPost TikTok account publishes through, or
-     * null when it keeps publishing natively.
+     * `ZERNIO_ACCOUNTS`: comma-separated `platform:trypostAccount=zernioId`
+     * entries, grouped by platform (lower case). Malformed entries are skipped.
+     *
+     * @return array<string, array<string, string>>
+     */
+    public static function parseAccounts(string $value): array
+    {
+        $mapped = [];
+
+        foreach (explode(',', $value) as $entry) {
+            [$platform, $pair] = array_pad(array_map('trim', explode(':', $entry, 2)), 2, '');
+
+            foreach (self::parsePairs($pair) as $trypostAccount => $zernioAccount) {
+                if ($platform !== '') {
+                    $mapped[strtolower($platform)][$trypostAccount] = $zernioAccount;
+                }
+            }
+        }
+
+        return $mapped;
+    }
+
+    /**
+     * Comma-separated `trypostAccount=zernioId` pairs (`ZERNIO_TIKTOK_ACCOUNTS`).
+     *
+     * @return array<string, string>
+     */
+    public static function parsePairs(string $value): array
+    {
+        $pairs = [];
+
+        foreach (explode(',', $value) as $pair) {
+            [$trypostAccount, $zernioAccount] = array_pad(array_map('trim', explode('=', $pair, 2)), 2, '');
+
+            if ($trypostAccount !== '' && $zernioAccount !== '') {
+                $pairs[$trypostAccount] = $zernioAccount;
+            }
+        }
+
+        return $pairs;
+    }
+
+    /**
+     * Every mapping, by TryPost platform value, including entries for a
+     * platform the module does not support (reported by problems()).
+     *
+     * @return array<string, array<string, string>>
+     */
+    public function allAccounts(): array
+    {
+        $all = [];
+
+        foreach (array_keys((array) config('marmara-zernio.accounts', [])) as $platform) {
+            $resolved = Platform::tryFrom((string) $platform);
+            $all[(string) $platform] = $resolved ? $this->accounts($resolved) : array_filter((array) config("marmara-zernio.accounts.{$platform}", []), 'is_string');
+        }
+
+        $all[Platform::TikTok->value] = $this->accounts(Platform::TikTok);
+
+        return array_filter($all);
+    }
+
+    public function hasAccounts(Platform $platform): bool
+    {
+        return $this->enabled() && in_array($platform, self::supportedPlatforms(), true) && $this->accounts($platform) !== [];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function tiktokAccounts(): array
+    {
+        return $this->accounts(Platform::TikTok);
+    }
+
+    /**
+     * The Zernio account a TryPost account publishes through, or null when
+     * it keeps TryPost's native path: the module is off, the platform is not
+     * one the module supports, or the account is not in that platform's
+     * mapping. Removing a mapping moves the channel back to the native path.
      */
     public function zernioAccountFor(?SocialAccount $account): ?string
     {
-        if (! $this->enabled() || $account === null) {
+        if (! $this->enabled() || $account === null || ! in_array($account->platform, self::supportedPlatforms(), true)) {
             return null;
         }
 
@@ -138,7 +239,7 @@ class ZernioConfig
             ltrim((string) $account->username, '@'),
         ], fn (string $value): bool => $value !== '');
 
-        foreach ($this->tiktokAccounts() as $key => $zernioAccountId) {
+        foreach ($this->accounts($account->platform) as $key => $zernioAccountId) {
             $key = ltrim(trim($key), '@');
 
             foreach ($candidates as $candidate) {
@@ -176,13 +277,25 @@ class ZernioConfig
             $problems[] = 'ZERNIO_BASE_URL must be an https:// URL.';
         }
 
-        if ($this->tiktokAccounts() === []) {
-            $problems[] = 'No TikTok account is mapped: set ZERNIO_TIKTOK_TRYPOST_ACCOUNT + ZERNIO_TIKTOK_ACCOUNT_ID, or ZERNIO_TIKTOK_ACCOUNTS.';
+        $all = $this->allAccounts();
+
+        if ($all === []) {
+            $problems[] = 'No account is mapped: set ZERNIO_ACCOUNTS (or ZERNIO_TIKTOK_TRYPOST_ACCOUNT + ZERNIO_TIKTOK_ACCOUNT_ID).';
         }
 
-        foreach ($this->tiktokAccounts() as $trypostAccount => $zernioAccountId) {
-            if (preg_match('/^[a-f0-9]{24}$/i', $zernioAccountId) !== 1) {
-                $problems[] = "Zernio account id for {$trypostAccount} should be a 24-character id, got {$zernioAccountId}.";
+        $supported = array_map(fn (Platform $platform): string => $platform->value, self::supportedPlatforms());
+
+        foreach ($all as $platform => $accounts) {
+            if (! in_array($platform, $supported, true)) {
+                $problems[] = "ZERNIO_ACCOUNTS: {$platform} is not supported (use ".implode(', ', $supported).').';
+
+                continue;
+            }
+
+            foreach ($accounts as $trypostAccount => $zernioAccountId) {
+                if (preg_match('/^[a-f0-9]{24}$/i', $zernioAccountId) !== 1) {
+                    $problems[] = "Zernio account id for {$platform}:{$trypostAccount} should be a 24-character id, got {$zernioAccountId}.";
+                }
             }
         }
 

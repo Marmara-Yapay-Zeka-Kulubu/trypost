@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Marmara\Zernio\Analytics\Collectors;
 
 use App\Dto\Analytics\AccountDailyObservation;
-use App\Marmara\Zernio\Analytics\ZernioTikTokAnalytics;
+use App\Marmara\Zernio\Analytics\ZernioPostAnalytics;
 use App\Marmara\Zernio\ZernioConfig;
 use App\Models\SocialAccount;
 use App\Services\Analytics\Collectors\Followers\TikTokFollowerCollector;
@@ -19,7 +19,7 @@ class ZernioTikTokFollowerCollector extends TikTokFollowerCollector
 {
     public function __construct(
         private readonly ZernioConfig $config,
-        private readonly ZernioTikTokAnalytics $analytics,
+        private readonly ZernioPostAnalytics $analytics,
     ) {}
 
     public function collect(SocialAccount $account, CarbonImmutable $date): AccountDailyObservation

@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use App\Marmara\Zernio\ZernioConfig;
+
 /*
 |--------------------------------------------------------------------------
 | Marmara AI fork: TikTok publishing through Zernio
@@ -9,20 +11,16 @@ declare(strict_types=1);
 |
 | Owned by the App\Marmara\Zernio module (see app/Marmara/README.md), not by
 | upstream TryPost. With `enabled` off nothing in TryPost changes. With it on,
-| TikTok posts of the mapped TryPost accounts are published through Zernio's
-| audited TikTok app instead of TryPost's own TikTok app.
+| posts of the mapped TryPost accounts (TikTok, LinkedIn Page) are published
+| through Zernio's audited apps instead of TryPost's own apps.
 |
 */
 
-$accounts = [];
+// ZERNIO_ACCOUNTS="tiktok:marmaraai=<zernio id>,linkedin-page:<trypost account>=<zernio id>"
+$mapped = ZernioConfig::parseAccounts((string) env('ZERNIO_ACCOUNTS', ''));
 
-foreach (explode(',', (string) env('ZERNIO_TIKTOK_ACCOUNTS', '')) as $pair) {
-    [$trypostAccount, $zernioAccount] = array_pad(array_map('trim', explode('=', $pair, 2)), 2, '');
-
-    if ($trypostAccount !== '' && $zernioAccount !== '') {
-        $accounts[$trypostAccount] = $zernioAccount;
-    }
-}
+// Older TikTok-only variables, still read.
+$accounts = ZernioConfig::parsePairs((string) env('ZERNIO_TIKTOK_ACCOUNTS', ''));
 
 if (filled(env('ZERNIO_TIKTOK_TRYPOST_ACCOUNT')) && filled(env('ZERNIO_TIKTOK_ACCOUNT_ID'))) {
     $accounts[trim((string) env('ZERNIO_TIKTOK_TRYPOST_ACCOUNT'))] = trim((string) env('ZERNIO_TIKTOK_ACCOUNT_ID'));
@@ -37,6 +35,15 @@ return [
     'base_url' => rtrim((string) env('ZERNIO_BASE_URL', 'https://zernio.com/api/v1'), '/'),
 
     'timeout' => (int) env('ZERNIO_TIMEOUT', 120),
+
+    /*
+     * TryPost platform value => [TryPost account => Zernio account id], from
+     * ZERNIO_ACCOUNTS. Supported: tiktok, linkedin-page. The TryPost account
+     * is the social account id (UUID), the username (with or without @) or
+     * the platform user id. A channel not listed (or whose entry is removed)
+     * goes back to TryPost's native publishing and analytics.
+     */
+    'accounts' => $mapped,
 
     'tiktok' => [
 

@@ -5,8 +5,9 @@ declare(strict_types=1);
 namespace App\Marmara\Zernio\Analytics\Collectors;
 
 use App\Dto\Analytics\PublicationMetricObservation;
+use App\Enums\SocialAccount\Platform;
 use App\Exceptions\Analytics\AnalyticsCollectionException;
-use App\Marmara\Zernio\Analytics\ZernioTikTokAnalytics;
+use App\Marmara\Zernio\Analytics\ZernioPostAnalytics;
 use App\Marmara\Zernio\ZernioConfig;
 use App\Marmara\Zernio\ZernioTikTokPublisher;
 use App\Models\AnalyticsPublication;
@@ -22,7 +23,7 @@ class ZernioTikTokPublicationMetricsCollector extends TikTokPublicationMetricsCo
 {
     public function __construct(
         private readonly ZernioConfig $config,
-        private readonly ZernioTikTokAnalytics $analytics,
+        private readonly ZernioPostAnalytics $analytics,
     ) {}
 
     public function collect(AnalyticsPublication $publication, CarbonImmutable $date): PublicationMetricObservation
@@ -44,7 +45,7 @@ class ZernioTikTokPublicationMetricsCollector extends TikTokPublicationMetricsCo
             return parent::collect($publication, $date);
         }
 
-        $metrics = $this->analytics->metrics($this->analytics->postAnalytics($zernioAccountId, $postId));
+        $metrics = $this->analytics->metrics(Platform::TikTok, $this->analytics->postAnalytics(Platform::TikTok, $zernioAccountId, $postId));
 
         return $this->observation($date, $this->withEngagements($metrics));
     }

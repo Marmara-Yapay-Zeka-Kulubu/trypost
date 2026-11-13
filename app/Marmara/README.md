@@ -8,13 +8,16 @@ The module lives under `app/` (namespace `App\Marmara\...`) rather than as a
 composer path package: `App\` is already autoloaded, so nothing changes in
 `composer.json` or `composer.lock`, two files upstream edits all the time.
 
-## Zernio: public TikTok publishing
+## Zernio: TikTok and LinkedIn page publishing and analytics
 
 TikTok refused the club's own TikTok app for production ("personal or internal
 use not eligible"), so TryPost's native Content Posting API publishing can only
 post privately. This module publishes TikTok posts through
 [Zernio](https://docs.zernio.com) (formerly Late / getlate.dev), whose TikTok
-app is audited for public posting.
+app is audited for public posting. The club's LinkedIn app has no Community
+Management API access either, so a LinkedIn company page can be published
+(and measured) through Zernio the same way. Each channel is switched by its
+own mapping (see "Per-platform switch" below).
 
 ### Files
 
@@ -22,6 +25,10 @@ app is audited for public posting.
 | --- | --- |
 | `app/Marmara/Zernio/ZernioServiceProvider.php` | Rebinds `TikTokPublisher` in the container, registers the commands |
 | `app/Marmara/Zernio/ZernioTikTokPublisher.php` | Extends `TikTokPublisher`; publishes mapped accounts through Zernio, the rest natively |
+| `app/Marmara/Zernio/ZernioLinkedInPagePublisher.php` | Extends `LinkedInPagePublisher`; same for mapped LinkedIn company pages |
+| `app/Marmara/Zernio/Publishing/ZernioPostFlow.php` | The shared publish flow: attempt row, Idempotency-Key, reference tag, status polling, lost-create recovery |
+| `app/Marmara/Zernio/Publishing/ZernioChannel.php` + `ZernioTikTokChannel.php`, `ZernioLinkedInPageChannel.php` | Per-platform payload (media rules, settings) and result (post id, URL) |
+| `app/Marmara/Zernio/Publishing/ZernioMediaHost.php` | Media URL for Zernio: TryPost's public URL or a presigned upload |
 | `app/Marmara/Zernio/ZernioTikTokPayload.php` | TryPost TikTok meta to Zernio `tiktokSettings` |
 | `app/Marmara/Zernio/ZernioClient.php` | HTTP client (Bearer API key) |
 | `app/Marmara/Zernio/ZernioConfig.php` | Reads `config/marmara-zernio.php`, account mapping, config checks |
@@ -31,9 +38,11 @@ app is audited for public posting.
 | `app/Marmara/Hooks/SocialAccountPublishGuard.php`, `PublishGuardVerdict.php` | The publish job's channel-check hook; the default keeps upstream behaviour |
 | `app/Marmara/Zernio/Exceptions/ZernioPublishException.php` | A `SocialPublishException`, so the publish job fails, waits or reports it like a native refusal |
 | `app/Marmara/Zernio/Console/*` | `marmara:zernio:accounts`, `marmara:zernio:test`, `marmara:zernio:release {post}`, `marmara:zernio:resolve-video-ids` (scheduled every 15 min by the provider), `marmara:zernio:analytics-backfill` |
-| `app/Marmara/Zernio/Analytics/ZernioTikTokAnalytics.php` | Reads a TikTok account's post list, post metrics and followers from Zernio's stored analytics; maps metrics |
+| `app/Marmara/Zernio/Analytics/ZernioPostAnalytics.php` | Reads a TikTok account's post list, post metrics and followers from Zernio's stored analytics; maps metrics |
 | `app/Marmara/Zernio/Analytics/ZernioAnalyticsResponse.php` | Zernio HTTP answers as `AnalyticsCollectionException` categories (429 with Retry-After / `details.retryAfterSeconds`) |
-| `app/Marmara/Zernio/Analytics/Collectors/*` | Subclasses of TryPost's three TikTok collectors (publications, metrics, followers), rebound by the provider |
+| `app/Marmara/Zernio/Analytics/Collectors/*` | Subclasses of TryPost's three TikTok collectors (publications, metrics, followers), and the three LinkedIn page collectors TryPost lacks |
+| `app/Marmara/Zernio/Analytics/Factories/*` | Subclasses of TryPost's three collector factories that add LinkedIn pages |
+| `app/Marmara/Zernio/Analytics/ZernioAnalyticsPlatformGate.php`, `app/Marmara/Hooks/AnalyticsPlatformGate.php` | The analytics platform hook (below); the default keeps upstream behaviour |
 | `config/marmara-zernio.php` | Module config (env below) |
 | `tests/Feature/Marmara/Zernio/*` | Pest tests |
 | `marmara/zernio.env.example` | Env block for the stage/production `.env` |
@@ -57,6 +66,7 @@ that column.
 | `bootstrap/providers.php` | 5, 14-15 | `use App\Marmara\Zernio\ZernioServiceProvider;` and the provider in the list |
 | `app/Jobs/PublishToSocialPlatform.php` | 18, 100-107, 109, 115, 124 | `use App\Marmara\Hooks\SocialAccountPublishGuard;`; in `handle()` a commented call `app(SocialAccountPublishGuard::class)->check($this->post)` that can fail the post, and `$guard->checksNativeConnection &&` in front of the three native checks (disconnected, token expired, missing scopes) |
 
+| `app/Enums/SocialAccount/Platform.php` | 10, 51-53 | `use App\Marmara\Hooks\AnalyticsPlatformGate;`; in `isIncludedInAnalytics()` a commented arm `self::LinkedInPage => app(AnalyticsPlatformGate::class)->includes($this)` (LinkedInPage taken out of the `false` arm). The default gate answers false, i.e. upstream behaviour |
 | `app/Jobs/ResolveTikTokVideoId.php` | 8, 54-57 | `use App\Marmara\Hooks\SocialAccountPublishGuard;`; in `handle()` a commented `requiresConnectedChannel($this->post)` call, and the "channel connected" check only applies when it is true |
 
 Those are the only upstream files edited. On a merge conflict in
@@ -70,6 +80,14 @@ them, on these upstream contracts. If a merge changes one, re-check the module:
   `ZernioTikTokPublisher` when `ZERNIO_ENABLED=true`, else the plain native
   publisher. If upstream ever builds the publisher with `new`, add back a
   container call there and list it here.
+- `getPublisher()` resolves `app(LinkedInPagePublisher::class)` (line ~576)
+  the same way; the provider binds it to `ZernioLinkedInPagePublisher` when
+  `ZERNIO_ENABLED=true`. It relies on `publish(Post): array` and the
+  protected `validateContentLength()`.
+- The analytics jobs get `PublicationHistoryCollectorFactory`,
+  `PublicationMetricsCollectorFactory` and `FollowerCollectorFactory` by
+  injection or `app()`, and the factories resolve each TikTok collector with
+  `app()`: the provider rebinds all six.
 - `app/Jobs/ResolveTikTokVideoId.php` `handle(TikTokPublisher $publisher, ...)`
   (line ~50) gets the same binding, so `publicVideoId()` resolves video ids of
   Zernio posts.
@@ -190,6 +208,91 @@ enabled, not cached: Zernio's Business app connections publish videos public
 only, so that option is always valid. The native app's SELF_ONLY-only answer
 is never used for a mapped channel.
 
+### Per-platform switch (mapping)
+
+A channel goes through Zernio only while it is in its platform's mapping:
+
+    ZERNIO_ACCOUNTS="tiktok:marmaraai=6af764170fb0c006b7a777e1,linkedin-page:<TryPost channel id or username>=<Zernio id>"
+
+Platforms: `tiktok`, `linkedin-page` (the TryPost platform values; a personal
+`linkedin` profile is not supported and is reported by `marmara:zernio:test`).
+The TryPost side is the channel id (UUID), the username or the platform user
+id. The older `ZERNIO_TIKTOK_TRYPOST_ACCOUNT` + `ZERNIO_TIKTOK_ACCOUNT_ID` and
+`ZERNIO_TIKTOK_ACCOUNTS` variables still map TikTok (merged with the
+`tiktok:` entries), so production needs no change for TikTok.
+
+A mapped channel publishes through Zernio, is checked by Zernio's account
+health instead of its native token, and (with `ZERNIO_ANALYTICS_ENABLED`, on
+by default) is measured through Zernio. An unmapped channel of the same
+platform stays on TryPost's native path.
+
+Moving one channel back to TryPost's native path (for example LinkedIn, once
+LinkedIn approves the club's app for the Community Management API):
+
+1. Reconnect the channel in TryPost (Channels) so its native token has the
+   publishing scopes.
+2. Remove its entry from `ZERNIO_ACCOUNTS` (leave the others), then recreate
+   the app container so the cached config is rebuilt:
+   `docker compose up -d --force-recreate app`.
+3. Check: `php artisan marmara:zernio:accounts` no longer lists the channel
+   under "Mapped to TryPost"; publish a test post.
+4. Posts already published through Zernio keep their ids. Scheduled posts go
+   out natively from then on. A post that was mid-publish in Zernio when the
+   mapping was removed is published natively on its next retry, so check
+   `marmara_zernio_publications` for rows with `last_status` `processing` or
+   `unknown` before switching.
+5. LinkedIn analytics: TryPost has no native LinkedIn collectors, so with no
+   `linkedin-page:` entry left LinkedIn pages leave analytics again
+   (upstream behaviour); the data already collected stays in the tables.
+
+`ZERNIO_ENABLED=false` switches every channel back at once.
+
+### LinkedIn company pages
+
+`ZernioLinkedInPagePublisher` (bound for `LinkedInPagePublisher`) sends a
+mapped page's post with `POST /v1/posts` (`platform: linkedin`) through the
+same flow as TikTok (attempt row, idempotency, polling, manual check). The
+payload follows TryPost's native LinkedIn rules
+(https://docs.zernio.com/platforms/linkedin):
+
+- media: a document (PDF, PPT(X), DOC(X); Zernio: one per post, up to 100 MB)
+  wins, with `documentTitle` from the post's document title or file name;
+  else two or more images become a multi-image post (Zernio: up to 20,
+  8 MB each, JPEG/PNG/GIF); else the first video (one per post, up to 30
+  minutes on an organization page) or image. Alt text is sent as `altText`.
+- text: TryPost's LinkedIn text (`ContentSanitizer`); Zernio's 3,000
+  character limit is the same as TryPost's. Zernio generates the link
+  preview of a text post; a post with the preview turned off sends
+  `disableLinkPreview: true`.
+- `organizationUrn`: `urn:li:organization:{meta.organization_id}` of the
+  TryPost channel, when it has one.
+- TryPost's thread reply (published natively as a comment) becomes
+  `firstComment`. Zernio takes one text comment, so a post with more than
+  one reply, or a reply with media, fails before anything is sent.
+- the result: Zernio's `platformPostId` (the post URN, as the native
+  publisher stores it) and `platformPostUrl`
+  (`https://www.linkedin.com/feed/update/{urn}` when missing); without a URN
+  yet, `zernio:{zernio post id}`.
+
+Analytics: TryPost leaves LinkedIn out of analytics
+(`Platform::isIncludedInAnalytics()`), which every analytics query, job,
+controller and the channel list read. The enum now asks
+`AnalyticsPlatformGate` for LinkedIn pages; the module's gate includes them
+while a `linkedin-page:` mapping exists and Zernio analytics are on. This is
+per platform, not per channel: an unmapped LinkedIn page in the same install
+would show in analytics without data (its collectors answer `unsupported`).
+The three collector factories are rebound to subclasses that hand LinkedIn
+pages to Zernio collectors: history from `GET /v1/analytics?platform=linkedin`
+(organization pages report every post, published through Zernio or not),
+metrics `impressions` → impressions, `reach` → reach, `likes` → reactions,
+`comments`, `shares`, `clicks`, `views` (video, when reported); engagements
+derived (reactions + comments + shares + clicks); followers from
+`/v1/accounts/follower-stats`. `marmara:zernio:analytics-backfill` covers
+LinkedIn pages too.
+
+The TryPost LinkedIn page channel must exist (posts target it) and the
+analytics jobs only run for `connected` channels, as for TikTok.
+
 ### Enable on stage
 
 1. In the Zernio dashboard, create an API key (https://zernio.com/dashboard/api-keys)
@@ -243,6 +346,12 @@ Written from Zernio's docs (November 2026) and tested with `Http::fake` only:
   Zernio synced the club's native TikTok posts (spec: "up to the last ~12
   months per account"), and that the plan includes analytics (a 402/403
   "analytics add-on required" is recorded as `permission`).
+- LinkedIn: that Zernio's LinkedIn `platformPostId` is the post URN
+  (`urn:li:share:…` / `urn:li:ugcPost:…`, what TryPost's native publisher
+  stores) and the `platform` value is `linkedin`; that `organizationUrn`
+  is accepted when the Zernio account is the page itself; that follower
+  stats cover organization pages; that `platformSpecificData` is accepted
+  without other fields (spec types it as a `oneOf`).
 
 ### Analytics (TikTok through Zernio)
 

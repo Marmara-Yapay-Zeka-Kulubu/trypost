@@ -12,9 +12,9 @@ use Illuminate\Http\Client\ConnectionException;
 
 class ListZernioAccounts extends Command
 {
-    protected $signature = 'marmara:zernio:accounts {--platform=tiktok : Only this platform (empty for all)}';
+    protected $signature = 'marmara:zernio:accounts {--platform= : Only this Zernio platform (tiktok, linkedin, ...)}';
 
-    protected $description = 'List the social accounts connected to Zernio, with the id to put in ZERNIO_TIKTOK_ACCOUNT_ID';
+    protected $description = 'List the social accounts connected to Zernio and the TryPost channels mapped to them (ZERNIO_ACCOUNTS)';
 
     public function handle(ZernioClient $client, ZernioConfig $config): int
     {
@@ -38,7 +38,14 @@ class ListZernioAccounts extends Command
             return self::FAILURE;
         }
 
-        $mapped = array_flip($config->tiktokAccounts());
+        // Zernio id => "tiktok:marmaraai", for every platform's mapping.
+        $mapped = [];
+
+        foreach ($config->allAccounts() as $trypostPlatform => $accounts) {
+            foreach ($accounts as $trypostAccount => $zernioAccountId) {
+                $mapped[$zernioAccountId][] = "{$trypostPlatform}:{$trypostAccount}";
+            }
+        }
         $accounts = collect((array) data_get($response->json(), 'accounts', []))->filter(fn (mixed $account): bool => is_array($account));
 
         if ($accounts->isEmpty()) {
@@ -60,10 +67,18 @@ class ListZernioAccounts extends Command
                     (string) (data_get($account, 'displayName') ?? data_get($account, 'name') ?? ''),
                     (string) (is_array($profile) ? (data_get($profile, '_id') ?? data_get($profile, 'name') ?? '') : ($profile ?? '')),
                     (string) (data_get($account, 'status') ?? (data_get($account, 'isActive') === false ? 'inactive' : '')),
-                    (string) ($mapped[$id] ?? ''),
+                    implode(', ', $mapped[$id] ?? []),
                 ];
             })->all(),
         );
+
+        $listed = $accounts->map(fn (array $account): string => (string) (data_get($account, '_id') ?? data_get($account, 'id') ?? ''))->all();
+
+        foreach ($mapped as $zernioAccountId => $channels) {
+            if (! in_array((string) $zernioAccountId, $listed, true)) {
+                $this->warn(implode(', ', $channels)." is mapped to {$zernioAccountId}, which Zernio did not list".($platform !== '' ? " for {$platform}" : '').'.');
+            }
+        }
 
         return self::SUCCESS;
     }

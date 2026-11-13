@@ -4,18 +4,27 @@ declare(strict_types=1);
 
 namespace App\Marmara\Zernio;
 
+use App\Marmara\Hooks\AnalyticsPlatformGate;
 use App\Marmara\Hooks\SocialAccountPublishGuard;
 use App\Marmara\Zernio\Analytics\Collectors\ZernioTikTokFollowerCollector;
 use App\Marmara\Zernio\Analytics\Collectors\ZernioTikTokPublicationCollector;
 use App\Marmara\Zernio\Analytics\Collectors\ZernioTikTokPublicationMetricsCollector;
+use App\Marmara\Zernio\Analytics\Factories\ZernioFollowerCollectorFactory;
+use App\Marmara\Zernio\Analytics\Factories\ZernioPublicationHistoryCollectorFactory;
+use App\Marmara\Zernio\Analytics\Factories\ZernioPublicationMetricsCollectorFactory;
+use App\Marmara\Zernio\Analytics\ZernioAnalyticsPlatformGate;
 use App\Marmara\Zernio\Console\BackfillZernioAnalytics;
 use App\Marmara\Zernio\Console\ListZernioAccounts;
 use App\Marmara\Zernio\Console\ReleaseZernioPublication;
 use App\Marmara\Zernio\Console\ResolveZernioVideoIds;
 use App\Marmara\Zernio\Console\TestZernioConnection;
+use App\Services\Analytics\Collectors\Followers\FollowerCollectorFactory;
 use App\Services\Analytics\Collectors\Followers\TikTokFollowerCollector;
+use App\Services\Analytics\Collectors\Metrics\PublicationMetricsCollectorFactory;
 use App\Services\Analytics\Collectors\Metrics\TikTokPublicationMetricsCollector;
+use App\Services\Analytics\Collectors\Publications\PublicationHistoryCollectorFactory;
 use App\Services\Analytics\Collectors\Publications\TikTokPublicationCollector;
+use App\Services\Social\LinkedInPagePublisher;
 use App\Services\Social\TikTokCreatorInfo;
 use App\Services\Social\TikTokPublisher;
 use Illuminate\Console\Scheduling\Schedule;
@@ -23,11 +32,12 @@ use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
 
 /**
- * Marmara AI fork module: TikTok publishing through Zernio.
+ * Marmara AI fork module: TikTok and LinkedIn page publishing and analytics
+ * through Zernio.
  *
- * TryPost resolves its TikTok publisher from the container
+ * TryPost resolves its publishers from the container
  * (PublishToSocialPlatform::getPublisher() and ResolveTikTokVideoId::handle()),
- * so the module swaps it here without editing upstream code. The publish
+ * so the module swaps them here without editing upstream code. The publish
  * job's channel check goes through SocialAccountPublishGuard (the one hook
  * this fork adds to PublishToSocialPlatform), rebound the same way. With
  * ZERNIO_ENABLED off the container builds the plain TikTokPublisher, as if
@@ -53,6 +63,14 @@ class ZernioServiceProvider extends ServiceProvider
                 : $app->build(TikTokCreatorInfo::class);
         });
 
+        // A mapped LinkedIn company page publishes through Zernio; removing its
+        // `linkedin-page:` mapping puts it back on the native publisher.
+        $this->app->bind(LinkedInPagePublisher::class, function (Application $app): LinkedInPagePublisher {
+            return $app->make(ZernioConfig::class)->enabled()
+                ? $app->make(ZernioLinkedInPagePublisher::class)
+                : $app->build(LinkedInPagePublisher::class);
+        });
+
         // A Zernio-mapped channel is checked by Zernio, not its native token;
         // every other channel keeps the default (upstream) checks.
         $this->app->bind(SocialAccountPublishGuard::class, function (Application $app): SocialAccountPublishGuard {
@@ -70,6 +88,23 @@ class ZernioServiceProvider extends ServiceProvider
             TikTokPublicationCollector::class => ZernioTikTokPublicationCollector::class,
             TikTokPublicationMetricsCollector::class => ZernioTikTokPublicationMetricsCollector::class,
             TikTokFollowerCollector::class => ZernioTikTokFollowerCollector::class,
+        ] as $native => $zernio) {
+            $this->app->bind($native, function (Application $app) use ($native, $zernio): object {
+                return $app->make(ZernioConfig::class)->analyticsEnabled()
+                    ? $app->make($zernio)
+                    : $app->build($native);
+            });
+        }
+
+        // TryPost has no LinkedIn collectors and leaves LinkedIn out of
+        // analytics (Platform::isIncludedInAnalytics()). The factories gain
+        // Zernio's LinkedIn page collectors, and the enum's hook includes
+        // LinkedIn pages while one is mapped.
+        foreach ([
+            PublicationHistoryCollectorFactory::class => ZernioPublicationHistoryCollectorFactory::class,
+            PublicationMetricsCollectorFactory::class => ZernioPublicationMetricsCollectorFactory::class,
+            FollowerCollectorFactory::class => ZernioFollowerCollectorFactory::class,
+            AnalyticsPlatformGate::class => ZernioAnalyticsPlatformGate::class,
         ] as $native => $zernio) {
             $this->app->bind($native, function (Application $app) use ($native, $zernio): object {
                 return $app->make(ZernioConfig::class)->analyticsEnabled()
