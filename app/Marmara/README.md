@@ -11,7 +11,7 @@ composer path package: `App\` is already autoloaded, so nothing changes in
 Modules: [Zernio](#zernio-tiktok-and-linkedin-page-publishing-and-analytics)
 (TikTok and LinkedIn page publishing) and
 [Portal](#portal-default-language-and-guest-branding) (Turkish by default,
-club header on the login screens). Each lists its own upstream touch points.
+club frame on the auth screens). Each lists its own upstream touch points.
 
 ## Zernio: TikTok and LinkedIn page publishing and analytics
 
@@ -485,8 +485,9 @@ account is usable (see "Channels without a working native connection").
 
 ## Portal: default language and guest branding
 
-Makes the panel open in Turkish and gives the guest screens (login, register,
-forgot / reset password, verify email) a light club header. Both are switched
+Makes the panel open in Turkish and gives the auth screens (login, register,
+forgot / reset password, verify email, invites, and the other pages upstream
+renders with `layouts/AuthLayout.vue`) the club's own frame. Both are switched
 by env; with `APP_LOCALE=en` and `MARMARA_BRANDING=false` TryPost behaves
 exactly like upstream. Variables: `marmara/portal.env.example`.
 
@@ -499,8 +500,9 @@ exactly like upstream. Variables: `marmara/portal.env.example`.
 | `app/Marmara/Portal/PortalConfig.php` | Reads `config/marmara-portal.php` (`default_locale` comes from `APP_LOCALE`); validates accent, logo and links |
 | `config/marmara-portal.php` | `MARMARA_BRANDING`, `MARMARA_BRAND_*`, `MARMARA_SOURCE_URL` |
 | `resources/js/marmara/portal.ts` | Reads the `marmara` prop on the client |
-| `resources/js/marmara/MarmaraAuthBrand.vue` | The club header, the TryPost credit and the accent tokens |
-| `public/marmara/` | Logo slot (not committed yet): drop `logo.svg` (or `.png` / `.webp`) and optionally `logo-dark.*` here |
+| `resources/js/marmara/AuthLayoutSwitch.vue` | Picks `MarmaraAuthLayout` with branding on, upstream `AuthSplitLayout` otherwise; passes props and slots through |
+| `resources/js/marmara/MarmaraAuthLayout.vue` | The club frame: logo, name, tagline, card around the upstream page, legal footer, TryPost credit, source link, accent tokens |
+| `public/marmara/logo.svg`, `logo-dark.svg` | The club logo (light) and its dark-mode copy (navy `#0f1c47` swapped for `#f1f5f9`, gradient ids renamed) |
 | `tests/Feature/Marmara/Portal/PortalLocaleAndBrandingTest.php` | Tests |
 | `marmara/portal.env.example` | The .env lines for stage / production |
 
@@ -539,33 +541,49 @@ Settings > Preferences). Mails and jobs without a recipient language also use
 
 ### Branding
 
-`MARMARA_BRANDING=true` puts the club logo (or, without one, the club name
-as a text wordmark), the club name and `MARMARA_BRAND_TAGLINE` where the
-TryPost mark was, and a small "TryPost ile çalışır / Powered by TryPost"
-credit linking to trypost.it in the top corner (plus "Kaynak kodu" when
-`MARMARA_SOURCE_URL` is set). `MARMARA_BRAND_ACCENT` optionally remaps
-TryPost's primary colour tokens, only while a guest screen is shown. Light,
-dark and mobile layouts are those of upstream's `AuthSplitLayout`; the
-reviews panel on wide screens is left as upstream has it.
+`MARMARA_BRANDING=true` replaces upstream's `AuthSplitLayout` with
+`MarmaraAuthLayout`: a single centred column with the club logo, the club
+name and `MARMARA_BRAND_TAGLINE` ("Sosyal Medya Paneli") on top, the upstream
+page (forms, OAuth buttons, validation, status) in a card, the page's own
+footer (privacy / terms links) under it, and a small "TryPost ile çalışır /
+Powered by TryPost" credit linking to trypost.it at the bottom, plus
+"Kaynak kodu" when `MARMARA_SOURCE_URL` is set (AGPL-3.0 section 13). The
+language menu stays for guests. There is no reviews panel. TryPost's neutral
+tokens are used, so light, dark and mobile follow the app theme.
+`MARMARA_BRANDING=false` renders upstream's `AuthSplitLayout`, untouched.
 
-Logo: the club website (marmaraai.com) is not used for colours or layout,
-only as a possible source of the logo. Commit the official logo file to
-`public/marmara/logo.svg` (and `logo-dark.svg` for dark mode if the logo is
-dark), or point `MARMARA_BRAND_LOGO` at a URL.
+Only the frame is ours: the pages under `resources/js/pages/auth/` are
+upstream's and still render through the layout's default and `footer`
+slots, so upstream fixes to them apply as they are.
+
+Accent: `MARMARA_BRAND_ACCENT`, by default `#1e6bf5`, the logo's blue
+(`#3278f6`) darkened so white button text keeps 4.7:1 (the logo blue gives
+4.1:1). It remaps TryPost's primary tokens only while the club frame is on
+screen. Set it empty for TryPost's own colours.
+
+Logo: `public/marmara/logo.{svg,png,webp}` (and optional `logo-dark.*`) are
+picked up automatically, with the club name as a text wordmark when there is
+none; `MARMARA_BRAND_LOGO(_DARK)` can point elsewhere. The URL carries a
+content hash (`?v=`), so a replaced file is never served from a stale cache.
+The club website (marmaraai.com) is not used for colours or layout.
 
 ### Upstream touch points
 
 | File | Lines | Change |
 | --- | --- | --- |
 | `bootstrap/providers.php` | 5, 17-18 | `use App\Marmara\Portal\PortalServiceProvider;` and the provider in the list |
-| `resources/js/layouts/auth/AuthSplitLayout.vue` | 13, 83-84, 90 | `import MarmaraAuthBrand ...`; `<MarmaraAuthBrand>` wrapped around upstream's `<AppLogo>` (the logo lines themselves are unchanged) |
+| `resources/js/layouts/AuthLayout.vue` | 2 | `import AuthLayout from '@/marmara/AuthLayoutSwitch.vue'` instead of `'@/layouts/auth/AuthSplitLayout.vue'`. On a conflict take upstream's file and change this import back |
 | `resources/js/composables/useGuestLocale.ts` | 6, 36-41 | `import { portalDefaultLocale } ...`; `portalDefaultLocale(page.props) ??` before `browserLocale.value` in `signupLocale` |
 
 Contracts relied on without editing them: `SetLocale` is not final and is
 resolved from the container (`$middleware->web(append: [SetLocale::class])`
 in `bootstrap/app.php`); `HandleInertiaRequests` shares `locale` from
 `app()->getLocale()` after `SetLocale` ran; `Inertia::share()` from a
-provider merges with the middleware's props. If upstream renames
+provider merges with the middleware's props; every auth page renders through
+`layouts/AuthLayout.vue` with the props `title`, `description`, `status`,
+`panel`, `width` and the `footer` slot (`AuthLayoutSwitch` and
+`MarmaraAuthLayout` take the same ones; add any new upstream prop to both).
+`AuthSplitLayout.vue` itself is not edited. If upstream renames
 `SetLocale` or makes it final, re-check `SetPortalLocale`.
 
 Servers that bind-mount their own `bootstrap/providers.php` must add

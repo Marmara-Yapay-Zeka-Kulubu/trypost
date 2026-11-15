@@ -36,7 +36,7 @@ return [
 
         'name' => env('MARMARA_BRAND_NAME', 'Marmara Yapay Zeka Kulübü'),
 
-        'tagline' => env('MARMARA_BRAND_TAGLINE', 'Sosyal medya paneli'),
+        'tagline' => env('MARMARA_BRAND_TAGLINE', 'Sosyal Medya Paneli'),
 
         /*
          * The logo: a URL, or a path under public/. Left empty, the first of
@@ -50,10 +50,13 @@ return [
         'logo_dark' => env('MARMARA_BRAND_LOGO_DARK'),
 
         /*
-         * Optional accent (#rgb or #rrggbb) for buttons and links on the guest
-         * screens only. Empty keeps TryPost's own colours.
+         * Accent (#rgb or #rrggbb) for buttons and links on the auth screens
+         * only. The default is the logo's blue (#3278f6) darkened to #1e6bf5,
+         * which keeps white button text at 4.7:1 (WCAG AA); the logo blue
+         * itself is 4.1:1. MARMARA_BRAND_ACCENT= (empty) keeps TryPost's own
+         * colours.
          */
-        'accent' => env('MARMARA_BRAND_ACCENT'),
+        'accent' => env('MARMARA_BRAND_ACCENT', '#1e6bf5'),
 
         /*
          * Optional link to this fork's source code (AGPL-3.0 section 13 asks a

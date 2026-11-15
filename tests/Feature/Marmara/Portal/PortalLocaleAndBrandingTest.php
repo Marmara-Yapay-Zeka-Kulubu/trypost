@@ -7,6 +7,7 @@ use App\Http\Middleware\App\SetLocale;
 use App\Marmara\Portal\PortalConfig;
 use App\Marmara\Portal\SetPortalLocale;
 use App\Models\User;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\View;
 use Inertia\Testing\AssertableInertia;
 
@@ -15,7 +16,7 @@ beforeEach(function () {
     config()->set('marmara-portal.branding', [
         'enabled' => false,
         'name' => 'Marmara Yapay Zeka Kulübü',
-        'tagline' => 'Sosyal medya paneli',
+        'tagline' => 'Sosyal Medya Paneli',
         'logo' => null,
         'logo_dark' => null,
         'accent' => null,
@@ -83,7 +84,7 @@ test('branding is shared only when enabled, with the club texts', function () {
         ->assertOk()
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->where('marmara.branding.name', 'Marmara Yapay Zeka Kulübü')
-            ->where('marmara.branding.tagline', 'Sosyal medya paneli')
+            ->where('marmara.branding.tagline', 'Sosyal Medya Paneli')
             ->where('marmara.branding.accent', null)
             ->where('marmara.branding.sourceUrl', null));
 });
@@ -112,24 +113,60 @@ test('the accent and links are validated, and a logo URL or public file is used'
         ->and($branding['logo'])->toBeNull();
 });
 
-test('a logo dropped into public/marmara is picked up without configuration', function () {
+test('a logo dropped into public/marmara is picked up without configuration, with a content version', function () {
     config()->set('marmara-portal.branding.enabled', true);
 
-    $directory = public_path('marmara');
-    $file = $directory.'/logo.svg';
-    $existed = is_file($file);
-
-    if (! $existed) {
-        @mkdir($directory, 0755, true);
-        file_put_contents($file, '<svg xmlns="http://www.w3.org/2000/svg"/>');
-    }
+    // A throwaway public/ so the test neither depends on nor touches the real logo.
+    $public = sys_get_temp_dir().'/marmara-portal-'.uniqid();
+    mkdir($public.'/marmara', 0755, true);
+    $original = public_path();
+    app()->usePublicPath($public);
 
     try {
-        expect(app(PortalConfig::class)->branding()['logo'])->toBe(asset('marmara/logo.svg'));
+        expect(app(PortalConfig::class)->branding()['logo'])->toBeNull();
+
+        file_put_contents($public.'/marmara/logo.svg', '<svg xmlns="http://www.w3.org/2000/svg"/>');
+        $first = app(PortalConfig::class)->branding();
+
+        expect($first['logo'])->toStartWith(asset('marmara/logo.svg').'?v=')
+            ->and($first['logoDark'])->toBeNull();
+
+        file_put_contents($public.'/marmara/logo.svg', '<svg xmlns="http://www.w3.org/2000/svg" width="2"/>');
+        file_put_contents($public.'/marmara/logo-dark.png', 'png');
+        $second = app(PortalConfig::class)->branding();
+
+        expect($second['logo'])->not->toBe($first['logo'])
+            ->and($second['logoDark'])->toStartWith(asset('marmara/logo-dark.png').'?v=');
     } finally {
-        if (! $existed) {
-            @unlink($file);
-            @rmdir($directory);
+        app()->usePublicPath($original);
+        array_map('unlink', glob($public.'/marmara/*') ?: []);
+        rmdir($public.'/marmara');
+        rmdir($public);
+    }
+});
+
+test('the auth pages share the club branding with it on, and nothing with it off', function () {
+    $this->get(route('login'))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('auth/Login')
+            ->where('marmara.branding', null));
+
+    config()->set('marmara-portal.branding.enabled', true);
+
+    foreach (['login', 'register', 'password.request'] as $route) {
+        if (! Route::has($route)) {
+            continue;
         }
+
+        $response = $this->get(route($route));
+
+        if ($response->status() !== 200) {
+            continue; // e.g. registration closed on this install
+        }
+
+        $response->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('marmara.branding.name', 'Marmara Yapay Zeka Kulübü')
+            ->where('marmara.branding.tagline', 'Sosyal Medya Paneli'));
     }
 });

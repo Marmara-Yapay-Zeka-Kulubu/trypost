@@ -77,18 +77,29 @@ class PortalConfig
 
             $path = ltrim($configured, '/');
 
-            return is_file(public_path($path)) ? asset($path) : null;
+            return is_file(public_path($path)) ? $this->versioned($path) : null;
         }
 
         foreach (self::LOGO_FILES as $extension) {
             $path = "marmara/{$name}.{$extension}";
 
             if (is_file(public_path($path))) {
-                return asset($path);
+                return $this->versioned($path);
             }
         }
 
         return null;
+    }
+
+    /**
+     * The file's URL with a short content hash, so a replaced logo is never
+     * served from a browser or CDN cache under the same URL.
+     */
+    private function versioned(string $path): string
+    {
+        $hash = hash_file('xxh3', public_path($path));
+
+        return asset($path).($hash === false ? '' : '?v='.substr($hash, 0, 12));
     }
 
     private function url(mixed $value): ?string

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import AuthLayout from '@/layouts/auth/AuthSplitLayout.vue';
+import AuthLayout from '@/marmara/AuthLayoutSwitch.vue'; // Marmara AI fork hook: upstream is '@/layouts/auth/AuthSplitLayout.vue'
 
 withDefaults(
     defineProps<{
