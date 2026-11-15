@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\View;
 use Inertia\Testing\AssertableInertia;
 
 beforeEach(function () {
-    config()->set('app.locale', 'tr');
+    config()->set('marmara-portal.default_locale', 'tr');
     config()->set('marmara-portal.branding', [
         'enabled' => false,
         'name' => 'Marmara Yapay Zeka Kulübü',
@@ -39,6 +39,23 @@ test('a guest gets APP_LOCALE instead of English', function () {
         ->and(View::shared('htmlDir'))->toBe('ltr');
 });
 
+test('a guest still gets the club default after upstream SetLocale rewrote app.locale', function () {
+    $this->get(route('login'))->assertOk();
+
+    // A signed-in request in between (same process) sets app.locale to the user's language.
+    $this->actingAs(User::factory()->create(['locale' => Locale::Japanese]))
+        ->get(route('app.profile.edit'))
+        ->assertOk();
+
+    auth()->logout();
+
+    $this->get(route('login'))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page->where('locale', 'tr'));
+
+    expect(app()->getLocale())->toBe('tr');
+});
+
 test('a signed-in user keeps the language they chose', function () {
     $this->actingAs(User::factory()->create(['locale' => Locale::Japanese]))
         ->get(route('app.profile.edit'))
@@ -48,7 +65,7 @@ test('a signed-in user keeps the language they chose', function () {
 });
 
 test('APP_LOCALE=en, or a locale TryPost does not support, is upstream behaviour', function (string $configured) {
-    config()->set('app.locale', $configured);
+    config()->set('marmara-portal.default_locale', $configured);
 
     $this->get(route('login'))
         ->assertOk()

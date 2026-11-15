@@ -21,7 +21,8 @@ class PortalConfig
      */
     public function defaultLocale(): ?Locale
     {
-        $locale = Locale::tryFrom((string) config('app.locale'));
+        // Not config('app.locale'): App::setLocale() rewrites that per request.
+        $locale = Locale::tryFrom((string) config('marmara-portal.default_locale'));
 
         return $locale === null || $locale === Locale::DEFAULT ? null : $locale;
     }

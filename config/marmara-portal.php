@@ -11,7 +11,7 @@ declare(strict_types=1);
 | upstream TryPost.
 |
 | Default language: guests, and sign-ups that never picked a language, get
-| APP_LOCALE (config('app.locale')) instead of TryPost's built-in English.
+| APP_LOCALE (or MARMARA_DEFAULT_LOCALE) instead of TryPost's built-in English.
 | APP_LOCALE=en (or any value TryPost does not support) is upstream behaviour.
 | A user's own language (users.locale) always wins once they are signed in.
 |
@@ -21,6 +21,14 @@ declare(strict_types=1);
 */
 
 return [
+
+    /*
+     * Copied from APP_LOCALE when the config loads. It must not be read from
+     * config('app.locale') at request time: App::setLocale() (called by
+     * upstream SetLocale on every web request) overwrites that key.
+     * MARMARA_DEFAULT_LOCALE overrides it if APP_LOCALE should stay en.
+     */
+    'default_locale' => env('MARMARA_DEFAULT_LOCALE', env('APP_LOCALE', 'en')),
 
     'branding' => [
 

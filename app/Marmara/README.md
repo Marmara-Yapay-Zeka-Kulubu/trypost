@@ -496,7 +496,7 @@ exactly like upstream. Variables: `marmara/portal.env.example`.
 | --- | --- |
 | `app/Marmara/Portal/PortalServiceProvider.php` | Binds `SetLocale` to `SetPortalLocale`, shares the `marmara` Inertia prop |
 | `app/Marmara/Portal/SetPortalLocale.php` | Subclass of upstream `SetLocale`: runs it unchanged, then switches a guest request to `APP_LOCALE` |
-| `app/Marmara/Portal/PortalConfig.php` | Reads `APP_LOCALE` and `config/marmara-portal.php`; validates accent, logo and links |
+| `app/Marmara/Portal/PortalConfig.php` | Reads `config/marmara-portal.php` (`default_locale` comes from `APP_LOCALE`); validates accent, logo and links |
 | `config/marmara-portal.php` | `MARMARA_BRANDING`, `MARMARA_BRAND_*`, `MARMARA_SOURCE_URL` |
 | `resources/js/marmara/portal.ts` | Reads the `marmara` prop on the client |
 | `resources/js/marmara/MarmaraAuthBrand.vue` | The club header, the TryPost credit and the accent tokens |
@@ -524,6 +524,12 @@ The module changes two things:
 2. The client prefers that default over the browser's language in
    `signupLocale`, so a new account is Turkish unless the person picked
    another language on the login / register screen.
+
+The default is read from `config('marmara-portal.default_locale')`, which
+copies `APP_LOCALE` (or `MARMARA_DEFAULT_LOCALE`) when the config loads,
+never from `config('app.locale')` at request time: `App::setLocale()`
+writes that key, so after upstream `SetLocale` ran it says `en` (or the last
+user's language in a long-running worker).
 
 Existing accounts keep their stored `users.locale` (the column defaulted to
 `en`, so older accounts are English until the user picks Turkish in
