@@ -49,7 +49,10 @@ class PortalConfig
             'name' => (string) (config('marmara-portal.branding.name') ?: 'Marmara Yapay Zeka Kulübü'),
             'tagline' => filled(config('marmara-portal.branding.tagline')) ? (string) config('marmara-portal.branding.tagline') : null,
             'logo' => $logo,
-            'logoDark' => $logo === null ? null : $this->asset(config('marmara-portal.branding.logo_dark'), 'logo-dark'),
+            // A custom logo never pairs with the bundled public/marmara/logo-dark.* file.
+            'logoDark' => $logo === null || (filled(config('marmara-portal.branding.logo')) && blank(config('marmara-portal.branding.logo_dark')))
+                ? null
+                : $this->asset(config('marmara-portal.branding.logo_dark'), 'logo-dark'),
             'accent' => $this->accent(),
             'sourceUrl' => $this->url(config('marmara-portal.branding.source_url')),
         ];
