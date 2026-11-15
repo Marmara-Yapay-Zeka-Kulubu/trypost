@@ -1,0 +1,118 @@
+<?php
+
+declare(strict_types=1);
+
+use App\Enums\User\Locale;
+use App\Http\Middleware\App\SetLocale;
+use App\Marmara\Portal\PortalConfig;
+use App\Marmara\Portal\SetPortalLocale;
+use App\Models\User;
+use Illuminate\Support\Facades\View;
+use Inertia\Testing\AssertableInertia;
+
+beforeEach(function () {
+    config()->set('app.locale', 'tr');
+    config()->set('marmara-portal.branding', [
+        'enabled' => false,
+        'name' => 'Marmara Yapay Zeka Kulübü',
+        'tagline' => 'Sosyal medya paneli',
+        'logo' => null,
+        'logo_dark' => null,
+        'accent' => null,
+        'source_url' => null,
+    ]);
+});
+
+test('the web stack resolves the portal locale middleware in place of upstream SetLocale', function () {
+    expect(app(SetLocale::class))->toBeInstanceOf(SetPortalLocale::class);
+});
+
+test('a guest gets APP_LOCALE instead of English', function () {
+    $this->get(route('login'))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('locale', 'tr')
+            ->where('marmara.defaultLocale', 'tr')
+            ->where('marmara.branding', null));
+
+    expect(app()->getLocale())->toBe('tr')
+        ->and(View::shared('htmlDir'))->toBe('ltr');
+});
+
+test('a signed-in user keeps the language they chose', function () {
+    $this->actingAs(User::factory()->create(['locale' => Locale::Japanese]))
+        ->get(route('app.profile.edit'))
+        ->assertOk();
+
+    expect(app()->getLocale())->toBe('ja');
+});
+
+test('APP_LOCALE=en, or a locale TryPost does not support, is upstream behaviour', function (string $configured) {
+    config()->set('app.locale', $configured);
+
+    $this->get(route('login'))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('locale', Locale::DEFAULT->value)
+            ->where('marmara.defaultLocale', null));
+
+    expect(app()->getLocale())->toBe(Locale::DEFAULT->value);
+})->with(['en', 'sv']);
+
+test('branding is shared only when enabled, with the club texts', function () {
+    config()->set('marmara-portal.branding.enabled', true);
+
+    $this->get(route('login'))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('marmara.branding.name', 'Marmara Yapay Zeka Kulübü')
+            ->where('marmara.branding.tagline', 'Sosyal medya paneli')
+            ->where('marmara.branding.accent', null)
+            ->where('marmara.branding.sourceUrl', null));
+});
+
+test('the accent and links are validated, and a logo URL or public file is used', function () {
+    config()->set('marmara-portal.branding.enabled', true);
+    config()->set('marmara-portal.branding.accent', '#1D4ED8');
+    config()->set('marmara-portal.branding.source_url', 'https://github.com/MepCity/trypost');
+    config()->set('marmara-portal.branding.logo', 'https://cdn.example.com/club.svg');
+
+    $branding = app(PortalConfig::class)->branding();
+
+    expect($branding['accent'])->toBe('#1d4ed8')
+        ->and($branding['sourceUrl'])->toBe('https://github.com/MepCity/trypost')
+        ->and($branding['logo'])->toBe('https://cdn.example.com/club.svg')
+        ->and($branding['logoDark'])->toBeNull();
+
+    config()->set('marmara-portal.branding.accent', 'red;} body{display:none');
+    config()->set('marmara-portal.branding.source_url', 'javascript:alert(1)');
+    config()->set('marmara-portal.branding.logo', 'marmara/does-not-exist.svg');
+
+    $branding = app(PortalConfig::class)->branding();
+
+    expect($branding['accent'])->toBeNull()
+        ->and($branding['sourceUrl'])->toBeNull()
+        ->and($branding['logo'])->toBeNull();
+});
+
+test('a logo dropped into public/marmara is picked up without configuration', function () {
+    config()->set('marmara-portal.branding.enabled', true);
+
+    $directory = public_path('marmara');
+    $file = $directory.'/logo.svg';
+    $existed = is_file($file);
+
+    if (! $existed) {
+        @mkdir($directory, 0755, true);
+        file_put_contents($file, '<svg xmlns="http://www.w3.org/2000/svg"/>');
+    }
+
+    try {
+        expect(app(PortalConfig::class)->branding()['logo'])->toBe(asset('marmara/logo.svg'));
+    } finally {
+        if (! $existed) {
+            @unlink($file);
+            @rmdir($directory);
+        }
+    }
+});

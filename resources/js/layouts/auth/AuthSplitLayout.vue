@@ -10,6 +10,7 @@ import ReviewCard from '@/components/reviews/ReviewCard.vue';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useGuestLocale } from '@/composables/useGuestLocale';
 import { REVIEWS } from '@/lib/reviews';
+import MarmaraAuthBrand from '@/marmara/MarmaraAuthBrand.vue';
 import type { Auth } from '@/types';
 
 const widthClass = {
@@ -79,11 +80,14 @@ const loopedReviews = [
                 data-testid="auth-content"
             >
                 <div class="flex flex-col items-center gap-4 text-center">
+                    <!-- Marmara AI fork hook: club header; renders the slot when MARMARA_BRANDING is off. -->
+                    <MarmaraAuthBrand>
                     <AppLogo
                         variant="mark"
                         class="motion-auth-logo text-[38px]"
                         data-testid="auth-logo"
                     />
+                    </MarmaraAuthBrand>
                     <div
                         v-if="title || description"
                         class="flex flex-col gap-1"

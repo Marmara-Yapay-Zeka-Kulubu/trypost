@@ -8,6 +8,11 @@ The module lives under `app/` (namespace `App\Marmara\...`) rather than as a
 composer path package: `App\` is already autoloaded, so nothing changes in
 `composer.json` or `composer.lock`, two files upstream edits all the time.
 
+Modules: [Zernio](#zernio-tiktok-and-linkedin-page-publishing-and-analytics)
+(TikTok and LinkedIn page publishing) and
+[Portal](#portal-default-language-and-guest-branding) (Turkish by default,
+club header on the login screens). Each lists its own upstream touch points.
+
 ## Zernio: TikTok and LinkedIn page publishing and analytics
 
 TikTok refused the club's own TikTok app for production ("personal or internal
@@ -66,7 +71,7 @@ that column.
 
 | File | Lines | Change |
 | --- | --- | --- |
-| `bootstrap/providers.php` | 5, 14-15 | `use App\Marmara\Zernio\ZernioServiceProvider;` and the provider in the list |
+| `bootstrap/providers.php` | 6, 15-16 | `use App\Marmara\Zernio\ZernioServiceProvider;` and the provider in the list |
 | `app/Jobs/PublishToSocialPlatform.php` | 18, 100-107, 109, 115, 124 | `use App\Marmara\Hooks\SocialAccountPublishGuard;`; in `handle()` a commented call `app(SocialAccountPublishGuard::class)->check($this->post)` that can fail the post, and `$guard->checksNativeConnection &&` in front of the three native checks (disconnected, token expired, missing scopes) |
 
 | `app/Models/SocialAccount.php` | 19, 624-638 | `use App\Marmara\Hooks\AnalyticsAccountGuard;` and a commented `scopeConnectedForAnalytics()`: `connected()`, or `orWhereIn(id, AnalyticsAccountGuard::alsoUsableAccountIds())`. The default guard returns `[]`, i.e. exactly `connected()` |
@@ -478,3 +483,85 @@ can never sync it) is `unsupported`, which ends its baseline reads.
 A channel whose native token expired is still measured while its Zernio
 account is usable (see "Channels without a working native connection").
 
+## Portal: default language and guest branding
+
+Makes the panel open in Turkish and gives the guest screens (login, register,
+forgot / reset password, verify email) a light club header. Both are switched
+by env; with `APP_LOCALE=en` and `MARMARA_BRANDING=false` TryPost behaves
+exactly like upstream. Variables: `marmara/portal.env.example`.
+
+### Files
+
+| Path | What |
+| --- | --- |
+| `app/Marmara/Portal/PortalServiceProvider.php` | Binds `SetLocale` to `SetPortalLocale`, shares the `marmara` Inertia prop |
+| `app/Marmara/Portal/SetPortalLocale.php` | Subclass of upstream `SetLocale`: runs it unchanged, then switches a guest request to `APP_LOCALE` |
+| `app/Marmara/Portal/PortalConfig.php` | Reads `APP_LOCALE` and `config/marmara-portal.php`; validates accent, logo and links |
+| `config/marmara-portal.php` | `MARMARA_BRANDING`, `MARMARA_BRAND_*`, `MARMARA_SOURCE_URL` |
+| `resources/js/marmara/portal.ts` | Reads the `marmara` prop on the client |
+| `resources/js/marmara/MarmaraAuthBrand.vue` | The club header, the TryPost credit and the accent tokens |
+| `public/marmara/` | Logo slot (not committed yet): drop `logo.svg` (or `.png` / `.webp`) and optionally `logo-dark.*` here |
+| `tests/Feature/Marmara/Portal/PortalLocaleAndBrandingTest.php` | Tests |
+| `marmara/portal.env.example` | The .env lines for stage / production |
+
+### How the language is picked
+
+Upstream TryPost ignores `APP_LOCALE` for web requests:
+`App\Http\Middleware\App\SetLocale` renders a signed-in user in their
+`users.locale` and every guest in `Locale::DEFAULT` (English). There is no
+cookie, no `Accept-Language` detection on the server, and a guest's pick in
+the language menu lives only in the browser tab (`resources/js/language.ts`).
+The browser's language is used in one place: the `locale` a sign-up sends
+(`signupLocale` in `useGuestLocale.ts`, also used by Google / GitHub sign-up)
+is the guest's pick, else the browser's language, else the page's.
+
+The module changes two things:
+
+1. `SetPortalLocale` (bound in the container in place of `SetLocale`, which
+   Laravel resolves from the container) sets a guest request to
+   `APP_LOCALE` when that is a TryPost locale other than English. Signed-in
+   users are untouched, so a user's own choice always wins.
+2. The client prefers that default over the browser's language in
+   `signupLocale`, so a new account is Turkish unless the person picked
+   another language on the login / register screen.
+
+Existing accounts keep their stored `users.locale` (the column defaulted to
+`en`, so older accounts are English until the user picks Turkish in
+Settings > Preferences). Mails and jobs without a recipient language also use
+`APP_LOCALE`; dates and numbers follow the active locale (dayjs `tr` and
+`lang/tr` are part of upstream). Keep `APP_FALLBACK_LOCALE=en`.
+
+### Branding
+
+`MARMARA_BRANDING=true` puts the club logo (or, without one, the club name
+as a text wordmark), the club name and `MARMARA_BRAND_TAGLINE` where the
+TryPost mark was, and a small "TryPost ile çalışır / Powered by TryPost"
+credit linking to trypost.it in the top corner (plus "Kaynak kodu" when
+`MARMARA_SOURCE_URL` is set). `MARMARA_BRAND_ACCENT` optionally remaps
+TryPost's primary colour tokens, only while a guest screen is shown. Light,
+dark and mobile layouts are those of upstream's `AuthSplitLayout`; the
+reviews panel on wide screens is left as upstream has it.
+
+Logo: the club website (marmaraai.com) is not used for colours or layout,
+only as a possible source of the logo. Commit the official logo file to
+`public/marmara/logo.svg` (and `logo-dark.svg` for dark mode if the logo is
+dark), or point `MARMARA_BRAND_LOGO` at a URL.
+
+### Upstream touch points
+
+| File | Lines | Change |
+| --- | --- | --- |
+| `bootstrap/providers.php` | 5, 17-18 | `use App\Marmara\Portal\PortalServiceProvider;` and the provider in the list |
+| `resources/js/layouts/auth/AuthSplitLayout.vue` | 13, 83-84, 90 | `import MarmaraAuthBrand ...`; `<MarmaraAuthBrand>` wrapped around upstream's `<AppLogo>` (the logo lines themselves are unchanged) |
+| `resources/js/composables/useGuestLocale.ts` | 6, 36-41 | `import { portalDefaultLocale } ...`; `portalDefaultLocale(page.props) ??` before `browserLocale.value` in `signupLocale` |
+
+Contracts relied on without editing them: `SetLocale` is not final and is
+resolved from the container (`$middleware->web(append: [SetLocale::class])`
+in `bootstrap/app.php`); `HandleInertiaRequests` shares `locale` from
+`app()->getLocale()` after `SetLocale` ran; `Inertia::share()` from a
+provider merges with the middleware's props. If upstream renames
+`SetLocale` or makes it final, re-check `SetPortalLocale`.
+
+Servers that bind-mount their own `bootstrap/providers.php` must add
+`App\Marmara\Portal\PortalServiceProvider::class` to it; without that the
+module is not loaded and the panel looks and speaks like upstream.

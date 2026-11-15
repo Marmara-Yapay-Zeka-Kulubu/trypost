@@ -3,6 +3,7 @@ import { computed } from 'vue';
 
 import { chooseGuestLocale, guestLocale } from '@/language';
 import { detectBrowserLanguage } from '@/lib/detectPreferences';
+import { portalDefaultLocale } from '@/marmara/portal';
 import type { Language } from '@/types';
 
 export const useGuestLocale = () => {
@@ -32,7 +33,12 @@ export const useGuestLocale = () => {
     });
 
     const signupLocale = computed(
-        () => guestLocale() ?? browserLocale.value ?? pageLocale(),
+        // Marmara AI fork hook: the club's default language beats the browser's.
+        () =>
+            guestLocale() ??
+            portalDefaultLocale(page.props) ??
+            browserLocale.value ??
+            pageLocale(),
     );
 
     return { locale, signupLocale, chosen: computed(guestLocale), languages };
