@@ -9,7 +9,9 @@ composer path package: `App\` is already autoloaded, so nothing changes in
 `composer.json` or `composer.lock`, two files upstream edits all the time.
 
 Modules: [Zernio](#zernio-tiktok-and-linkedin-page-publishing-and-analytics)
-(TikTok and LinkedIn page publishing) and
+(TikTok and LinkedIn page publishing),
+[LinkedIn](#linkedin-native-linkedin-page-analytics) (LinkedIn page analytics
+through LinkedIn's own API) and
 [Portal](#portal-default-language-and-guest-branding) (Turkish by default,
 club frame on the auth screens). Each lists its own upstream touch points.
 
@@ -256,9 +258,12 @@ LinkedIn approves the club's app for the Community Management API):
    mapping was removed is published natively on its next retry, so check
    `marmara_zernio_publications` for rows with `last_status` `processing` or
    `unknown` before switching.
-5. LinkedIn analytics: TryPost has no native LinkedIn collectors, so with no
-   `linkedin-page:` entry left LinkedIn pages leave analytics again
-   (upstream behaviour); the data already collected stays in the tables.
+5. LinkedIn analytics: TryPost has no native LinkedIn collectors. With
+   `MARMARA_LINKEDIN_NATIVE_ANALYTICS=true` the LinkedIn module measures the
+   page natively from then on (see "LinkedIn: native LinkedIn page
+   analytics"); without it, with no `linkedin-page:` entry left LinkedIn
+   pages leave analytics again (upstream behaviour). The data already
+   collected stays in the tables either way.
 
 `ZERNIO_ENABLED=false` switches every channel back at once.
 
@@ -482,6 +487,214 @@ can never sync it) is `unsupported`, which ends its baseline reads.
 
 A channel whose native token expired is still measured while its Zernio
 account is usable (see "Channels without a working native connection").
+
+## LinkedIn: native LinkedIn page analytics
+
+The club's LinkedIn app ("Marmara AI Sosyal") is approved for the Community
+Management API (Development tier). This module reads a LinkedIn page's post
+metrics, follower count and post history from LinkedIn's versioned REST API
+(`https://api.linkedin.com/rest/...`, `LinkedIn-Version: MARMARA_LINKEDIN_API_VERSION`,
+`X-Restli-Protocol-Version: 2.0.0`), so the page no longer needs Zernio for
+analytics. Publishing is unchanged: TryPost's native `LinkedInPagePublisher`
+(or Zernio while the page is mapped). Variables: `marmara/linkedin.env.example`.
+
+### Files
+
+| Path | What |
+| --- | --- |
+| `app/Marmara/LinkedIn/LinkedInServiceProvider.php` | Wraps the three collector factories and the analytics platform gate with `extend()`, registers the commands |
+| `app/Marmara/LinkedIn/LinkedInConfig.php` | Reads `config/marmara-linkedin.php` |
+| `app/Marmara/LinkedIn/NativeLinkedInAccounts.php` | The per-channel choice (below) |
+| `app/Marmara/LinkedIn/LinkedInApi.php` | HTTP client: headers, short timeouts, token through `AnalyticsAccessToken`, errors as `AnalyticsCollectionException` categories |
+| `app/Marmara/LinkedIn/LinkedInCallBudget.php` | Daily call budget (per UTC day) and the back-off after a 429 |
+| `app/Marmara/LinkedIn/Analytics/LinkedInPostMetrics.php` | Batched, cached share statistics and video views; the metric mapping |
+| `app/Marmara/LinkedIn/Analytics/Collectors/*` | History (posts finder), post metrics, followers; each hands a channel it does not measure to the previous collector |
+| `app/Marmara/LinkedIn/Analytics/Factories/*`, `Analytics/LinkedInAnalyticsPlatformGate.php` | Wrappers around whatever the container hands out without this module (upstream's or Zernio's) |
+| `app/Marmara/LinkedIn/Console/*` | `marmara:linkedin:test`, `marmara:linkedin:analytics-backfill`, `marmara:linkedin:align-page-id` |
+| `config/marmara-linkedin.php` | Module config |
+| `tests/Feature/Marmara/LinkedIn/*` | Pest tests |
+| `marmara/linkedin.env.example` | The .env lines for stage / production |
+
+### Upstream touch points
+
+| File | Lines | Change |
+| --- | --- | --- |
+| `bootstrap/providers.php` | 5, 20-21 | `use App\Marmara\LinkedIn\LinkedInServiceProvider;` and the provider in the list |
+
+Nothing else upstream is edited. It reuses the Zernio module's hooks
+(`AnalyticsPlatformGate` in `Platform::isIncludedInAnalytics()`,
+`connectedForAnalytics()`) and relies on these contracts: the analytics jobs
+resolve `PublicationHistoryCollectorFactory`, `PublicationMetricsCollectorFactory`
+and `FollowerCollectorFactory` from the container (`extend()` wraps them in any
+provider order, also around Zernio's rebinds); `AbstractPublicationHistoryCollector::page()`,
+`AbstractPublicationMetricsCollector::collect()`, `AbstractFollowerCollector::collect()`;
+`AnalyticsAccessToken::for()` (refresh through `ConnectionVerifier`);
+`MoveAnalyticsIdentity::handle()`. Servers that bind-mount their own
+`bootstrap/providers.php` must add the provider there too.
+
+### Which channel is measured natively
+
+Per channel, natively when all of these hold, otherwise exactly as before
+(Zernio for a mapped page, upstream's "unsupported" for the rest):
+
+1. `MARMARA_LINKEDIN_NATIVE_ANALYTICS=true`;
+2. the channel is a LinkedIn page;
+3. it is **not** in `ZERNIO_ACCOUNTS` (while `ZERNIO_ENABLED=true`): a mapped
+   page stays with Zernio, so the two never measure the same channel;
+4. it has `meta.organization_id`;
+5. it has a native token, i.e. it was connected through TryPost's LinkedIn
+   OAuth (not the `zernio-managed:` placeholder / `meta.managed_by=zernio` of
+   `marmara:zernio:link`).
+
+Whether the token still works is not part of the choice: an expired token
+that cannot be refreshed, or one LinkedIn refuses (401), is reported as
+`authentication`; a missing scope or a member who is not a page
+ADMINISTRATOR (403) as `permission`; the history read without
+`r_organization_social` ends "provider limited". TryPost's jobs record these
+like any other channel and stop, they do not loop.
+
+`MARMARA_LINKEDIN_NATIVE_ANALYTICS` also puts LinkedIn pages in analytics
+(`LinkedInAnalyticsPlatformGate`, per platform like Zernio's gate).
+
+### Endpoints and mapping
+
+| TryPost collector | LinkedIn endpoint |
+| --- | --- |
+| History (discovery + backfill) | `GET /rest/posts?q=author&author=urn:li:organization:{id}&sortBy=CREATED&count=N&start=S` ([Posts API](https://learn.microsoft.com/linkedin/marketing/community-management/shares/posts-api)); cursor = `start`; stops at the cutoff; dark (`feedDistribution: NONE`, `adContext.isDsc`) and unpublished posts are left out |
+| Post metrics | `GET /rest/organizationalEntityShareStatistics?q=organizationalEntity&organizationalEntity={org}&shares=List(...)` / `ugcPosts=List(...)` ([share statistics](https://learn.microsoft.com/linkedin/marketing/community-management/organizations/share-statistics)), lifetime |
+| Video views | `GET /rest/videoAnalytics?q=entity&entity={ugcPost}&type=VIDEO_VIEW&aggregation=ALL` ([video analytics](https://learn.microsoft.com/linkedin/marketing/community-management/shares/video-analytics-api)), video `ugcPost`s up to 180 days old |
+| Followers | `GET /rest/networkSizes/{org}?edgeType=COMPANY_FOLLOWED_BY_MEMBER` → `firstDegreeSize` ([organization lookup](https://learn.microsoft.com/linkedin/marketing/community-management/organizations/organization-lookup-api)) |
+| Follower history (backfill only) | `GET /rest/organizationalEntityFollowerStatistics?q=organizationalEntity&organizationalEntity={org}&timeIntervals=(timeRange:(start,end),timeGranularityType:DAY)` ([follower statistics](https://learn.microsoft.com/linkedin/marketing/community-management/organizations/follower-statistics)) |
+| Admin check (`marmara:linkedin:test`) | `GET /rest/organizationAcls?q=roleAssignee&role=ADMINISTRATOR&state=APPROVED` |
+
+Metric mapping (lifetime counts, the same keys Zernio wrote, so history
+continues): `impressionCount` → impressions, `uniqueImpressionsCount` (or the
+`uniqueImpressionsCounts` spelling in LinkedIn's samples) → reach,
+`clickCount` → clicks, `likeCount` → reactions (all reaction types; never
+below 0), `commentCount` → comments, `shareCount` → shares, video
+`VIDEO_VIEW` → views; engagements derived (reactions + comments + shares +
+clicks), like Zernio's. LinkedIn's `engagement` ratio is kept in the
+publication's `provider_metadata.linkedin_engagement`, not stored as a metric
+(TryPost derives the rate on read). A post LinkedIn leaves out of the answer
+had no activity: every count is 0 (documented behaviour). A field missing from
+a returned element is not reported. Posts older than 12 months are refused as
+unsupported before any request (LinkedIn's rolling window), and a post id that
+is not a `urn:li:share:` / `urn:li:ugcPost:` (a Zernio post still waiting for
+its URN) is unsupported too.
+
+### Call budget
+
+Development tier: about 500 calls per app and 100 per member per day, reset
+at midnight UTC. Every call takes a unit of `MARMARA_LINKEDIN_DAILY_CALL_BUDGET`
+(80) first; a refused unit is `rate_limited` until 00:05 UTC, which TryPost's
+jobs wait for. A 429 blocks every call until `Retry-After` (else
+`MARMARA_LINKEDIN_BACKOFF_MINUTES`, 60). Timeouts: 5 s connect, 20 s total.
+
+- Share statistics are batched: the first metric read of the day asks for up
+  to 50 not-yet-cached posts of the page (one request per URN kind) and
+  caches each answer for 12 h, so the daily reads of the 30-day window cost
+  1-2 calls.
+- Followers: 1 call a day. Discovery: TryPost runs it every 3 h; the post list
+  is read at most every 12 h (2 calls a day). Video views: 1 call per video
+  post under 30 days old, cached 12 h.
+- About 5-10 calls a day for one page: 1-2 % of the app limit, under 10 % of
+  the member limit.
+
+### Commands
+
+`php artisan marmara:linkedin:test [--account=] [--posts=5]`: lists the LinkedIn
+page channels and whether each is measured natively (or why not), then for a
+channel with a native token: refresh token present, granted scopes, the
+member's ADMINISTRATOR role on the page, the follower count and the latest
+posts with their statistics (about 4 calls). It works while the page is still
+mapped to Zernio, so the native side can be checked first. Tokens are never
+printed.
+
+`php artisan marmara:linkedin:analytics-backfill [--days=365] [--account=] [--import-limit=] [--skip-followers] [--resume]`:
+the same flow as `marmara:zernio:analytics-backfill` (the account's backfill
+sync state restarted from `--days` ago, pages through the normal pipeline,
+first metric reads queued, the newest `MARMARA_LINKEDIN_IMPORT_LIMIT` unlinked
+publications imported into Sent), then the daily follower history: today's
+count minus LinkedIn's daily gains, stored as `estimated` for days without a
+reading. It stops `MARMARA_LINKEDIN_BACKFILL_RESERVE` (20) calls before the
+daily budget; a 429 with a short `Retry-After` (≤ 2 min) is waited out,
+anything longer (or the budget) stops it with the cursor kept: run it again
+with `--resume` the next UTC day. A year of club posts is about 4 list pages,
+4-6 statistics batches, one video read per recent video and 6 follower calls.
+
+`php artisan marmara:linkedin:align-page-id {account} [--dry-run] [--force]`:
+see below.
+
+### Moving the LinkedIn page from Zernio to native
+
+The page channel was created by `marmara:zernio:link`: its `platform_user_id`
+is what Zernio reported (`platformUserId`, else `zernio:{id}`), it has a
+placeholder token and `meta.managed_by=zernio`. TryPost's LinkedIn OAuth stores
+a page as `platform_user_id = {organization id}` and finds the channel to
+update by `(workspace, platform, platform_user_id)`:
+
+- if the ids match, "Refresh connection" on the card (`?reconnect=`) updates
+  that same channel: real token, refresh token when LinkedIn gives one,
+  scopes, and `meta` replaced by `organization_id`, `admin_user_id`,
+  `admin_name` (the Zernio markers go away). Its posts and analytics stay.
+  A plain "Connect" offers the page as already connected (locked).
+- if they differ, "Refresh connection" refuses the page (`page_not_found`,
+  nothing changes), and a plain "Connect" creates a **second** LinkedIn page
+  card, with no history, next to the old one.
+
+So, on production:
+
+1. Add the `marmara/linkedin.env.example` lines (keep
+   `MARMARA_LINKEDIN_NATIVE_ANALYTICS=false` for now and the page's
+   `ZERNIO_ACCOUNTS` entry in place), recreate the app container.
+2. `php artisan marmara:linkedin:align-page-id <channel id> --dry-run`, then
+   without `--dry-run`: sets `platform_user_id` to the organization id and
+   moves the channel's publications, daily snapshots and sync states with
+   TryPost's `MoveAnalyticsIdentity`. It refuses when another card already
+   has that id, and when the `ZERNIO_ACCOUNTS` entry matches the channel only
+   by its old platform user id (key the entry by the channel id, which
+   `marmara:zernio:link` prints, or use `--force`).
+3. In TryPost, Channels → the LinkedIn page → "Refresh connection", sign in
+   as a page ADMINISTRATOR and finish. The page keeps publishing and being
+   measured through Zernio while it is still mapped.
+4. `php artisan marmara:linkedin:test`: native token, scopes, ADMINISTRATOR,
+   followers and posts must all answer.
+5. Check `marmara_zernio_publications` for rows with `last_status`
+   `processing` / `unknown` (see "Per-platform switch"), then remove the
+   `linkedin-page:` entry from `ZERNIO_ACCOUNTS`, set
+   `MARMARA_LINKEDIN_NATIVE_ANALYTICS=true`, recreate the container. From now
+   on `ZernioLinkedInPagePublisher` hands the page to the native publisher
+   (`meta.organization_id`, the native token; the publish guard checks the
+   native status, token and `w_organization_social` again),
+   `ZernioConnectionVerifier` verifies and refreshes it natively, and the
+   native collectors measure it.
+6. Optionally `php artisan marmara:linkedin:analytics-backfill --days=365`
+   for posts Zernio did not have; existing publications are matched by URN,
+   not duplicated.
+
+If a plain "Connect" already created a second card: remove that new card
+(Channels → Disconnect; it deletes only its own posts), run step 2, then step 3
+on the old card.
+
+Tokens: LinkedIn access tokens live 60 days. TryPost stores the refresh token
+LinkedIn returns and `ConnectionVerifier` refreshes with it
+(`grant_type=refresh_token`). LinkedIn documents programmatic refresh tokens
+(365 days, not extended by refreshing) for approved Marketing Developer
+Platform partners; whether a Community Management API Development tier app
+gets one is shown by `marmara:linkedin:test` ("Refresh token: yes/no"). Without
+one the channel turns `token_expired` when the token runs out (TryPost's usual
+notice) and needs "Refresh connection" every 60 days; analytics then answer
+`authentication` until it is reconnected.
+
+### Not verified against the live API
+
+Written from LinkedIn's docs (November 2026, version 202610) and tested with
+`Http::fake` only: the `List(...)` encoding for `ugcPosts` (the docs show only
+the Rest.li 1.0 index form), mixing is avoided by one request per URN kind;
+the batch size LinkedIn accepts (not documented, 50 by default); which scope
+`networkSizes` needs; whether the follower statistics finder pages its daily
+elements (the code follows `paging.total`); whether the posts finder lists the
+page's reshares (kept, with `provider_metadata.linkedin_reshare`).
 
 ## Portal: default language and guest branding
 
