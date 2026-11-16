@@ -511,6 +511,7 @@ analytics. Publishing is unchanged: TryPost's native `LinkedInPagePublisher`
 | `app/Marmara/LinkedIn/Analytics/Collectors/*` | History (posts finder), post metrics, followers; each hands a channel it does not measure to the previous collector |
 | `app/Marmara/LinkedIn/Analytics/Factories/*`, `Analytics/LinkedInAnalyticsPlatformGate.php` | Wrappers around whatever the container hands out without this module (upstream's or Zernio's) |
 | `app/Marmara/LinkedIn/Console/*` | `marmara:linkedin:test`, `marmara:linkedin:analytics-backfill`, `marmara:linkedin:align-page-id` |
+| `app/Marmara/LinkedIn/Connect/BasicProfileLinkedInProvider.php`, `LinkedInBasicProfileExtendSocialite.php` | The `linkedin-openid` Socialite driver without OpenID Connect (`MARMARA_LINKEDIN_PAGE_BASIC_PROFILE`, below) |
 | `config/marmara-linkedin.php` | Module config |
 | `tests/Feature/Marmara/LinkedIn/*` | Pest tests |
 | `marmara/linkedin.env.example` | The .env lines for stage / production |
@@ -529,8 +530,40 @@ and `FollowerCollectorFactory` from the container (`extend()` wraps them in any
 provider order, also around Zernio's rebinds); `AbstractPublicationHistoryCollector::page()`,
 `AbstractPublicationMetricsCollector::collect()`, `AbstractFollowerCollector::collect()`;
 `AnalyticsAccessToken::for()` (refresh through `ConnectionVerifier`);
-`MoveAnalyticsIdentity::handle()`. Servers that bind-mount their own
-`bootstrap/providers.php` must add the provider there too.
+`MoveAnalyticsIdentity::handle()`; `LinkedInController` resolving
+`Socialite::driver('linkedin-openid')` and reading only `getId()`, `getName()`,
+`getAvatar()`, `token`, `refreshToken`, `expiresIn` and `approvedScopes` from
+it (no email); upstream registering its `linkedin-openid` extension as a
+`SocialiteWasCalled` listener in `AppServiceProvider::boot()`, before this
+provider's. Servers that bind-mount their own `bootstrap/providers.php` must
+add the provider there too.
+
+### Connecting the page without the OpenID Connect product
+
+The club's LinkedIn app has only the Community Management API product, so
+LinkedIn refuses `openid`, `profile` and `email`, which upstream's
+`linkedin-openid` driver (Socialite's `LinkedInOpenIdProvider`, member from
+`/v2/userinfo`) always asks for. The module listens to `SocialiteWasCalled`
+after `AppServiceProvider` and registers `BasicProfileLinkedInProvider` (a
+subclass of upstream's provider) as `linkedin-openid`. With
+`MARMARA_LINKEDIN_PAGE_BASIC_PROFILE=true`:
+
+- the consent screen asks exactly `r_basicprofile`, `w_organization_social`,
+  `r_organization_social`, `rw_organization_admin`, `r_organization_followers`,
+  `r_organization_social_feed` (plus the personal profile's own scopes without
+  openid/profile/email while `LINKEDIN_ENABLED` is on); `LINKEDIN_PAGE_SCOPES`
+  is not used;
+- the member comes from `GET /v2/me?projection=(id,localizedFirstName,localizedLastName)`
+  (`r_basicprofile`). Its `id` is the same person id the OpenID `sub` carries,
+  so `meta.admin_user_id` and existing personal cards keep matching. No email
+  is read; TryPost's LinkedIn connect never used one;
+- the rest is upstream's `LinkedInController`: the administered pages from
+  `/v2/organizationAcls`, LinkedIn's comma-joined `scope` split into
+  separate scopes, "Refresh connection" updating the same card.
+
+With the switch off the driver is upstream's, method for method. The personal
+profile connect keeps working with the switch on too (identity from
+`/v2/me`), but the club runs `LINKEDIN_ENABLED=false`.
 
 ### Which channel is measured natively
 
