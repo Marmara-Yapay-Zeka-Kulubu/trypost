@@ -20,6 +20,13 @@ return [
 
     'native_analytics' => (bool) env('MARMARA_LINKEDIN_NATIVE_ANALYTICS', false),
 
+    /*
+     * Connect LinkedIn pages without the "Sign In with LinkedIn using OpenID
+     * Connect" product: ask r_basicprofile + the page scopes instead of
+     * openid/profile/email and read the member from /v2/me.
+     */
+    'page_basic_profile' => (bool) env('MARMARA_LINKEDIN_PAGE_BASIC_PROFILE', false),
+
     'api' => rtrim((string) env('MARMARA_LINKEDIN_API', 'https://api.linkedin.com'), '/'),
 
     /*

@@ -9,6 +9,7 @@ use App\Marmara\LinkedIn\Analytics\Factories\LinkedInFollowerCollectorFactory;
 use App\Marmara\LinkedIn\Analytics\Factories\LinkedInPublicationHistoryCollectorFactory;
 use App\Marmara\LinkedIn\Analytics\Factories\LinkedInPublicationMetricsCollectorFactory;
 use App\Marmara\LinkedIn\Analytics\LinkedInAnalyticsPlatformGate;
+use App\Marmara\LinkedIn\Connect\LinkedInBasicProfileExtendSocialite;
 use App\Marmara\LinkedIn\Console\AlignLinkedInPageIdentity;
 use App\Marmara\LinkedIn\Console\BackfillLinkedInAnalytics;
 use App\Marmara\LinkedIn\Console\TestLinkedInConnection;
@@ -16,7 +17,9 @@ use App\Services\Analytics\Collectors\Followers\FollowerCollectorFactory;
 use App\Services\Analytics\Collectors\Metrics\PublicationMetricsCollectorFactory;
 use App\Services\Analytics\Collectors\Publications\PublicationHistoryCollectorFactory;
 use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
+use SocialiteProviders\Manager\SocialiteWasCalled;
 
 /**
  * Marmara AI fork module: native LinkedIn page analytics (Community
@@ -48,6 +51,11 @@ class LinkedInServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // LinkedIn page connect without the OpenID Connect product
+        // (MARMARA_LINKEDIN_PAGE_BASIC_PROFILE). Registered after
+        // AppServiceProvider's listener, so it replaces upstream's driver.
+        Event::listen(SocialiteWasCalled::class, LinkedInBasicProfileExtendSocialite::class);
+
         if ($this->app->runningInConsole()) {
             $this->commands([
                 AlignLinkedInPageIdentity::class,
