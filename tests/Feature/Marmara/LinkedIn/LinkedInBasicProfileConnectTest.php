@@ -94,8 +94,8 @@ function liBasicCallback(object $test, array $organizations, array &$history): v
 }
 
 test('the linkedin-openid driver is the basic profile provider and asks exactly the page scopes', function () {
-    expect(Socialite::driver('linkedin-openid'))->toBeInstanceOf(BasicProfileLinkedInProvider::class)
-        ->and(liBasicConnectScopes($this))->toBe(BasicProfileLinkedInProvider::PAGE_SCOPES);
+    expect(liBasicConnectScopes($this))->toBe(BasicProfileLinkedInProvider::PAGE_SCOPES)
+        ->and(Socialite::driver('linkedin-openid'))->toBeInstanceOf(BasicProfileLinkedInProvider::class);
 
     // LINKEDIN_PAGE_SCOPES with the OpenID scopes in it is ignored while the switch is on.
     config()->set('trypost.platforms.linkedin-page.scopes', ['openid', 'profile', 'email', 'w_organization_social']);
