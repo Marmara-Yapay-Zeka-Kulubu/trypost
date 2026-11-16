@@ -560,7 +560,7 @@ like any other channel and stop, they do not loop.
 
 | TryPost collector | LinkedIn endpoint |
 | --- | --- |
-| History (discovery + backfill) | `GET /rest/posts?q=author&author=urn:li:organization:{id}&sortBy=CREATED&count=N&start=S` ([Posts API](https://learn.microsoft.com/linkedin/marketing/community-management/shares/posts-api)); cursor = `start`; stops at the cutoff; dark (`feedDistribution: NONE`, `adContext.isDsc`) and unpublished posts are left out |
+| History (discovery + backfill) | `GET /rest/posts?q=author&author=urn:li:organization:{id}&sortBy=LAST_MODIFIED&count=N&start=S` ([Posts API](https://learn.microsoft.com/linkedin/marketing/community-management/shares/posts-api)); cursor = `start`; a post is in the window by `publishedAt` (else `createdAt`), so an old draft published recently is found; paging stops at the first post whose `lastModifiedAt` is before the cutoff; dark (`feedDistribution: NONE`, `adContext.isDsc`) and unpublished posts are left out |
 | Post metrics | `GET /rest/organizationalEntityShareStatistics?q=organizationalEntity&organizationalEntity={org}&shares=List(...)` / `ugcPosts=List(...)` ([share statistics](https://learn.microsoft.com/linkedin/marketing/community-management/organizations/share-statistics)), lifetime |
 | Video views | `GET /rest/videoAnalytics?q=entity&entity={ugcPost}&type=VIDEO_VIEW&aggregation=ALL` ([video analytics](https://learn.microsoft.com/linkedin/marketing/community-management/shares/video-analytics-api)), video `ugcPost`s up to 180 days old |
 | Followers | `GET /rest/networkSizes/{org}?edgeType=COMPANY_FOLLOWED_BY_MEMBER` → `firstDegreeSize` ([organization lookup](https://learn.microsoft.com/linkedin/marketing/community-management/organizations/organization-lookup-api)) |

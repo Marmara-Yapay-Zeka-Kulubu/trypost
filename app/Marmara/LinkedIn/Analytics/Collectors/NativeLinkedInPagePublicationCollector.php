@@ -18,7 +18,12 @@ use Illuminate\Support\Facades\Cache;
 
 /**
  * A LinkedIn page's post history (discovery and backfill) from the Posts API
- * author finder, newest created first; the cursor is the finder's `start`.
+ * author finder, most recently modified first (`sortBy=LAST_MODIFIED`); the
+ * cursor is the finder's `start`. A post belongs to the window by its publish
+ * time (`publishedAt`, else `createdAt`), so a draft created long ago and
+ * published recently is found; paging stops at the first post last modified
+ * before the cutoff, since publishing (or any later edit) bumps
+ * `lastModifiedAt`, so every post published inside the window sorts above it.
  * Posts published from TryPost are linked by TryPost itself, so discovery
  * only looks for posts made on LinkedIn directly and reads the list at most
  * every MARMARA_LINKEDIN_DISCOVERY_INTERVAL_HOURS. Sponsored-only (dark)
@@ -66,9 +71,11 @@ class NativeLinkedInPagePublicationCollector extends AbstractPublicationHistoryC
         $reachedCutoff = false;
 
         foreach ($result['elements'] as $post) {
-            $createdAt = $this->milliseconds(data_get($post, 'createdAt'));
+            $lastModifiedAt = $this->milliseconds(data_get($post, 'lastModifiedAt'))
+                ?? $this->milliseconds(data_get($post, 'publishedAt'))
+                ?? $this->milliseconds(data_get($post, 'createdAt'));
 
-            if ($createdAt !== null && $createdAt->lessThan($cutoff)) {
+            if ($lastModifiedAt !== null && $lastModifiedAt->lessThan($cutoff)) {
                 $reachedCutoff = true;
 
                 break;

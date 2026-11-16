@@ -340,7 +340,7 @@ test('the backfill pages through the posts finder, skips dark posts and stops at
         ->and($state->status)->toBe(SyncStatus::Complete);
 
     Http::assertSentCount(2);
-    Http::assertSent(fn (Request $request): bool => str_contains(rawurldecode($request->url()), '/rest/posts?q=author&author=urn:li:organization:'.LI_NATIVE_ORG.'&sortBy=CREATED&count=3&start=0'));
+    Http::assertSent(fn (Request $request): bool => str_contains(rawurldecode($request->url()), '/rest/posts?q=author&author=urn:li:organization:'.LI_NATIVE_ORG.'&sortBy=LAST_MODIFIED&count=3&start=0'));
     Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '&count=3&start=3'));
 });
 
@@ -505,4 +505,31 @@ test('align-page-id moves a Zernio-linked page to its organization id with its a
 
     $this->artisan('marmara:linkedin:align-page-id', ['account' => 'marmaraai'])->assertFailed();
     Http::assertNothingSent();
+});
+
+test('discovery finds an old draft published recently and stops at the first post modified before the window', function () {
+    $draftCreated = CarbonImmutable::parse('2026-01-05 10:00:00', 'UTC')->getTimestampMs();
+    $editedOld = CarbonImmutable::parse('2026-03-01 10:00:00', 'UTC')->getTimestampMs();
+    Http::fake([
+        LI_NATIVE_API.'/rest/posts*' => Http::response(liNativeList([
+            // Created as a draft in January, published this morning.
+            liNativePost(LI_NATIVE_SHARE_A, '2026-11-14 09:00:00', ['createdAt' => $draftCreated]),
+            // Published in March, edited this morning: modified inside the window, published outside it.
+            liNativePost(LI_NATIVE_SHARE_B, '2026-11-14 08:00:00', ['createdAt' => $editedOld, 'publishedAt' => $editedOld]),
+            // Last modified before the window: paging stops here.
+            liNativePost(LI_NATIVE_VIDEO, '2026-11-13 20:00:00'),
+            liNativePost('urn:li:share:7390000000000000077', '2026-11-14 07:00:00'),
+        ], next: true)),
+    ]);
+
+    $page = app(PublicationHistoryCollectorFactory::class)->for($this->page)
+        ->page($this->page, null, CarbonImmutable::now('UTC')->subHours(6));
+
+    expect(array_map(fn ($publication): string => $publication->providerPostId, $page->publications))->toBe([LI_NATIVE_SHARE_A])
+        ->and($page->publications[0]->publishedAt->toDateTimeString())->toBe('2026-11-14 09:00:00')
+        ->and($page->nextCursor)->toBeNull()
+        ->and($page->providerExhausted)->toBeTrue();
+
+    Http::assertSentCount(1);
+    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), 'sortBy=LAST_MODIFIED'));
 });

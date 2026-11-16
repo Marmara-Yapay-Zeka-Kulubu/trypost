@@ -162,7 +162,9 @@ class LinkedInApi
     }
 
     /**
-     * One page of the organization's posts, newest created first.
+     * One page of the organization's posts, most recently modified first
+     * (`LAST_MODIFIED`, LinkedIn's default; `CREATED` would put a draft
+     * published today at its creation date).
      *
      * @see https://learn.microsoft.com/linkedin/marketing/community-management/shares/posts-api
      *
@@ -173,7 +175,7 @@ class LinkedInApi
         $response = $this->get($account, '/rest/posts', [
             'q' => 'author',
             'author' => rawurlencode($this->organizationUrn($account)),
-            'sortBy' => 'CREATED',
+            'sortBy' => 'LAST_MODIFIED',
             'count' => (string) $count,
             'start' => (string) $start,
         ], 'posts');
