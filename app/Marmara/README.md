@@ -13,7 +13,10 @@ Modules: [Zernio](#zernio-tiktok-and-linkedin-page-publishing-and-analytics)
 [LinkedIn](#linkedin-native-linkedin-page-analytics) (LinkedIn page analytics
 through LinkedIn's own API) and
 [Portal](#portal-default-language-and-guest-branding) (Turkish by default,
-club frame on the auth screens). Each lists its own upstream touch points.
+club frame on the auth screens) and
+[Inbox](#inbox-comments-and-dms-in-one-place) (comments and DMs of every
+channel, with replies, for the team and for Echo / Hermes). Each lists its own
+upstream touch points.
 
 ## Zernio: TikTok and LinkedIn page publishing and analytics
 
@@ -550,7 +553,8 @@ subclass of upstream's provider) as `linkedin-openid`. With
 
 - the consent screen asks exactly `r_basicprofile`, `w_organization_social`,
   `r_organization_social`, `rw_organization_admin`, `r_organization_followers`,
-  `r_organization_social_feed` (plus the personal profile's own scopes without
+  `r_organization_social_feed`, `w_organization_social_feed` (inbox replies,
+  see [Inbox](#inbox-comments-and-dms-in-one-place)) (plus the personal profile's own scopes without
   openid/profile/email while `LINKEDIN_ENABLED` is on); `LINKEDIN_PAGE_SCOPES`
   is not used;
 - the member comes from `GET /v2/me?projection=(id,localizedFirstName,localizedLastName)`
@@ -835,3 +839,204 @@ provider merges with the middleware's props; every auth page renders through
 Servers that bind-mount their own `bootstrap/providers.php` must add
 `App\Marmara\Portal\PortalServiceProvider::class` to it; without that the
 module is not loaded and the panel looks and speaks like upstream.
+
+## Inbox: comments and DMs in one place
+
+One place to see and answer the comments and direct messages of the club's
+channels: the "Gelen Kutusu" page in TryPost, a REST API and MCP tools for
+Echo (WhatsApp) / Hermes, and the `inbox.item_received` webhook. Every network
+is implemented only as far as its official API (or Zernio) allows, each behind
+its own flag; a missing permission shows as "needs permission X" (page,
+`marmara:inbox:status`), never as a failing job. Variables:
+`marmara/inbox.env.example`.
+
+### Files
+
+| Path | What |
+| --- | --- |
+| `app/Marmara/Inbox/InboxServiceProvider.php` | Migrations, lang, routes, schedule (`marmara:inbox:sync` every 5 min), commands, the `marmaraInbox` shared prop, container rebinds (below) |
+| `app/Marmara/Inbox/InboxConfig.php`, `config/marmara-inbox.php` | Flags and limits |
+| `app/Marmara/Inbox/Models/*`, `database/migrations/` | `marmara_inbox_items`, `marmara_inbox_replies`, `marmara_inbox_sync_states` |
+| `app/Marmara/Inbox/Providers/InboxProvider.php` | The provider interface: capabilities, missing permission, `fetch()` with a cursor, `reply()`, `hide()`, reply length |
+| `app/Marmara/Inbox/Providers/{LinkedIn,X,Zernio}InboxProvider.php`, `Providers/Meta/*` | The providers (matrix below) |
+| `app/Marmara/Inbox/InboxProviders.php` | Which provider reads a channel |
+| `app/Marmara/Inbox/InboxSync.php`, `Jobs/SyncInboxAccount.php` | One sync per channel, provider and kind: cursor saved after every page, statuses, back-off |
+| `app/Marmara/Inbox/InboxItemStore.php` | Dedupe by external id, own replies skipped, DM window per conversation, the webhook (once, after commit) |
+| `app/Marmara/Inbox/Actions/SendInboxReply.php` | The one reply flow (page, API, MCP): checks, idempotency by `request_id`, 409/422 refusals |
+| `app/Marmara/Inbox/InboxItemPayload.php` | The contract item shape |
+| `app/Marmara/Inbox/Http/*`, `routes.php` | Page, REST API, Zernio webhook receiver, `EnsureInboxEnabled` |
+| `app/Marmara/Inbox/Mcp/*` | `list-inbox-items-tool`, `get-inbox-item-tool`, `reply-to-inbox-item-tool`, `InboxTryPostServer` |
+| `app/Marmara/Inbox/Connect/*` | Upstream's Facebook, Instagram, Instagram (Facebook) and X connect controllers with the inbox scopes added |
+| `app/Marmara/Inbox/lang/{en,tr}/inbox.php` | The page's copy (namespace `marmara-inbox`; other locales fall back to English) |
+| `app/Marmara/Inbox/Console/*` | `marmara:inbox:sync [--account=] [--now] [--force]`, `marmara:inbox:status [--account=]` |
+| `resources/js/marmara/inbox/*`, `resources/js/pages/marmara/Inbox.vue` | The page (the file under `pages/` only forwards to it, since Inertia resolves pages there) and the sidebar entry |
+| `tests/Feature/Marmara/Inbox/*` | Pest tests |
+
+### Upstream touch points
+
+| File | Lines | Change |
+| --- | --- | --- |
+| `bootstrap/providers.php` | 5, 23-24 | `use App\Marmara\Inbox\InboxServiceProvider;` and the provider in the list |
+| `app/Enums/Webhook/EventType.php` | 24 | `case InboxItemReceived = 'inbox.item_received';` (webhook validation, the MCP webhook tools and the UI picker all read the enum) |
+| `resources/js/components/webhook/webhook-events.ts` | 19 | `'inbox.item_received'` in the event list, so the webhook dialogs offer it |
+| `lang/*/webhooks.php` (16 locales) | 2 lines each | `events.inbox_item_received` and `event_descriptions.inbox_item_received`, after `post_feedback_requested` (WebhookTranslationsTest wants every event in every locale) |
+| `resources/js/components/AppSidebar.vue` | 41, 94 | `import { marmaraInboxNavItems } ...` and `...marmaraInboxNavItems(page.props),` in `mainNavItems` (empty while the module is off) |
+| `tests/fixtures/single-line-copy.php`, `tests/Unit/Enums/WebhookEventTypeTest.php` | 1 line each | The new description's length budget and the enum value |
+
+Not edited, relied on: Laravel resolves route controllers through the
+container, so `InboxServiceProvider` binds `FacebookController`,
+`InstagramController`, `InstagramFacebookController` and `XController` to
+subclasses whose constructor appends the inbox scopes to upstream's
+`$scopes` (only while the provider's flag is on; otherwise upstream's list).
+laravel/mcp builds the server with `Container::make(TryPostServer::class)`
+(web transport and `TryPostServer::actingAs()` alike), so `TryPostServer` is
+bound to `InboxTryPostServer`, whose `boot()` adds the three tools; each
+tool's `shouldRegister()` hides it while `MARMARA_INBOX_ENABLED` is off.
+`WebhookService::dispatch()` and `DispatchWebhook` sign the event exactly like
+the `post.*` events. On an upstream conflict in any file above, keep
+upstream's version and re-add the one line.
+
+### Providers
+
+| Network | Provider | See comments | Reply to comments | Hide comments | See DMs | Reply to DMs | Needs |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| LinkedIn page | `linkedin` (native) | yes | yes, as the page | no API | no API | no API | `r_organization_social_feed`, `w_organization_social_feed` (granted to the app; reconnect), ADMINISTRATOR role |
+| Instagram (Instagram Login) | `instagram` | yes | yes | yes | yes | yes, 24 h window | `instagram_business_manage_comments`, `instagram_business_manage_messages` |
+| Instagram (Facebook Login) | `instagram` | yes | yes | yes | yes (through the Page) | yes, 24 h window | `instagram_manage_comments`, `instagram_manage_messages`, `pages_manage_metadata`, MESSAGING task on the Page |
+| Facebook Page | `facebook` | yes | yes | yes | Messenger | yes, 24 h window | `pages_read_engagement`, `pages_read_user_content`, `pages_manage_engagement`, `pages_messaging`; MODERATE and MESSAGING tasks |
+| TikTok | `zernio` | yes | yes (150 chars) | yes | yes (Business accounts) | yes, 48 h / 10 messages | Zernio inbox (`INBOX_REQUIRED` otherwise), account connected through TikTok's Business app in Zernio (`PLATFORM_LIMITATION` otherwise) |
+| X | `x` (native, off) | mentions | yes (reply post) | no | yes | yes | X API plan that can read (pay-per-use); DMs need `dm.read`, `dm.write` (reconnect) |
+| X through Zernio | `zernio` | no (Zernio: `platform_not_supported`) | - | - | yes | yes | X DMs bill separately in Zernio |
+| Instagram / Facebook / Threads / YouTube / Bluesky / Reddit through Zernio | `zernio` (`MARMARA_INBOX_ZERNIO_ACCOUNTS`) | yes | yes | IG, FB, Threads | IG, FB, Bluesky, Reddit | yes | the channel in Zernio |
+
+Meta: Standard Access works without App Review for accounts whose people have
+a role on the Meta app (the club's own accounts); every other account needs
+Advanced Access, i.e. Meta App Review. The status text says "requires Meta
+App Review advanced access" for that reason. The HUMAN_AGENT tag (7 days) is
+not used: it needs its own review and only covers replies a person types.
+Meta webhooks (real time) need Live mode, Advanced Access, App Review and
+Business Verification, so the inbox polls.
+
+Which provider reads a channel: a channel listed in
+`MARMARA_INBOX_ZERNIO_ACCOUNTS` goes to Zernio; otherwise the native provider
+of its network when its flag is on; otherwise Zernio when the channel is
+mapped in `ZERNIO_ACCOUNTS` (TikTok; a LinkedIn page still published through
+Zernio). Never two providers for one channel.
+
+### Endpoints and versions (verified November 2026)
+
+| Provider | Endpoint | Docs |
+| --- | --- | --- |
+| LinkedIn | `GET /rest/socialActions/{postUrn}/comments?start=0&count=50`, `POST /rest/socialActions/{parent commentUrn}/comments` with `actor` (organization), `object` (post URN), `message.text`, `parentComment`; `LinkedIn-Version: MARMARA_LINKEDIN_API_VERSION` (202610), Rest.li 2.0. Posts list: the LinkedIn module's `/rest/posts?q=author` | [Comments API](https://learn.microsoft.com/linkedin/marketing/community-management/shares/comments-api) (li-lms-2026-10) |
+| Instagram Login | `GET /{ig-id}/media`, `GET /{media-id}/comments?fields=...,replies{...}`, `POST /{comment-id}/replies`, `POST /{comment-id}` `hide=true`, `GET /{ig-id}/conversations?platform=instagram&fields=messages.limit(20){...}`, `POST /{ig-id}/messages` (text up to 1000 bytes) on `INSTAGRAM_GRAPH_API` (graph.instagram.com/v25.0) | [comment moderation](https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/comment-moderation), [messaging](https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/messaging-api), [conversations](https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/conversations-api) |
+| Instagram (Facebook) / Facebook | same comment calls, `GET /{page-id}/published_posts`, `GET /{post-id}/comments?filter=stream`, `POST /{comment-id}/comments`, `POST /{comment-id}` `is_hidden=true`, `GET /{page-id}/conversations?platform=instagram|messenger`, `POST /{page-id}/messages` (`messaging_type=RESPONSE`, Messenger text up to 2000) on graph.facebook.com/v25.0 | [comments](https://developers.facebook.com/docs/graph-api/reference/object/comments/), [conversations](https://developers.facebook.com/docs/messenger-platform/conversations) |
+| Zernio | `GET /v1/inbox/comments?accountId&sortBy=date&sortOrder=desc&since&minComments=1`, `GET /v1/inbox/comments/{postId}?accountId`, `POST /v1/inbox/comments/{postId}` (`commentId`, `Idempotency-Key`), `POST /v1/inbox/comments/{postId}/{commentId}/hide`, `GET /v1/inbox/conversations?accountId&sortOrder=desc`, `GET` / `POST /v1/inbox/conversations/{id}/messages` | [comments](https://docs.zernio.com/products/comments), [messaging](https://docs.zernio.com/products/messaging), [conversations](https://docs.zernio.com/messages/list-inbox-conversations), [comment.received](https://docs.zernio.com/webhooks/inbox/comment-received) |
+| X | `GET /2/users/{id}/mentions` (`since_id`, `pagination_token`), `POST /2/tweets` with `reply.in_reply_to_tweet_id`, `GET /2/dm_events`, `POST /2/dm_conversations/{id}/messages` | [X API](https://docs.x.com/x-api) |
+
+### Sync, budget and back-off
+
+`marmara:inbox:sync` runs every 5 minutes (one server, no overlap) and queues
+`SyncInboxAccount` for each channel, provider and kind whose interval has
+passed (LinkedIn 180 min, Meta and Zernio 10, X 30) and that is not backing
+off. A run reads up to `MARMARA_INBOX_MAX_PAGES_PER_SYNC` pages and saves the
+provider's cursor after each, so a stopped run resumes. Comments are polled
+on the posts of the last `MARMARA_INBOX_POST_WINDOW_DAYS` (14), a few posts a
+run, rotating; DMs from the conversations updated since the cursor.
+
+- Dedupe: one row per (channel, provider, external id), unique in the
+  database; the channel's own comments/messages (author is the page / account,
+  or the external id of a reply sent from TryPost) are never stored.
+- LinkedIn shares the LinkedIn module's budget: every inbox request takes a
+  unit of `MARMARA_LINKEDIN_DAILY_CALL_BUDGET` (80) through
+  `LinkedInCallBudget`, after a unit of the inbox's own share
+  (`MARMARA_INBOX_LINKEDIN_DAILY_CALLS`, 30), so analytics keep at least 50.
+  A 429 blocks every LinkedIn call (analytics too) until `Retry-After`. The
+  post list is read at most every 12 hours. About 26 calls a day by default.
+- Meta: a rate-limit answer (codes 4, 17, 32, 613, 800xx or HTTP 429) blocks
+  the channel until `X-Business-Use-Case-Usage.estimated_time_to_regain_access`
+  (else 30 min). Zernio and X: `Retry-After` / X's reset headers.
+- Statuses per channel and kind: `ok`, `needs_permission` (the detail names
+  it), `rate_limited` (until `blocked_until`), `authentication` (reconnect),
+  `unsupported`, `error`.
+
+### Contract for Echo / Hermes
+
+Item (`data.item` of the webhook, the API's items, the MCP tools):
+`{id, platform, kind: "comment"|"message", author: {name, handle}, text,
+permalink, post: {id, excerpt}|null, received_at, can_reply,
+reply_window_ends_at|null}`. `post` is null for a DM; `post.id` is the TryPost
+post id when TryPost published the post, else the network's post id.
+LinkedIn gives no commenter name (only the member URN): `author` is then
+null/null. `can_reply` is false once the DM window has closed.
+
+- Webhook `inbox.item_received`: TryPost's own webhooks (Settings > Webhooks,
+  or the API / MCP webhook tools), signed with `X-Webhook-Signature` like the
+  `post.approval_*` events. Fired once per new item, after the row commits;
+  never for our own replies; not for items older than
+  `MARMARA_INBOX_NOTIFY_MAX_AGE_HOURS` (the first sync's backlog).
+- REST (API key, `auth:api` + `workspace.token`, workspace of the key):
+  - `GET /api/inbox/items?status=unread|read|archived|open|all&limit=1..100&platform=&kind=&before=` → `{data: [item + status], has_more}` (default `open`, 20)
+  - `GET /api/inbox/items/{id}` → item + `status`, `channel`, `thread`, `replies`
+  - `POST /api/inbox/items/{id}/replies` `{text, request_id}` → 201 `{id, status: sent|failed[, error]}`; the same `request_id` answers the same result without sending again; 409 `{code: reply_window_closed}`; 422 `{code: text_too_long}` (LinkedIn 1250, Instagram comments 2200 / DMs 1000 bytes, Facebook 8000 / Messenger 2000, TikTok 150, X 280) or `{code: cannot_reply}`; 403 for a member whose posts need approval
+  - `POST /api/inbox/items/{id}/read` → `{id, status}`
+- MCP: `list-inbox-items-tool` and `get-inbox-item-tool` (read only),
+  `reply-to-inbox-item-tool` (destructive, open world; `request_id` required).
+
+Optional Zernio receiver: `POST {APP_URL}/api/marmara/zernio/inbox-webhook`
+(`comment.received`, `message.received`), verified with `X-Zernio-Signature`
+(HMAC-SHA256 of the raw body, lowercase hex) against
+`MARMARA_INBOX_ZERNIO_WEBHOOK_SECRET`, deduped by the event `id`. Polling
+stays on as the fallback.
+
+### How to enable each provider
+
+1. Add `marmara/inbox.env.example` to `.env` with `MARMARA_INBOX_ENABLED=true`
+   and the provider flags you want; recreate the container (the migration
+   runs with the others). `php artisan marmara:inbox:status` shows what each
+   channel can do and what it still needs.
+2. LinkedIn page: `MARMARA_INBOX_LINKEDIN=true`. The app already has
+   `r_organization_social_feed` and `w_organization_social_feed`; the connect
+   now asks for `w_organization_social_feed` too, so do Channels > the
+   LinkedIn page > "Refresh connection" as a page ADMINISTRATOR (until then:
+   comments are read, replies say "needs permission
+   w_organization_social_feed"). The page must be native (not in
+   `ZERNIO_ACCOUNTS`). Page DMs: no API, not available.
+3. Instagram / Facebook: in the Meta app add the permissions to the use case
+   (Instagram Login: `instagram_business_manage_comments`,
+   `instagram_business_manage_messages`; Facebook Login:
+   `instagram_manage_comments`, `instagram_manage_messages`,
+   `pages_manage_metadata`, `pages_read_user_content`,
+   `pages_manage_engagement`, `pages_messaging`). With the club's own
+   accounts and their admins in an app role, Standard Access is enough; for
+   anyone else request Advanced Access in App Review (screencast of the inbox
+   page reading and answering), plus Business Verification. Then set
+   `MARMARA_INBOX_INSTAGRAM=true` / `MARMARA_INBOX_FACEBOOK=true` and
+   "Refresh connection" every Instagram / Facebook card (the connect asks the
+   new scopes only while the flag is on). The Facebook user who connects
+   needs the Page's MODERATE and MESSAGING tasks. In the Instagram app, allow
+   "Connected tools" message access (Settings > Messages).
+4. TikTok (and others) through Zernio: check that the Zernio plan has the
+   inbox (a 403 `INBOX_REQUIRED` otherwise) and that the TikTok account is
+   connected through TikTok's Business app in Zernio; `MARMARA_INBOX_ZERNIO=true`.
+   Optional real time: create a Zernio webhook for `comment.received` and
+   `message.received` to `{APP_URL}/api/marmara/zernio/inbox-webhook` and put
+   its secret in `MARMARA_INBOX_ZERNIO_WEBHOOK_SECRET`.
+5. X: only with an X API plan that can read. `MARMARA_INBOX_X=true`, then
+   "Refresh connection" on the X card for `dm.read`/`dm.write` (also enable
+   DMs for the app in the X developer portal). Otherwise leave it off; X DMs
+   can also come through Zernio.
+6. Echo: in TryPost (Settings > Webhooks, or the webhook API) add
+   `inbox.item_received` to Echo's webhook; Echo answers with
+   `POST /api/inbox/items/{id}/replies` using its API key.
+
+### Not verified against the live API
+
+Written from the docs above and tested with `Http::fake` only: LinkedIn's
+`start`/`count` on the comments finder (not documented on the Comments page)
+and the reply's `commentUrn` in the body (the id is also built from
+`x-restli-id`); Graph's nested `messages.limit(20){...}` field expansion on
+conversations; Zernio's `message.received` payload (not documented; an
+unknown shape only makes the channel's next poll due) and the error `code`
+field placement; X's pay-per-use read limits. The LinkedIn and Instagram
+comment length limits are the networks' product limits, not stated on the
+API pages.
