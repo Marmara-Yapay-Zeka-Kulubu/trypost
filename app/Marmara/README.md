@@ -974,6 +974,9 @@ null/null. `can_reply` is false once the DM window has closed.
   `post.approval_*` events. Fired once per new item, after the row commits;
   never for our own replies; not for items older than
   `MARMARA_INBOX_NOTIFY_MAX_AGE_HOURS` (the first sync's backlog).
+- Replying (and hiding) is the `reply-to-inbox-item` gate on the panel, the
+  API and MCP alike: the token's user needs the workspace's direct publishing
+  right (`WorkspacePolicy::publishDirectly`), like publishing a post.
 - REST (API key, `auth:api` + `workspace.token`, workspace of the key):
   - `GET /api/inbox/items?status=unread|read|archived|open|all&limit=1..100&platform=&kind=&before=` → `{data: [item + status], has_more}` (default `open`, 20)
   - `GET /api/inbox/items/{id}` → item + `status`, `channel`, `thread`, `replies`
@@ -986,7 +989,12 @@ Optional Zernio receiver: `POST {APP_URL}/api/marmara/zernio/inbox-webhook`
 (`comment.received`, `message.received`), verified with `X-Zernio-Signature`
 (HMAC-SHA256 of the raw body, lowercase hex) against
 `MARMARA_INBOX_ZERNIO_WEBHOOK_SECRET`, deduped by the event `id`. Polling
-stays on as the fallback.
+stays on as the fallback. A DM has one id on both paths: the platform's
+message id (the list API's `id`, the webhook's `message.platformMessageId`);
+the webhook's own `message.id` (Zernio's internal id) is kept in
+`meta.zernio_message_id` and checked as an alias, and a row stored under it
+is moved to the platform id. `comment.received` documents only `comment.id`,
+used as is on both paths.
 
 ### How to enable each provider
 
