@@ -16,6 +16,7 @@ export const webhookEventGroups = [
             'post.approved',
             'post.rejected',
             'post.feedback_requested',
+            'inbox.item_received', // Marmara AI fork (app/Marmara/README.md, Inbox)
         ],
     },
 ];

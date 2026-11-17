@@ -21,6 +21,7 @@ test('every webhook event has the expected value', function (EventType $event, s
     [EventType::PostApproved, 'post.approved'],
     [EventType::PostRejected, 'post.rejected'],
     [EventType::PostFeedbackRequested, 'post.feedback_requested'],
+    [EventType::InboxItemReceived, 'inbox.item_received'],
 ]);
 
 test('fromPostStatus maps publishable statuses and ignores the rest', function (PostStatus $status, ?EventType $event, ?PostStatus $previous = null) {

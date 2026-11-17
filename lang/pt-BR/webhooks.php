@@ -96,6 +96,7 @@ return [
         'post_approved' => 'Post aprovado',
         'post_rejected' => 'Post rejeitado',
         'post_feedback_requested' => 'Feedback solicitado no post',
+        'inbox_item_received' => 'Novo comentário ou mensagem na caixa de entrada',
     ],
     'event_descriptions' => [
         'post_created' => 'Quando um novo post é criado.',
@@ -110,6 +111,7 @@ return [
         'post_approved' => 'Quando um post pendente é aprovado.',
         'post_rejected' => 'Quando um post pendente é rejeitado.',
         'post_feedback_requested' => 'Quando um membro pede feedback sobre um post.',
+        'inbox_item_received' => 'Quando chega um comentário ou mensagem direta.',
     ],
     'http_reasons' => [
         'unknown' => 'Desconhecido',

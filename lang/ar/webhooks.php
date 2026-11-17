@@ -96,6 +96,7 @@ return [
         'post_approved' => 'تمت الموافقة على المنشور',
         'post_rejected' => 'تم رفض المنشور',
         'post_feedback_requested' => 'طلب رأي في منشور',
+        'inbox_item_received' => 'رسالة أو تعليق جديد في البريد الوارد',
     ],
     'event_descriptions' => [
         'post_created' => 'عند إنشاء منشور جديد.',
@@ -110,6 +111,7 @@ return [
         'post_approved' => 'عند الموافقة على منشور قيد الانتظار.',
         'post_rejected' => 'عند رفض منشور قيد الانتظار.',
         'post_feedback_requested' => 'عندما يطلب عضو آراء الفريق في منشور.',
+        'inbox_item_received' => 'عند وصول تعليق أو رسالة مباشرة إلى البريد الوارد.',
     ],
     'http_reasons' => [
         'unknown' => 'غير معروف',

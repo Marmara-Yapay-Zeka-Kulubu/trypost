@@ -202,6 +202,7 @@ return [
     'webhooks.actions.send_test' => 31,
     'webhooks.create.endpoint_help' => 58,
     'webhooks.description' => 49,
+    'webhooks.event_descriptions.inbox_item_received' => 54,
     'webhooks.event_descriptions.post_approval_requested' => 54,
     'webhooks.event_descriptions.post_approved' => 54,
     'webhooks.event_descriptions.post_created' => 41,

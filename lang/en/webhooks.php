@@ -96,6 +96,7 @@ return [
         'post_approved' => 'Post approved',
         'post_rejected' => 'Post rejected',
         'post_feedback_requested' => 'Post feedback requested',
+        'inbox_item_received' => 'New inbox comment or message',
     ],
     'event_descriptions' => [
         'post_created' => 'When a new post is created.',
@@ -110,6 +111,7 @@ return [
         'post_approved' => 'When a pending post is approved.',
         'post_rejected' => 'When a pending post is rejected.',
         'post_feedback_requested' => 'When a member asks teammates for feedback on a post.',
+        'inbox_item_received' => 'When a comment or direct message reaches the inbox.',
     ],
     'http_reasons' => [
         'unknown' => 'Unknown',

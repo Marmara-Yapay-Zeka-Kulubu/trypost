@@ -21,6 +21,7 @@ enum EventType: string
     case PostApproved = 'post.approved';
     case PostRejected = 'post.rejected';
     case PostFeedbackRequested = 'post.feedback_requested';
+    case InboxItemReceived = 'inbox.item_received'; // Marmara AI fork: app/Marmara/README.md (Inbox)
 
     public static function fromPostStatus(PostStatus $status, ?PostStatus $previous = null): ?self
     {

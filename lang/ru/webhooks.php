@@ -96,6 +96,7 @@ return [
         'post_approved' => 'Пост одобрен',
         'post_rejected' => 'Пост отклонён',
         'post_feedback_requested' => 'Запрошен отзыв о посте',
+        'inbox_item_received' => 'Новый комментарий или сообщение во входящих',
     ],
     'event_descriptions' => [
         'post_created' => 'Когда создаётся новый пост.',
@@ -110,6 +111,7 @@ return [
         'post_approved' => 'Когда ожидающий пост одобрен.',
         'post_rejected' => 'Когда ожидающий пост отклонён.',
         'post_feedback_requested' => 'Когда участник просит отзыв о посте.',
+        'inbox_item_received' => 'Когда приходит комментарий или личное сообщение.',
     ],
     'http_reasons' => [
         'unknown' => 'Неизвестно',

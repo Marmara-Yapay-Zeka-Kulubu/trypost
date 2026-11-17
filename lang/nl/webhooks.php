@@ -96,6 +96,7 @@ return [
         'post_approved' => 'Bericht goedgekeurd',
         'post_rejected' => 'Bericht afgewezen',
         'post_feedback_requested' => 'Feedback gevraagd op bericht',
+        'inbox_item_received' => 'Nieuwe reactie of bericht in inbox',
     ],
     'event_descriptions' => [
         'post_created' => 'Wanneer een nieuwe post wordt aangemaakt.',
@@ -110,6 +111,7 @@ return [
         'post_approved' => 'Wanneer een wachtend bericht wordt goedgekeurd.',
         'post_rejected' => 'Wanneer een wachtend bericht wordt afgewezen.',
         'post_feedback_requested' => 'Wanneer een lid om feedback op een bericht vraagt.',
+        'inbox_item_received' => 'Wanneer een reactie of direct bericht binnenkomt.',
     ],
     'http_reasons' => [
         'unknown' => 'Onbekend',

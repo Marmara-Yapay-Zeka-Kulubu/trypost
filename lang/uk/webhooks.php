@@ -96,6 +96,7 @@ return [
         'post_approved' => 'Допис схвалено',
         'post_rejected' => 'Допис відхилено',
         'post_feedback_requested' => 'Запит відгуку про допис',
+        'inbox_item_received' => 'Новий коментар або повідомлення у вхідних',
     ],
     'event_descriptions' => [
         'post_created' => 'Коли створено новий пост.',
@@ -110,6 +111,7 @@ return [
         'post_approved' => 'Коли допис, що очікує, схвалено.',
         'post_rejected' => 'Коли допис, що очікує, відхилено.',
         'post_feedback_requested' => 'Коли учасник просить відгук про допис.',
+        'inbox_item_received' => 'Коли надходить коментар або особисте повідомлення.',
     ],
     'http_reasons' => [
         'unknown' => 'Невідомо',

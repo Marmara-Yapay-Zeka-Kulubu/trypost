@@ -96,6 +96,7 @@ return [
         'post_approved' => 'Publicación aprobada',
         'post_rejected' => 'Publicación rechazada',
         'post_feedback_requested' => 'Opinión solicitada sobre publicación',
+        'inbox_item_received' => 'Nuevo comentario o mensaje en la bandeja',
     ],
     'event_descriptions' => [
         'post_created' => 'Cuando se crea un nuevo post.',
@@ -110,6 +111,7 @@ return [
         'post_approved' => 'Cuando se aprueba una publicación pendiente.',
         'post_rejected' => 'Cuando se rechaza una publicación pendiente.',
         'post_feedback_requested' => 'Cuando un miembro pide opinión sobre una publicación.',
+        'inbox_item_received' => 'Cuando llega un comentario o mensaje directo.',
     ],
     'http_reasons' => [
         'unknown' => 'Desconocido',

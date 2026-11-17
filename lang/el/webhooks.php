@@ -96,6 +96,7 @@ return [
         'post_approved' => 'Η ανάρτηση εγκρίθηκε',
         'post_rejected' => 'Η ανάρτηση απορρίφθηκε',
         'post_feedback_requested' => 'Ζητήθηκε γνώμη για ανάρτηση',
+        'inbox_item_received' => 'Νέο σχόλιο ή μήνυμα στα εισερχόμενα',
     ],
     'event_descriptions' => [
         'post_created' => 'Όταν δημιουργείται μια νέα ανάρτηση.',
@@ -110,6 +111,7 @@ return [
         'post_approved' => 'Όταν εγκρίνεται μια ανάρτηση σε αναμονή.',
         'post_rejected' => 'Όταν απορρίπτεται μια ανάρτηση σε αναμονή.',
         'post_feedback_requested' => 'Όταν ένα μέλος ζητά γνώμη για μια ανάρτηση.',
+        'inbox_item_received' => 'Όταν φτάνει σχόλιο ή άμεσο μήνυμα στα εισερχόμενα.',
     ],
     'http_reasons' => [
         'unknown' => 'Άγνωστο',

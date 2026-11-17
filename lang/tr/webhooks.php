@@ -96,6 +96,7 @@ return [
         'post_approved' => 'Gönderi onaylandı',
         'post_rejected' => 'Gönderi reddedildi',
         'post_feedback_requested' => 'Gönderi için görüş istendi',
+        'inbox_item_received' => 'Gelen kutusuna yeni yorum veya mesaj',
     ],
     'event_descriptions' => [
         'post_created' => 'Yeni bir gönderi oluşturulduğunda.',
@@ -110,6 +111,7 @@ return [
         'post_approved' => 'Onay bekleyen bir gönderi onaylandığında.',
         'post_rejected' => 'Onay bekleyen bir gönderi reddedildiğinde.',
         'post_feedback_requested' => 'Bir üye bir gönderi için ekibinden görüş istediğinde.',
+        'inbox_item_received' => 'Gelen kutusuna yorum ya da doğrudan mesaj geldiğinde.',
     ],
     'http_reasons' => [
         'unknown' => 'Bilinmiyor',

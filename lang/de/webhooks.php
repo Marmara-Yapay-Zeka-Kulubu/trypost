@@ -96,6 +96,7 @@ return [
         'post_approved' => 'Beitrag freigegeben',
         'post_rejected' => 'Beitrag abgelehnt',
         'post_feedback_requested' => 'Feedback zu Beitrag angefragt',
+        'inbox_item_received' => 'Neuer Kommentar oder Nachricht im Posteingang',
     ],
     'event_descriptions' => [
         'post_created' => 'Wenn ein neuer Beitrag erstellt wird.',
@@ -110,6 +111,7 @@ return [
         'post_approved' => 'Wenn ein wartender Beitrag freigegeben wird.',
         'post_rejected' => 'Wenn ein wartender Beitrag abgelehnt wird.',
         'post_feedback_requested' => 'Wenn ein Mitglied Feedback zu einem Beitrag anfragt.',
+        'inbox_item_received' => 'Wenn ein Kommentar oder eine Direktnachricht eingeht.',
     ],
     'http_reasons' => [
         'unknown' => 'Unbekannt',
