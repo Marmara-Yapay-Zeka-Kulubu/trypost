@@ -38,6 +38,7 @@ import {
 import { useConnectChannelDialog } from '@/composables/useConnectChannelDialog';
 import { openPostComposer } from '@/composables/useGlobalPostComposer';
 import { useWorkspaceAbilities } from '@/composables/useWorkspaceAbilities';
+import { marmaraInboxNavItems } from '@/marmara/inbox/nav'; // Marmara AI fork
 import { insights } from '@/routes/app';
 import { index as ideasIndex, create as createIdea } from '@/routes/app/create/ideas';
 import { index as repurposes } from '@/routes/app/repurposes';
@@ -90,6 +91,7 @@ const mainNavItems = computed<NavItem[]>(() => [
         count: scheduledPostsCount.value,
         countTestId: 'sidebar-publish-count',
     },
+    ...marmaraInboxNavItems(page.props), // Marmara AI fork: inbox (app/Marmara/README.md)
     {
         title: trans('channels.insights'),
         href: insights.url(),
