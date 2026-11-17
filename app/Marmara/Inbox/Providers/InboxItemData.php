@@ -9,12 +9,15 @@ use Carbon\CarbonImmutable;
 /**
  * An item as a provider read it, before it is stored. `fromSelf` marks the
  * channel's own comments and messages (our replies), which are never stored
- * as inbox items.
+ * as inbox items. `aliases` are other ids the same item may already be
+ * stored under (an id a path used before its canonical one); an item found
+ * by an alias is known, and its row is moved to the canonical id.
  */
 final readonly class InboxItemData
 {
     /**
      * @param  array<string, mixed>  $meta
+     * @param  list<string>  $aliases
      */
     public function __construct(
         public string $kind,
@@ -36,5 +39,6 @@ final readonly class InboxItemData
         public bool $hidden = false,
         public ?string $platform = null,
         public array $meta = [],
+        public array $aliases = [],
     ) {}
 }

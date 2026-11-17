@@ -136,9 +136,14 @@ class ZernioInboxWebhookController
      */
     private function message(array $payload, string $zernioAccountId): ?InboxItemData
     {
-        $id = data_get($payload, 'message.id');
+        // The list API's message `id` is the platform's id (`mid`, `wamid`);
+        // the webhook carries it as `message.platformMessageId` and its own
+        // internal id as `message.id`. The platform id is the item's id on
+        // both paths; the internal one is kept as an alias.
+        $internalId = data_get($payload, 'message.id');
+        $id = data_get($payload, 'message.platformMessageId') ?? $internalId;
         $conversation = data_get($payload, 'message.conversationId') ?? data_get($payload, 'conversation.id');
-        $created = data_get($payload, 'message.createdAt') ?? data_get($payload, 'message.sentAt') ?? data_get($payload, 'timestamp');
+        $created = data_get($payload, 'message.sentAt') ?? data_get($payload, 'message.createdAt') ?? data_get($payload, 'timestamp');
 
         if (! is_string($id) || ! is_string($conversation) || ! is_string($created)) {
             return null;
@@ -162,7 +167,12 @@ class ZernioInboxWebhookController
             authorHandle: is_string($username) ? $username : null,
             replyWindowEndsAt: $hours === null ? null : $at->addHours($hours),
             fromSelf: data_get($payload, 'message.direction') === 'outgoing',
-            meta: ['zernio_account_id' => $zernioAccountId, 'zernio_platform' => $platform],
+            meta: array_filter([
+                'zernio_account_id' => $zernioAccountId,
+                'zernio_platform' => $platform,
+                'zernio_message_id' => is_string($internalId) ? $internalId : null,
+            ]),
+            aliases: is_string($internalId) && $internalId !== $id ? [$internalId] : [],
         );
     }
 }

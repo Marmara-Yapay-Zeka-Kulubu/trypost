@@ -126,7 +126,8 @@ test('tiktok comments come from zernio without our own reply and answer with an 
         ->and($item->author_handle)->toBe('zeynep.ai')
         ->and($item->post_external_id)->toBe('zpost1')
         ->and($item->permalink)->toBe('https://www.tiktok.com/@marmaraai/video/7400000000000000001')
-        ->and($item->meta)->toBe(['zernio_account_id' => INBOX_ZERNIO_ACCOUNT, 'zernio_platform' => 'tiktok']);
+        // JSON columns keep no key order on MySQL: compare as a set of keys.
+        ->and($item->meta)->toEqual(['zernio_platform' => 'tiktok', 'zernio_account_id' => INBOX_ZERNIO_ACCOUNT]);
     Http::assertSent(fn (Request $request): bool => str_ends_with((string) parse_url($request->url(), PHP_URL_PATH), '/inbox/comments')
         && $request['accountId'] === INBOX_ZERNIO_ACCOUNT
         && $request['sortBy'] === 'date'
@@ -239,6 +240,79 @@ test('the zernio webhook receiver stores a signed comment once and fires inbox.i
         ->and($item->author_name)->toBe('Mert')
         ->and($item->post_external_id)->toBe('7400000000000000001');
     Queue::assertPushed(DispatchWebhook::class, 1);
+});
+
+/**
+ * A Zernio message.received delivery for the polled message msg2: the
+ * webhook's `message.id` is Zernio's internal id, the list API's id arrives
+ * as `message.platformMessageId`.
+ */
+function inboxZernioMessageWebhook(object $test, string $eventId): void
+{
+    $body = json_encode([
+        'id' => $eventId,
+        'event' => 'message.received',
+        'message' => [
+            'id' => '665f1c0a9b8e7d6c5b4a3921', 'conversationId' => 'conv1', 'platform' => 'tiktok', 'platformMessageId' => 'msg2',
+            'direction' => 'incoming', 'text' => 'Kulübe nasıl katılırım?', 'attachments' => [],
+            'sender' => ['id' => 'p1', 'name' => 'Can'], 'sentAt' => '2026-11-17T11:00:00Z', 'isRead' => false,
+        ],
+        'conversation' => ['id' => 'conv1'],
+        'account' => ['id' => INBOX_ZERNIO_ACCOUNT, 'accountId' => INBOX_ZERNIO_ACCOUNT, 'platform' => 'tiktok'],
+        'timestamp' => '2026-11-17T11:00:01Z',
+    ]);
+
+    $test->call('POST', '/api/marmara/zernio/inbox-webhook', [], [], [], [
+        'CONTENT_TYPE' => 'application/json',
+        'HTTP_X_ZERNIO_SIGNATURE' => hash_hmac('sha256', $body, 'whsec_inbox'),
+    ], $body)->assertOk();
+}
+
+test('a dm read by polling and then delivered by the webhook is one item and one event', function () {
+    config()->set('marmara-inbox.zernio.webhook_secret', 'whsec_inbox');
+    Webhook::factory()->create(['workspace_id' => $this->workspace->id, 'events' => [EventType::InboxItemReceived->value]]);
+
+    inboxZernioSync($this->tiktok, 'message');
+    inboxZernioMessageWebhook($this, 'evt_m1');
+
+    $item = InboxItem::query()->sole();
+    expect($item->external_id)->toBe('msg2')
+        ->and($item->meta['zernio_message_id'])->toBe('665f1c0a9b8e7d6c5b4a3921');
+    Queue::assertPushed(DispatchWebhook::class, 1);
+});
+
+test('a dm delivered by the webhook and then polled is one item and one event', function () {
+    config()->set('marmara-inbox.zernio.webhook_secret', 'whsec_inbox');
+    Webhook::factory()->create(['workspace_id' => $this->workspace->id, 'events' => [EventType::InboxItemReceived->value]]);
+
+    inboxZernioMessageWebhook($this, 'evt_m2');
+    expect(inboxZernioSync($this->tiktok, 'message'))->toBe(0);
+
+    expect(InboxItem::query()->sole()->external_id)->toBe('msg2');
+    Queue::assertPushed(DispatchWebhook::class, 1);
+});
+
+test('a dm stored under zernio\'s internal id moves to the platform id instead of doubling', function () {
+    config()->set('marmara-inbox.zernio.webhook_secret', 'whsec_inbox');
+    $legacy = InboxItem::query()->create([
+        'workspace_id' => $this->workspace->id,
+        'social_account_id' => $this->tiktok->id,
+        'provider' => 'zernio',
+        'platform' => 'tiktok',
+        'kind' => 'message',
+        'external_id' => '665f1c0a9b8e7d6c5b4a3921',
+        'thread_id' => 'conv1',
+        'text' => 'Kulübe nasıl katılırım?',
+        'received_at' => now()->subHour(),
+        'can_reply' => true,
+    ]);
+
+    inboxZernioMessageWebhook($this, 'evt_m3');
+    expect(inboxZernioSync($this->tiktok, 'message'))->toBe(0);
+
+    expect(InboxItem::query()->sole()->is($legacy))->toBeTrue()
+        ->and($legacy->fresh()->external_id)->toBe('msg2');
+    Queue::assertNotPushed(DispatchWebhook::class);
 });
 
 test('the zernio webhook receiver is off without its secret', function () {

@@ -34,18 +34,29 @@ class InboxItemStore
      */
     public function ingest(SocialAccount $account, InboxProvider $provider, InboxItemData $data): ?InboxItem
     {
-        if ($data->fromSelf || $this->isOurReply($account, $data->externalId)) {
+        $ids = array_values(array_unique([$data->externalId, ...$data->aliases]));
+
+        if ($data->fromSelf || $this->isOurReply($account, $ids)) {
             return null;
         }
 
-        $existing = InboxItem::query()
+        $known = InboxItem::query()
             ->where('social_account_id', $account->id)
             ->where('provider', $provider->key())
-            ->where('external_id', $data->externalId)
-            ->first();
+            ->whereIn('external_id', $ids)
+            ->get();
 
-        if ($existing !== null) {
-            $this->refresh($existing, $data);
+        if ($known->isNotEmpty()) {
+            $canonical = $known->firstWhere('external_id', $data->externalId);
+
+            // A row stored under an alias only (an older id): move it to the
+            // canonical id, so the other path finds it from now on.
+            if ($canonical === null) {
+                $canonical = $known->first();
+                $canonical->external_id = $data->externalId;
+            }
+
+            $this->refresh($canonical, $data);
 
             return null;
         }
@@ -150,6 +161,7 @@ class InboxItemStore
     private function refresh(InboxItem $item, InboxItemData $data): void
     {
         $item->fill([
+            'meta' => $data->meta === [] ? $item->meta : [...($item->meta ?? []), ...$data->meta],
             'can_reply' => $data->canReply,
             'hidden_at' => $data->hidden ? ($item->hidden_at ?? now()) : null,
         ]);
@@ -159,11 +171,14 @@ class InboxItemStore
         }
     }
 
-    private function isOurReply(SocialAccount $account, string $externalId): bool
+    /**
+     * @param  list<string>  $externalIds
+     */
+    private function isOurReply(SocialAccount $account, array $externalIds): bool
     {
         return InboxReply::query()
             ->where('social_account_id', $account->id)
-            ->where('external_id', $externalId)
+            ->whereIn('external_id', $externalIds)
             ->exists();
     }
 
