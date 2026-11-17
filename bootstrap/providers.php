@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Marmara\Inbox\InboxServiceProvider;
 use App\Marmara\LinkedIn\LinkedInServiceProvider;
 use App\Marmara\Portal\PortalServiceProvider;
 use App\Marmara\Zernio\ZernioServiceProvider;
@@ -19,4 +20,6 @@ return [
     PortalServiceProvider::class,
     // Marmara AI fork: native LinkedIn page analytics (app/Marmara/README.md).
     LinkedInServiceProvider::class,
+    // Marmara AI fork: comments and DMs inbox (app/Marmara/README.md).
+    InboxServiceProvider::class,
 ];
