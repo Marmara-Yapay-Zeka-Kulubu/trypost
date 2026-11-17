@@ -10,6 +10,7 @@ use App\Marmara\Inbox\Exceptions\InboxProviderException;
 use App\Marmara\Inbox\Exceptions\InboxReplyRefused;
 use App\Marmara\Inbox\InboxItemPayload;
 use App\Marmara\Inbox\InboxProviders;
+use App\Marmara\Inbox\InboxServiceProvider;
 use App\Marmara\Inbox\InboxTranslations;
 use App\Marmara\Inbox\Models\InboxItem;
 use App\Marmara\Inbox\Models\InboxReply;
@@ -86,7 +87,7 @@ class InboxPageController extends Controller
     public function reply(Request $request, string $item): RedirectResponse
     {
         $inboxItem = $this->item($request, $item);
-        $this->authorize('publishDirectly', $inboxItem->workspace);
+        $this->authorize(InboxServiceProvider::REPLY_ABILITY, $inboxItem);
 
         $validated = $request->validate([
             'text' => ['required', 'string', 'max:20000'],
@@ -138,7 +139,7 @@ class InboxPageController extends Controller
     public function hide(Request $request, string $item, InboxProviders $providers): RedirectResponse
     {
         $inboxItem = $this->item($request, $item);
-        $this->authorize('publishDirectly', $inboxItem->workspace);
+        $this->authorize(InboxServiceProvider::REPLY_ABILITY, $inboxItem);
         $account = $inboxItem->socialAccount;
         $provider = $account ? $providers->for($account) : null;
 

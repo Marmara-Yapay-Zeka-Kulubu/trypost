@@ -20,6 +20,7 @@ use App\Mcp\Servers\TryPostServer;
 use App\Models\User;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Inertia\Inertia;
 
@@ -35,6 +36,8 @@ use Inertia\Inertia;
  */
 class InboxServiceProvider extends ServiceProvider
 {
+    public const string REPLY_ABILITY = 'reply-to-inbox-item';
+
     public function register(): void
     {
         $this->app->singleton(InboxConfig::class);
@@ -55,6 +58,13 @@ class InboxServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // One rule for the panel, the API and MCP: a reply (or a hide) goes
+        // out without approval, so it needs the workspace's direct publishing
+        // right, like publishing a post (WorkspacePolicy::publishDirectly).
+        Gate::define(self::REPLY_ABILITY, fn (User $user, InboxItem $item): bool => $item->workspace !== null
+            && $user->can('view', $item->workspace)
+            && $user->can('publishDirectly', $item->workspace));
+
         $this->loadMigrationsFrom(__DIR__.'/database/migrations');
         $this->loadTranslationsFrom(__DIR__.'/lang', 'marmara-inbox');
         $this->loadRoutesFrom(__DIR__.'/routes.php');

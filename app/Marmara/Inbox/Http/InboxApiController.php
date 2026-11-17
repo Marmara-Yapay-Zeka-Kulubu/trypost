@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Marmara\Inbox\Actions\SendInboxReply;
 use App\Marmara\Inbox\Exceptions\InboxReplyRefused;
 use App\Marmara\Inbox\InboxItemPayload;
+use App\Marmara\Inbox\InboxServiceProvider;
 use App\Marmara\Inbox\Models\InboxItem;
 use App\Models\Workspace;
 use Carbon\CarbonImmutable;
@@ -67,7 +68,7 @@ class InboxApiController extends Controller
     {
         $inboxItem = $this->item($request, $item);
 
-        if (! Gate::forUser($request->user())->allows('publishDirectly', $inboxItem->workspace)) {
+        if (! Gate::forUser($request->user())->allows(InboxServiceProvider::REPLY_ABILITY, $inboxItem)) {
             return response()->json(['message' => 'Only members who publish directly can reply.'], Response::HTTP_FORBIDDEN);
         }
 

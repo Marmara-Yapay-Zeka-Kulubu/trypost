@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Marmara\Inbox\InboxServiceProvider;
 use App\Marmara\Inbox\Jobs\SyncInboxAccount;
 use App\Marmara\Inbox\Mcp\GetInboxItemTool;
 use App\Marmara\Inbox\Mcp\ListInboxItemsTool;
@@ -13,6 +14,7 @@ use App\Mcp\Servers\TryPostServer;
 use App\Models\SocialAccount;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Inertia\Testing\AssertableInertia;
@@ -197,6 +199,26 @@ test('members whose posts need approval can read the inbox but not reply', funct
         ->post("/inbox/{$this->comment->id}/replies", ['text' => 'x'])
         ->assertForbidden();
     Http::assertNothingSent();
+});
+
+test('the api, the page and mcp reply only through the same reply gate', function () {
+    Gate::before(fn ($user, string $ability): ?bool => $ability === InboxServiceProvider::REPLY_ABILITY ? false : null);
+
+    $this->postJson("/api/inbox/items/{$this->comment->id}/replies", ['text' => 'x', 'request_id' => 'gate-1'], $this->headers)->assertForbidden();
+    $this->actingAs($this->owner)->post("/inbox/{$this->comment->id}/replies", ['text' => 'x'])->assertForbidden();
+    $this->actingAs($this->owner)->post("/inbox/{$this->comment->id}/hide")->assertForbidden();
+    TryPostServer::actingAs($this->owner)->tool(ReplyToInboxItemTool::class, ['item_id' => $this->comment->id, 'text' => 'x', 'request_id' => 'gate-2'])
+        ->assertHasErrors();
+
+    Http::assertNothingSent();
+    expect(InboxReply::query()->count())->toBe(0);
+});
+
+test('the reply gate is the panel\'s direct publishing rule', function () {
+    expect(Gate::forUser($this->owner)->allows(InboxServiceProvider::REPLY_ABILITY, $this->comment))->toBeTrue()
+        ->and(Gate::forUser(workspaceMember($this->workspace, 'member'))->allows(InboxServiceProvider::REPLY_ABILITY, $this->comment))->toBeTrue()
+        ->and(Gate::forUser(workspaceMember($this->workspace, 'approval'))->allows(InboxServiceProvider::REPLY_ABILITY, $this->comment))->toBeFalse()
+        ->and(Gate::forUser(workspaceOutsider($this->workspace))->allows(InboxServiceProvider::REPLY_ABILITY, $this->comment))->toBeFalse();
 });
 
 test('the inbox page lists items, opens a thread and archives it', function () {

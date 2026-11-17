@@ -7,6 +7,7 @@ namespace App\Marmara\Inbox\Mcp;
 use App\Marmara\Inbox\Actions\SendInboxReply;
 use App\Marmara\Inbox\Exceptions\InboxReplyRefused;
 use App\Marmara\Inbox\InboxConfig;
+use App\Marmara\Inbox\InboxServiceProvider;
 use App\Marmara\Inbox\Models\InboxItem;
 use App\Mcp\Concerns\AuthorizesMcpTool;
 use App\Models\Workspace;
@@ -35,7 +36,7 @@ class ReplyToInboxItemTool extends Tool
 
     public function handle(Request $request): Response|ResponseFactory
     {
-        $workspace = $this->authorizeCurrentWorkspace($request, 'publishDirectly');
+        $workspace = $this->authorizeCurrentWorkspace($request, 'view');
 
         if (! $workspace instanceof Workspace) {
             return $workspace;
@@ -51,6 +52,10 @@ class ReplyToInboxItemTool extends Tool
 
         if ($item === null) {
             return Response::error('Inbox item not found.');
+        }
+
+        if ($denied = $this->denyUnlessCan($request, InboxServiceProvider::REPLY_ABILITY, $item, 'Inbox item not found.')) {
+            return $denied;
         }
 
         try {
