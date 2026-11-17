@@ -31,6 +31,8 @@ class BasicProfileLinkedInProvider extends Provider
         'rw_organization_admin',
         'r_organization_followers',
         'r_organization_social_feed',
+        // Inbox replies as the page (app/Marmara/README.md, Inbox): needs "Refresh connection".
+        'w_organization_social_feed',
     ];
 
     private const array OPENID_SCOPES = ['openid', 'profile', 'email'];
