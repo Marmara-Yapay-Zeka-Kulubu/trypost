@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Marmara\Inbox\Actions\SendInboxReply;
 use App\Marmara\Inbox\InboxServiceProvider;
 use App\Marmara\Inbox\Jobs\SyncInboxAccount;
 use App\Marmara\Inbox\Mcp\GetInboxItemTool;
@@ -282,4 +283,167 @@ test('the scheduled sync queues one job per channel and kind, only when due and 
     $this->travel(1)->hours();
     $this->artisan('marmara:inbox:sync')->expectsOutputToContain('MARMARA_INBOX_ENABLED is off')->assertSuccessful();
     Queue::assertPushed(SyncInboxAccount::class, 2);
+});
+
+/**
+ * A reply another member sent from TryPost (through the shared flow).
+ */
+function inboxReplyBy(object $test, string $name, string $text, string $requestId, ?string $acknowledged = null): InboxReply
+{
+    $member = workspaceMember($test->workspace, 'member', ['name' => $name]);
+
+    return SendInboxReply::execute($test->comment, $member, $text, $requestId, $acknowledged)['reply'];
+}
+
+test('a second reply to an item someone already answered is refused with that reply', function () {
+    $first = inboxReplyBy($this, 'Ayşe', 'Bekliyoruz!', 'echo-a');
+
+    $this->postJson("/api/inbox/items/{$this->comment->id}/replies", ['text' => 'Gel!', 'request_id' => 'echo-b'], $this->headers)
+        ->assertStatus(409)
+        ->assertJsonPath('code', 'already_replied')
+        ->assertJsonPath('reply.id', $first->id)
+        ->assertJsonPath('reply.text', 'Bekliyoruz!')
+        ->assertJsonPath('reply.status', 'sent')
+        ->assertJsonPath('reply.created_at', '2026-11-17T12:00:00+00:00')
+        ->assertJsonPath('reply.author.name', 'Ayşe');
+
+    Http::assertSentCount(1);
+    expect(InboxReply::query()->count())->toBe(1);
+
+    $this->getJson("/api/inbox/items/{$this->comment->id}", $this->headers)
+        ->assertJsonPath('replies.0.author.name', 'Ayşe');
+});
+
+test('a stale acknowledgement is refused and a fresh one is allowed', function () {
+    $first = inboxReplyBy($this, 'Ayşe', 'Bekliyoruz!', 'echo-a');
+    $this->travel(1)->minutes();
+    $second = inboxReplyBy($this, 'Mehmet', 'Saat 18:00!', 'echo-b', $first->id);
+    $this->travel(1)->minutes();
+
+    $this->postJson("/api/inbox/items/{$this->comment->id}/replies", ['text' => 'Gel!', 'request_id' => 'echo-c', 'acknowledged_reply_id' => $first->id], $this->headers)
+        ->assertStatus(409)
+        ->assertJsonPath('code', 'already_replied')
+        ->assertJsonPath('reply.id', $second->id)
+        ->assertJsonPath('reply.author.name', 'Mehmet');
+
+    $this->postJson("/api/inbox/items/{$this->comment->id}/replies", ['text' => 'Gel!', 'request_id' => 'echo-d', 'acknowledged_reply_id' => $second->id], $this->headers)
+        ->assertCreated()
+        ->assertJsonPath('status', 'sent');
+
+    Http::assertSentCount(3);
+});
+
+test('an acknowledgement of a reply of another item does not count', function () {
+    inboxReplyBy($this, 'Ayşe', 'Bekliyoruz!', 'echo-a');
+    $foreign = InboxReply::query()->create([
+        'inbox_item_id' => $this->message->id,
+        'workspace_id' => $this->workspace->id,
+        'social_account_id' => $this->page->id,
+        'request_id' => 'other',
+        'text' => 'x',
+        'status' => InboxReply::STATUS_SENT,
+    ]);
+
+    $this->postJson("/api/inbox/items/{$this->comment->id}/replies", ['text' => 'Gel!', 'request_id' => 'echo-c', 'acknowledged_reply_id' => $foreign->id], $this->headers)
+        ->assertStatus(409)
+        ->assertJsonPath('code', 'already_replied');
+});
+
+test('a reply still being sent refuses others with reply_in_progress until it is stale', function () {
+    $sending = InboxReply::query()->create([
+        'inbox_item_id' => $this->comment->id,
+        'workspace_id' => $this->workspace->id,
+        'social_account_id' => $this->page->id,
+        'user_id' => workspaceMember($this->workspace, 'member', ['name' => 'Ayşe'])->id,
+        'request_id' => 'echo-a',
+        'text' => 'Bekliyoruz!',
+        'status' => InboxReply::STATUS_SENDING,
+    ]);
+
+    $this->postJson("/api/inbox/items/{$this->comment->id}/replies", ['text' => 'Gel!', 'request_id' => 'echo-b'], $this->headers)
+        ->assertStatus(409)
+        ->assertJsonPath('code', 'reply_in_progress')
+        ->assertJsonPath('reply.author.name', 'Ayşe');
+    $this->postJson("/api/inbox/items/{$this->comment->id}/replies", ['text' => 'Gel!', 'request_id' => 'echo-b', 'acknowledged_reply_id' => $sending->id], $this->headers)
+        ->assertStatus(409)
+        ->assertJsonPath('code', 'reply_in_progress');
+
+    // The process died mid-call: the outcome is unknown, so it needs an acknowledgement.
+    $this->travel(SendInboxReply::STALE_SENDING_MINUTES + 1)->minutes();
+
+    $this->postJson("/api/inbox/items/{$this->comment->id}/replies", ['text' => 'Gel!', 'request_id' => 'echo-b'], $this->headers)
+        ->assertStatus(409)
+        ->assertJsonPath('code', 'already_replied')
+        ->assertJsonPath('reply.status', 'sending');
+    $this->postJson("/api/inbox/items/{$this->comment->id}/replies", ['text' => 'Gel!', 'request_id' => 'echo-b', 'acknowledged_reply_id' => $sending->id], $this->headers)
+        ->assertCreated()
+        ->assertJsonPath('status', 'sent');
+
+    Http::assertSentCount(1);
+});
+
+test('a request id replay answers its own result even after someone else replied', function () {
+    $first = $this->postJson("/api/inbox/items/{$this->comment->id}/replies", ['text' => 'Bekliyoruz!', 'request_id' => 'echo-42'], $this->headers)
+        ->assertCreated();
+    $this->travel(1)->minutes();
+    inboxReplyBy($this, 'Ayşe', 'Biz de!', 'echo-a', $first->json('id'));
+
+    $this->postJson("/api/inbox/items/{$this->comment->id}/replies", ['text' => 'Bekliyoruz!', 'request_id' => 'echo-42'], $this->headers)
+        ->assertCreated()
+        ->assertExactJson(['id' => $first->json('id'), 'status' => 'sent']);
+
+    Http::assertSentCount(2);
+});
+
+test('the page refuses a second reply and resends it once acknowledged', function () {
+    $first = inboxReplyBy($this, 'Ayşe', 'Bekliyoruz!', 'echo-a');
+
+    $this->actingAs($this->owner)
+        ->from('/inbox')
+        ->post("/inbox/{$this->comment->id}/replies", ['text' => 'Gel!'])
+        ->assertRedirect('/inbox')
+        ->assertSessionHasErrors(['text' => 'Ayşe already replied: “Bekliyoruz!”', 'already_replied' => $first->id]);
+
+    $this->actingAs($this->owner)
+        ->from('/inbox')
+        ->post("/inbox/{$this->comment->id}/replies", ['text' => 'Gel!', 'acknowledged_reply_id' => $first->id])
+        ->assertRedirect('/inbox')
+        ->assertSessionHasNoErrors();
+
+    Http::assertSentCount(2);
+});
+
+test('the page says so in turkish', function () {
+    inboxReplyBy($this, 'Ayşe', 'Bekliyoruz!', 'echo-a');
+    $this->owner->forceFill(['locale' => 'tr'])->save();
+
+    $this->actingAs($this->owner)
+        ->from('/inbox')
+        ->post("/inbox/{$this->comment->id}/replies", ['text' => 'Gel!'])
+        ->assertSessionHasErrors(['text' => 'Ayşe bu arada yanıt verdi: “Bekliyoruz!”']);
+});
+
+test('the mcp tool refuses a second reply, names who replied and sends once acknowledged', function () {
+    $first = inboxReplyBy($this, 'Ayşe', 'Bekliyoruz!', 'echo-a');
+
+    TryPostServer::actingAs($this->owner)->tool(ReplyToInboxItemTool::class, ['item_id' => $this->comment->id, 'text' => 'Gel!', 'request_id' => 'hermes-1'])
+        ->assertHasErrors(['already_replied', 'Ayşe already replied', 'Bekliyoruz!', "acknowledged_reply_id {$first->id}"]);
+
+    TryPostServer::actingAs($this->owner)->tool(ReplyToInboxItemTool::class, ['item_id' => $this->comment->id, 'text' => 'Gel!', 'request_id' => 'hermes-2', 'acknowledged_reply_id' => $first->id])
+        ->assertOk()
+        ->assertSee('"status":"sent"');
+
+    InboxReply::query()->create([
+        'inbox_item_id' => $this->comment->id,
+        'workspace_id' => $this->workspace->id,
+        'social_account_id' => $this->page->id,
+        'request_id' => 'echo-z',
+        'text' => 'x',
+        'status' => InboxReply::STATUS_SENDING,
+    ]);
+
+    TryPostServer::actingAs($this->owner)->tool(ReplyToInboxItemTool::class, ['item_id' => $this->comment->id, 'text' => 'Gel!', 'request_id' => 'hermes-3'])
+        ->assertHasErrors(['reply_in_progress']);
+
+    Http::assertSentCount(2);
 });

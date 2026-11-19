@@ -50,7 +50,7 @@ class InboxItemPayload
      */
     public static function detail(InboxItem $item): array
     {
-        $item->loadMissing(['replies', 'socialAccount']);
+        $item->loadMissing(['replies.user', 'socialAccount']);
 
         return [
             ...self::item($item),
@@ -75,16 +75,22 @@ class InboxItemPayload
     }
 
     /**
-     * @return array{id: string, status: string, text: string, error: string|null, created_at: string|null}
+     * A reply sent from TryPost; `author` is the member who sent it (null
+     * when unknown or the user was deleted).
+     *
+     * @return array{id: string, status: string, text: string, error: string|null, created_at: string|null, author: array{name: string|null}|null}
      */
     public static function reply(InboxReply $reply): array
     {
+        $reply->loadMissing('user');
+
         return [
             'id' => $reply->id,
             'status' => $reply->status,
             'text' => $reply->text,
             'error' => $reply->error,
             'created_at' => $reply->created_at?->toIso8601String(),
+            'author' => $reply->user === null ? null : ['name' => $reply->user->name],
         ];
     }
 }

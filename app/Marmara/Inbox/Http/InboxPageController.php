@@ -92,12 +92,18 @@ class InboxPageController extends Controller
         $validated = $request->validate([
             'text' => ['required', 'string', 'max:20000'],
             'request_id' => ['nullable', 'string', 'max:100', 'regex:/^[A-Za-z0-9:._-]+\z/'],
+            'acknowledged_reply_id' => ['nullable', 'uuid'],
         ]);
 
         try {
-            $result = SendInboxReply::execute($inboxItem, $request->user(), $validated['text'], $validated['request_id'] ?? null);
+            $result = SendInboxReply::execute($inboxItem, $request->user(), $validated['text'], $validated['request_id'] ?? null, $validated['acknowledged_reply_id'] ?? null);
         } catch (InboxReplyRefused $refused) {
-            throw ValidationException::withMessages(['text' => $this->refusalMessage($refused)]);
+            // `already_replied` also names the reply, so the page can ask
+            // "send anyway?" and resend with it as acknowledged_reply_id.
+            throw ValidationException::withMessages(array_filter([
+                'text' => $this->refusalMessage($refused),
+                'already_replied' => $refused->reason === 'already_replied' ? $refused->existingReply?->id : null,
+            ]));
         }
 
         if ($result['reply']->status === InboxReply::STATUS_FAILED) {
@@ -234,6 +240,13 @@ class InboxPageController extends Controller
         return match ($refused->reason) {
             'reply_window_closed' => __('marmara-inbox::inbox.errors.window_closed'),
             'text_too_long' => __('marmara-inbox::inbox.errors.too_long', ['detail' => $refused->getMessage()]),
+            'already_replied' => __('marmara-inbox::inbox.errors.already_replied', [
+                'name' => $refused->existingReply?->user?->name ?? __('marmara-inbox::inbox.list.unknown_author'),
+                'text' => Str::limit((string) $refused->existingReply?->text, 120),
+            ]),
+            'reply_in_progress' => __('marmara-inbox::inbox.errors.reply_in_progress', [
+                'name' => $refused->existingReply?->user?->name ?? __('marmara-inbox::inbox.list.unknown_author'),
+            ]),
             default => __('marmara-inbox::inbox.errors.cannot_reply', ['detail' => $refused->getMessage()]),
         };
     }

@@ -40,6 +40,7 @@ return [
     'reply' => [
         'placeholder' => 'Yanıt yazın',
         'send' => 'Yanıtı gönder',
+        'send_anyway' => 'Yine de gönder',
         'window_ends' => ':time saatine kadar yanıtlayabilirsiniz.',
         'window_closed' => 'Bu konuşmanın yanıt süresi doldu. Kişi size yeniden yazdığında yanıtlayabilirsiniz.',
         'not_allowed' => 'Bu öğe TryPost\'tan yanıtlanamıyor.',
@@ -69,6 +70,8 @@ return [
         'window_closed' => 'Bu konuşmanın yanıt süresi doldu.',
         'too_long' => 'Yanıtınız çok uzun: :detail',
         'cannot_reply' => 'Bu yanıt gönderilemiyor: :detail',
+        'already_replied' => ':name bu arada yanıt verdi: “:text”',
+        'reply_in_progress' => ':name şu anda yanıt gönderiyor. Birkaç saniye sonra yeniden deneyin.',
         'send_failed' => 'Ağ yanıtı kabul etmedi. Birkaç dakika sonra yeniden deneyin.',
         'hide_unavailable' => 'Bu yorum TryPost\'tan gizlenemiyor.',
         'hide_failed' => 'Ağ yorumu gizlemedi. Birkaç dakika sonra yeniden deneyin.',

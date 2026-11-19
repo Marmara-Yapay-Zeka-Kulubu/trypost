@@ -17,6 +17,7 @@ import {
     IconSend,
 } from '@tabler/icons-vue';
 import { computed } from 'vue';
+import { toast } from 'vue-sonner';
 
 import HeaderTitle from '@/components/HeaderTitle.vue';
 import InputError from '@/components/InputError.vue';
@@ -53,6 +54,7 @@ interface InboxReply {
     text: string;
     error: string | null;
     created_at: string | null;
+    author: { name: string | null } | null;
 }
 
 interface SelectedItem extends InboxItem {
@@ -163,18 +165,46 @@ const newRequestId = (): string =>
         ? crypto.randomUUID()
         : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-const form = useForm({ text: '', request_id: newRequestId() });
+const form = useForm({
+    text: '',
+    request_id: newRequestId(),
+    acknowledged_reply_id: null as string | null,
+});
 
-const sendReply = (): void => {
+// Someone else replied since the page loaded: the server refused with
+// `already_replied` (naming that reply), so ask before sending anyway, and
+// resend with it acknowledged under a new request id.
+const sendReply = (acknowledged: string | null = null): void => {
     if (!props.selected) {
         return;
     }
+
+    form.acknowledged_reply_id = acknowledged;
 
     form.post(url('replies', props.selected.id), {
         preserveScroll: true,
         onSuccess: () => {
             form.reset();
             form.request_id = newRequestId();
+        },
+        onError: (errors: Record<string, string>) => {
+            const existing = errors.already_replied;
+
+            if (!existing) {
+                return;
+            }
+
+            toast.error(errors.text ?? '', {
+                testId: 'marmara-inbox-already-replied',
+                duration: 15000,
+                action: {
+                    label: t('reply.send_anyway'),
+                    onClick: () => {
+                        form.request_id = newRequestId();
+                        sendReply(existing);
+                    },
+                },
+            });
         },
     });
 };
@@ -439,6 +469,12 @@ const act = (name: string): void => {
                                 :key="reply.id"
                                 class="rounded-md border border-border p-2 text-sm"
                             >
+                                <p
+                                    v-if="reply.author?.name"
+                                    class="mb-1 text-xs font-medium text-muted-foreground"
+                                >
+                                    {{ reply.author.name }}
+                                </p>
                                 <p class="whitespace-pre-line">{{ reply.text }}</p>
                                 <p
                                     v-if="reply.status !== 'sent'"
@@ -506,7 +542,7 @@ const act = (name: string): void => {
                             v-if="canReply && selected.can_reply && !windowClosed"
                             class="flex flex-col gap-2"
                             data-testid="marmara-inbox-reply"
-                            @submit.prevent="sendReply"
+                            @submit.prevent="sendReply()"
                         >
                             <Textarea
                                 v-model="form.text"

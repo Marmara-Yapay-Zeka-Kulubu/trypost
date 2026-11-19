@@ -40,6 +40,7 @@ return [
     'reply' => [
         'placeholder' => 'Write a reply',
         'send' => 'Send reply',
+        'send_anyway' => 'Send anyway',
         'window_ends' => 'You can reply until :time.',
         'window_closed' => 'The reply window for this conversation has closed. You can answer again once they write to you.',
         'not_allowed' => 'Replies to this item aren\'t possible from TryPost.',
@@ -69,6 +70,8 @@ return [
         'window_closed' => 'The reply window for this conversation has closed.',
         'too_long' => 'Your reply is too long: :detail',
         'cannot_reply' => 'This reply can\'t be sent: :detail',
+        'already_replied' => ':name already replied: “:text”',
+        'reply_in_progress' => ':name is sending a reply right now. Try again in a few seconds.',
         'send_failed' => 'The network didn\'t accept the reply. Try again in a few minutes.',
         'hide_unavailable' => 'This comment can\'t be hidden from TryPost.',
         'hide_failed' => 'The network didn\'t hide the comment. Try again in a few minutes.',

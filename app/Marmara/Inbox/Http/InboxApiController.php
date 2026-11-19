@@ -75,12 +75,17 @@ class InboxApiController extends Controller
         $validated = $request->validate([
             'text' => ['required', 'string', 'max:20000'],
             'request_id' => ['required', 'string', 'max:100', 'regex:/^[A-Za-z0-9:._-]+\z/'],
+            'acknowledged_reply_id' => ['nullable', 'uuid'],
         ]);
 
         try {
-            $result = SendInboxReply::execute($inboxItem, $request->user(), $validated['text'], $validated['request_id']);
+            $result = SendInboxReply::execute($inboxItem, $request->user(), $validated['text'], $validated['request_id'], $validated['acknowledged_reply_id'] ?? null);
         } catch (InboxReplyRefused $refused) {
-            return response()->json(['message' => $refused->getMessage(), 'code' => $refused->reason], $refused->status);
+            return response()->json(array_filter([
+                'message' => $refused->getMessage(),
+                'code' => $refused->reason,
+                'reply' => $refused->existingReply !== null ? InboxItemPayload::reply($refused->existingReply) : null,
+            ], fn (mixed $value): bool => $value !== null), $refused->status);
         }
 
         $reply = $result['reply'];

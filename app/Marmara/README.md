@@ -1046,11 +1046,23 @@ null/null. `can_reply` is false once the DM window has closed.
   right (`WorkspacePolicy::publishDirectly`), like publishing a post.
 - REST (API key, `auth:api` + `workspace.token`, workspace of the key):
   - `GET /api/inbox/items?status=unread|read|archived|open|all&limit=1..100&platform=&kind=&before=` → `{data: [item + status], has_more}` (default `open`, 20)
-  - `GET /api/inbox/items/{id}` → item + `status`, `channel`, `thread`, `replies`
-  - `POST /api/inbox/items/{id}/replies` `{text, request_id}` → 201 `{id, status: sent|failed[, error]}`; the same `request_id` answers the same result without sending again; 409 `{code: reply_window_closed}`; 422 `{code: text_too_long}` (LinkedIn 1250, Instagram comments 2200 / DMs 1000 bytes, Facebook 8000 / Messenger 2000, TikTok 150, X 280) or `{code: cannot_reply}`; 403 for a member whose posts need approval
+  - `GET /api/inbox/items/{id}` → item + `status`, `channel`, `thread`, `replies` (each `{id, status, text, error, created_at, author: {name}|null}`; `author` is the member who sent it)
+  - `POST /api/inbox/items/{id}/replies` `{text, request_id, acknowledged_reply_id?}` → 201 `{id, status: sent|failed[, error]}`; the same `request_id` answers the same result without sending again (checked first, before everything below); 409 `{code: already_replied, reply}` when the item already has a `sent` reply and `acknowledged_reply_id` is not that reply or a newer one (a reply that came after the acknowledged one refuses again); 409 `{code: reply_in_progress, reply}` while another reply is `sending` (no waiting; try again); `reply` is the blocking reply in the `replies` shape; 409 `{code: reply_window_closed}`; 422 `{code: text_too_long}` (LinkedIn 1250, Instagram comments 2200 / DMs 1000 bytes, Facebook 8000 / Messenger 2000, TikTok 150, X 280) or `{code: cannot_reply}`; 403 for a member whose posts need approval
   - `POST /api/inbox/items/{id}/read` → `{id, status}`
 - MCP: `list-inbox-items-tool` and `get-inbox-item-tool` (read only),
-  `reply-to-inbox-item-tool` (destructive, open world; `request_id` required).
+  `reply-to-inbox-item-tool` (destructive, open world; `request_id` required,
+  `acknowledged_reply_id` as in the API; `already_replied` names who replied
+  and what, so Hermes asks the user before sending again).
+- One reply per item unless acknowledged (`SendInboxReply`): the check and
+  the `sending` row are made in one transaction holding the item row lock
+  (`lockForUpdate`), and the network call runs after the commit, so the
+  `sending` row itself keeps concurrent senders out (`reply_in_progress`).
+  A `sending` row older than `SendInboxReply::STALE_SENDING_MINUTES` (5; the
+  process died mid-call) no longer blocks as in progress; its outcome is
+  unknown, so it counts like a sent reply (`already_replied`, needs an
+  acknowledgement) and stays `sending` in the history. `failed` replies never
+  block. The panel shows `already_replied` as a toast with "Send anyway",
+  which resends with the reply acknowledged.
 
 Optional Zernio receiver: `POST {APP_URL}/api/marmara/zernio/inbox-webhook`
 (`comment.received`, `message.received`), verified with `X-Zernio-Signature`
