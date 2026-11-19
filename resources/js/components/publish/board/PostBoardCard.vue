@@ -9,6 +9,7 @@ import PostApprovalActions from '@/components/publish/PostApprovalActions.vue';
 import PostCardLabels from '@/components/publish/PostCardLabels.vue';
 import PostCardMenu from '@/components/publish/PostCardMenu.vue';
 import PostDetailsDialog from '@/components/publish/PostDetailsDialog.vue';
+import PostFeedbackRequestDialog from '@/components/publish/PostFeedbackRequestDialog.vue';
 import PostRecurrenceDialog from '@/components/publish/PostRecurrenceDialog.vue';
 import PostStatusBadge from '@/components/publish/PostStatusBadge.vue';
 import { Badge } from '@/components/ui/badge';
@@ -46,6 +47,8 @@ const {
     recurrenceOpen,
     recurrenceTarget,
     recurrenceTimezone,
+    feedbackOpen,
+    feedbackPost,
     openDetails,
     edit,
     runPostAction,
@@ -294,6 +297,7 @@ const hasMenu = computed((): boolean => {
                 :post="post"
                 :test-key="post.id"
                 :timezone="timezone"
+                feedback
                 @select="runPostAction"
                 @edit="edit"
             />
@@ -302,6 +306,11 @@ const hasMenu = computed((): boolean => {
                 :post="recurrenceTarget"
                 :test-key="post.id"
                 :timezone="recurrenceTimezone"
+            />
+            <PostFeedbackRequestDialog
+                v-model:open="feedbackOpen"
+                :post="feedbackPost"
+                :test-key="post.id"
             />
         </template>
     </article>
