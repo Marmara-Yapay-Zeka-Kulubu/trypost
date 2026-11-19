@@ -92,6 +92,11 @@ return [
         'post_deleted' => 'Postingan dihapus',
         'post_deleted_on_network' => 'Postingan dihapus di platform',
         'post_restored' => 'Postingan muncul lagi di platform',
+        'post_approval_requested' => 'Postingan menunggu persetujuan',
+        'post_approved' => 'Postingan disetujui',
+        'post_rejected' => 'Postingan ditolak',
+        'post_feedback_requested' => 'Masukan untuk postingan diminta',
+        'inbox_item_received' => 'Komentar atau pesan baru di kotak masuk',
     ],
     'event_descriptions' => [
         'post_created' => 'Saat postingan baru dibuat.',
@@ -102,6 +107,11 @@ return [
         'post_deleted' => 'Saat postingan dihapus.',
         'post_deleted_on_network' => 'Saat postingan yang terbit dihapus di platformnya.',
         'post_restored' => 'Saat postingan terhapus muncul lagi di platformnya.',
+        'post_approval_requested' => 'Saat postingan dikirim untuk disetujui.',
+        'post_approved' => 'Saat postingan yang menunggu disetujui.',
+        'post_rejected' => 'Saat postingan yang menunggu ditolak.',
+        'post_feedback_requested' => 'Saat anggota minta masukan rekan tim untuk postingan.',
+        'inbox_item_received' => 'Saat komentar atau DM masuk ke kotak masuk.',
     ],
     'http_reasons' => [
         'unknown' => 'Tidak diketahui',

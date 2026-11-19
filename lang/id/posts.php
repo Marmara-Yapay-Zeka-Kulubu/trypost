@@ -1178,6 +1178,8 @@ return [
         'errors' => [
             'not_pending' => 'Postingan ini tidak lagi menunggu persetujuan.',
             'time_passed' => 'Waktu yang diminta sudah lewat. Pilih waktu baru.',
+            'changed' => 'Postingan ini berubah setelah kamu meninjaunya. Tinjau versi barunya, lalu putuskan.',
+            'request_conflict' => 'Permintaan ini sudah membuat keputusan lain untuk postingan ini. Tidak ada yang diubah.',
         ],
     ],
     'recurrence' => [
@@ -1212,6 +1214,23 @@ return [
         'errors' => [
             'not_scheduled' => 'Hanya postingan terjadwal yang bisa berulang.',
             'too_far' => 'Pengulangan terakhir harus sebelum tahun 2038.',
+        ],
+    ],
+    'feedback' => [
+        'menu' => 'Minta masukan',
+        'title' => 'Minta masukan',
+        'description' => 'Orang yang kamu pilih akan ditanya pendapatnya tentang postingan ini. Balasan mereka ditambahkan ke catatan.',
+        'recipients' => 'Siapa yang ditanya',
+        'note_placeholder' => 'Tambahkan catatan (opsional)',
+        'send' => 'Kirim',
+        'sent' => 'Permintaan masukan terkirim',
+        'empty' => 'Tidak ada anggota lain di workspace ini.',
+        'errors' => [
+            'load_failed' => 'Anggota workspace gagal dimuat. Coba lagi.',
+            'send_failed' => 'Permintaan masukan gagal dikirim. Coba lagi.',
+            'choose_members' => 'Pilih minimal satu anggota untuk ditanya.',
+            'not_member' => 'Pilih anggota workspace ini.',
+            'too_many' => 'Tanya maksimal :max anggota sekaligus.',
         ],
     ],
 ];

@@ -32,4 +32,6 @@ return [
         'not_reacted' => 'Reaksi gagal diperbarui. Coba lagi.',
         'too_long' => 'Catatan maksimal :max karakter.',
     ],
+    'feedback_requested' => 'Meminta masukan: :names',
+    'feedback_requested_with_note' => 'Meminta masukan: :names — :note',
 ];
