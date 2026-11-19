@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Analytics\Collectors\Metrics;
 
 use App\Dto\Analytics\PublicationMetricObservation;
+use App\Enums\Analytics\FacebookMediaKey;
 use App\Enums\Analytics\MetricKey;
 use App\Enums\Analytics\PublicationContentType;
 use App\Exceptions\Analytics\AnalyticsCollectionException;
@@ -12,7 +13,6 @@ use App\Models\AnalyticsPublication;
 use App\Models\SocialAccount;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\Response;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 /**
@@ -68,7 +68,7 @@ class FacebookPublicationMetricsCollector extends AbstractMetaPublicationMetrics
         AnalyticsCollectionException::unlessGranted($account, 'pages_read_engagement');
         $graph = $account->platform->graphApiUrl();
         $isStory = $publication->content_type === PublicationContentType::Story;
-        $videoId = data_get($publication->provider_metadata, 'video_id');
+        $videoId = data_get($publication->provider_metadata, FacebookMediaKey::Video->value);
         $isVideo = ! $isStory && (filled($videoId) || $this->isReadByVideoId($publication));
         $insightsId = $isVideo && filled($videoId) ? $videoId : $publication->remote_id;
         $edge = $isVideo ? 'video_insights' : 'insights';
@@ -130,29 +130,5 @@ class FacebookPublicationMetricsCollector extends AbstractMetaPublicationMetrics
         }
 
         return $this->observation($date, $metrics);
-    }
-
-    /**
-     * @param  array<string, string>  $query
-     * @return array<string, mixed>
-     */
-    private function optional(SocialAccount $account, string $url, array $query): array
-    {
-        try {
-            return (array) $this->get($account, $url, $query)->json();
-        } catch (AnalyticsCollectionException $exception) {
-            if (! in_array($exception->category, ['permission', 'malformed'], true)) {
-                throw $exception;
-            }
-
-            $this->recordRefusal($exception);
-            Log::info('analytics.facebook_read_refused', [
-                'path' => parse_url($url, PHP_URL_PATH),
-                'category' => $exception->category,
-                'reason' => $exception->getMessage(),
-            ]);
-
-            return [];
-        }
     }
 }

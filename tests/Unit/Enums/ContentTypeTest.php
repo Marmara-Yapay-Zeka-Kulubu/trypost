@@ -5,6 +5,9 @@ declare(strict_types=1);
 use App\Enums\Media\Type as MediaType;
 use App\Enums\PostPlatform\ContentType;
 use App\Enums\SocialAccount\Platform;
+use App\Support\Social\MastodonPoll;
+use App\Support\Social\ThreadsPoll;
+use App\Support\Social\XPoll;
 
 test('content type has correct labels', function () {
     expect(ContentType::InstagramFeed->label())->toBe('Feed Post');
@@ -184,6 +187,8 @@ test('content type requires media correctly', function () {
 test('media rules keep editor parity for gif and requires_media flags', function () {
     expect(ContentType::DiscordMessage->acceptsGif())->toBeTrue();
     expect(ContentType::TelegramPost->acceptsGif())->toBeTrue();
+    expect(ContentType::LinkedInPost->acceptsGif())->toBeTrue();
+    expect(ContentType::LinkedInPagePost->acceptsGif())->toBeTrue();
     expect(ContentType::InstagramFeed->mediaRules()['requires_media'])->toBeTrue();
     expect(ContentType::DiscordMessage->mediaRules()['accepts_gif'])->toBeTrue();
 });
@@ -240,7 +245,7 @@ test('media rules preserve pre-centralization editor limits for mapped types', f
         ],
         'linkedin_post' => [
             'requires_media' => false,
-            'accepts_gif' => false,
+            'accepts_gif' => true,
             'max_files' => 10,
             'max_document_bytes' => min(100 * $mb, $hardDocument),
             'max_video_bytes' => $hardVideo,
@@ -520,8 +525,27 @@ test('a post type that takes no media advertises no media capability', function 
         ->and($type->preferredImageDimensions())->toBe(ContentType::ThreadsGhostPost->preferredImageDimensions());
 })->with([
     'x poll' => [ContentType::XPoll],
+    'mastodon poll' => [ContentType::MastodonPoll],
+    'threads poll' => [ContentType::ThreadsPoll],
     'threads ghost post' => [ContentType::ThreadsGhostPost],
 ]);
+
+test('a poll type names its network\'s poll rules', function (ContentType $type, string $poll) {
+    expect($type->poll())->toBe($poll)
+        ->and($type->isPoll())->toBeTrue();
+})->with([
+    'x poll' => [ContentType::XPoll, XPoll::class],
+    'mastodon poll' => [ContentType::MastodonPoll, MastodonPoll::class],
+    'threads poll' => [ContentType::ThreadsPoll, ThreadsPoll::class],
+]);
+
+test('every other type has no poll rules', function () {
+    $withPoll = collect(ContentType::cases())->filter(fn (ContentType $type): bool => filled($type->poll()))->values()->all();
+
+    expect($withPoll)->toEqualCanonicalizing([ContentType::XPoll, ContentType::MastodonPoll, ContentType::ThreadsPoll])
+        ->and(ContentType::MastodonPost->isPoll())->toBeFalse()
+        ->and(ContentType::ThreadsPost->isPoll())->toBeFalse();
+});
 
 test('a post type is compatible with the platforms it can go to', function () {
     expect(ContentType::InstagramReel->isCompatibleWith(Platform::Instagram))->toBeTrue()
@@ -550,7 +574,7 @@ test('an instagram account connected through facebook gets the same post types a
 
 test('a type without images lists no alt text and a type without video accepts no mov', function (ContentType $type) {
     if (! $type->supportsImage()) {
-        expect($type->supportsAltText())->toBeFalse();
+        expect($type->supportsImageAltText())->toBeFalse();
     }
 
     if (! $type->supportsVideo()) {
@@ -559,6 +583,14 @@ test('a type without images lists no alt text and a type without video accepts n
 
     expect($type->toListingArray())->toMatchArray([
         'accepts_mov' => $type->acceptsMov(),
-        'supports_alt_text' => $type->supportsAltText(),
+        'supports_alt_text' => $type->supportsImageAltText(),
+        'supports_video_alt_text' => $type->supportsVideoAltText(),
     ]);
+})->with(ContentType::cases());
+
+test('only bluesky, mastodon, threads and discord take alt text on a video', function (ContentType $type) {
+    $expected = in_array($type, [ContentType::BlueskyPost, ContentType::MastodonPost, ContentType::ThreadsPost, ContentType::DiscordMessage], true);
+
+    expect($type->supportsVideoAltText())->toBe($expected)
+        ->and($type->mediaRules()['supports_video_alt_text'])->toBe($expected);
 })->with(ContentType::cases());

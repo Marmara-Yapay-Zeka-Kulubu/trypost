@@ -26,33 +26,47 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useWorkspaceAbilities } from '@/composables/useWorkspaceAbilities';
+import { filled } from '@/lib/helpers';
 import { postPermalink } from '@/lib/postNetwork';
 import { isRecurring } from '@/lib/recurrence';
-import { PostStatus, ScheduleMode } from '@/types/post';
+import { PostStatus } from '@/types/post';
 import type { PostCard, PostCardMenuAction } from '@/types/publish';
 
 const props = withDefaults(
     defineProps<{
         post: PostCard;
         testKey: string;
+        canMoveToTop?: boolean;
         canMoveUp?: boolean;
         canMoveDown?: boolean;
         movable?: boolean;
         details?: boolean;
         feedback?: boolean;
+        triggerTestId?: string | null;
     }>(),
     {
+        canMoveToTop: false,
         canMoveUp: false,
         canMoveDown: false,
         movable: true,
         details: true,
         feedback: true,
+        triggerTestId: null,
     },
 );
 
 const emit = defineEmits<{ select: [action: PostCardMenuAction] }>();
 
 const { canPublishDirectly } = useWorkspaceAbilities();
+
+/** The menu button's test id: the one its card names (the board's), else the list's. */
+const menuTriggerTestId = computed((): string => {
+    if (filled(props.triggerTestId)) {
+        return props.triggerTestId;
+    }
+
+    return `post-card-menu-${props.testKey}`;
+});
 
 const isScheduled = computed(
     () => props.post.status === PostStatus.Scheduled,
@@ -61,11 +75,10 @@ const isDraft = computed(() => props.post.status === PostStatus.Draft);
 const canRecur = computed(
     () => isScheduled.value && props.post.scheduled_at !== null,
 );
-const isQueued = computed(
+const isMovable = computed(
     () =>
         canPublishDirectly.value &&
         isScheduled.value &&
-        props.post.schedule_mode === ScheduleMode.Queue &&
         props.movable !== false,
 );
 </script>
@@ -81,7 +94,7 @@ const isQueued = computed(
                             size="icon"
                             class="data-[state=open]:bg-accent"
                             :aria-label="$t('posts.publish.actions.more')"
-                            :data-testid="`post-card-menu-${testKey}`"
+                            :data-testid="menuTriggerTestId"
                         >
                             <IconDotsVertical class="size-4" />
                         </Button>
@@ -158,9 +171,10 @@ const isQueued = computed(
                             {{ $t('posts.publish.actions.copy_link') }}
                         </DropdownMenuItem>
                     </template>
-                    <template v-if="isQueued">
+                    <template v-if="isMovable">
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
+                            :disabled="!canMoveToTop"
                             :data-testid="`post-move-top-${testKey}`"
                             @click="emit('select', 'move_top')"
                         >

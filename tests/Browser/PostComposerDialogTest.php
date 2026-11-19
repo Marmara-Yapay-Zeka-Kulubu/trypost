@@ -584,8 +584,10 @@ test('a label created from the empty label picker of the global composer is list
 
     $label = $workspace->labels()->sole();
 
-    $page->click('@composer-tags-trigger')
-        ->assertAttribute("@composer-label-checkbox-{$label->id}", 'data-state', 'checked')
+    waitForGone($page, '@composer-label-new-name');
+    $page->click('@composer-tags-trigger');
+    waitFor($page, "@composer-label-checkbox-{$label->id}");
+    $page->assertAttribute("@composer-label-checkbox-{$label->id}", 'data-state', 'checked')
         ->assertNoJavaScriptErrors();
 });
 
@@ -1357,11 +1359,44 @@ test('select all picks only the channels the search shows, and the last used sho
         ->click('@composer-save-draft');
     waitForGone($page, '@post-composer-dialog');
 
-    waitForComposerReady($page, 'posts-new-post');
+    waitFor($page, '@posts-new-post');
     $page->click('@posts-new-post');
     waitForComposerReady($page, 'composer-last-used');
     $page->click('@composer-last-used')
         ->assertVisible("@composer-account-{$instagram->id}")
         ->assertMissing("@composer-account-{$x->id}")
+        ->assertNoJavaScriptErrors();
+});
+
+test('the composer label button keeps its tag icon, shows the first two labels as colored chips and counts the rest', function () {
+    $user = User::factory()->create();
+    $workspace = Workspace::factory()->create(['user_id' => $user->id, 'account_id' => $user->account_id]);
+    $workspace->members()->attach($user->id, membershipPivot('admin'));
+    $user->update(['current_workspace_id' => $workspace->id]);
+    subscribeAccount($user->account);
+    $account = SocialAccount::factory()->linkedin()->create(['workspace_id' => $workspace->id]);
+    $labels = collect(['Alpha' => '#16a34a', 'Beta' => '#7c3aed', 'Gamma' => '#dc2626'])
+        ->map(fn (string $color, string $name) => WorkspaceLabel::factory()->create(['workspace_id' => $workspace->id, 'name' => $name, 'color' => $color]));
+    $post = Post::factory()->forAccount($account)->draft()->create(['user_id' => $user->id]);
+    $post->labels()->attach($labels->pluck('id'));
+    $this->actingAs($user);
+
+    $page = visit(route('app.posts.edit', $post));
+    waitForComposerReady($page, 'composer-tags-trigger');
+    waitForText($page, '@composer-tags-chip-more', '+1');
+
+    $chips = $page->script(<<<'JS'
+        Array.from(document.querySelectorAll('[data-testid^="composer-tags-chip-"]:not([data-testid$="-more"])'), (chip) => ({
+            text: chip.innerText.trim(),
+            background: getComputedStyle(chip).backgroundColor,
+        }))
+    JS);
+
+    expect($chips)->toBe([
+        ['text' => 'Alpha', 'background' => 'rgb(22, 163, 74)'],
+        ['text' => 'Beta', 'background' => 'rgb(124, 58, 237)'],
+    ]);
+    $page->assertDontSeeIn('@composer-tags-trigger', 'Gamma')
+        ->assertVisible('@composer-tags-icon')
         ->assertNoJavaScriptErrors();
 });

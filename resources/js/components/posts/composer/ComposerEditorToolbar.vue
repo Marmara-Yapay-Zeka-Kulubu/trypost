@@ -39,6 +39,7 @@ withDefaults(
 
 const emit = defineEmits<{
     (event: 'import-started', payload: { importId: string; label: string }): void;
+    (event: 'open-giphy'): void;
     (event: 'open-unsplash'): void;
     (event: 'upload'): void;
     (event: 'add-poll'): void;
@@ -90,6 +91,7 @@ const selectEmoji = (emoji: string): void => {
                 :disabled="mediaDisabled"
                 :disabled-reason="$t(mediaDisabledReasonKey)"
                 @import-started="emit('import-started', $event)"
+                @open-giphy="emit('open-giphy')"
                 @open-unsplash="emit('open-unsplash')"
                 @upload="requestUpload"
             />
@@ -111,7 +113,7 @@ const selectEmoji = (emoji: string): void => {
                         <button
                             type="button"
                             :data-testid="`${testIdPrefix}-poll`"
-                            :aria-label="$t('posts.form.x.poll.add')"
+                            :aria-label="$t('posts.form.poll.add')"
                             class="flex size-8 items-center justify-center rounded-lg text-foreground transition-control hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
                             @click="addPoll"
                         >
@@ -119,7 +121,7 @@ const selectEmoji = (emoji: string): void => {
                         </button>
                     </TooltipTrigger>
                     <TooltipContent :data-testid="`${testIdPrefix}-poll-tooltip`">
-                        {{ $t('posts.form.x.poll.add') }}
+                        {{ $t('posts.form.poll.add') }}
                     </TooltipContent>
                 </Tooltip>
             </template>

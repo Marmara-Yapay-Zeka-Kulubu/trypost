@@ -24,6 +24,7 @@ use App\Models\Plan;
 use App\Models\Post;
 use App\Models\PostApprovalAction;
 use App\Models\PostNote;
+use App\Models\PostNoteReaction;
 use App\Models\PostTemplate;
 use App\Models\Repurpose;
 use App\Models\RepurposeItem;
@@ -147,6 +148,7 @@ class AppServiceProvider extends ServiceProvider
             'rssFeedCollection' => RssFeedCollection::class,
             'rssFeedItem' => RssFeedItem::class,
             'postComment' => PostNote::class,
+            'postNoteReaction' => PostNoteReaction::class,
             'postTemplate' => PostTemplate::class,
             'socialAccount' => SocialAccount::class,
             'subscription' => Subscription::class,
@@ -188,6 +190,8 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(60)->by($key);
         });
 
+        RateLimiter::for('mcp', fn (Request $request): array => $this->mcpLimits($request));
+
         RateLimiter::for(
             'mcp-oauth',
             fn (Request $request): Limit => $request->isMethodCacheable()
@@ -205,6 +209,12 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for(
             'google-photos-polling',
             fn (Request $request): Limit => Limit::perMinute((int) config('trypost.media_sources.google_photos.polls_per_user_per_minute'))
+                ->by("user:{$request->user()?->id}"),
+        );
+
+        RateLimiter::for(
+            'giphy',
+            fn (Request $request): Limit => Limit::perMinute((int) config('trypost.media_sources.giphy.requests_per_user_per_minute'))
                 ->by("user:{$request->user()?->id}"),
         );
 
@@ -246,6 +256,30 @@ class AppServiceProvider extends ServiceProvider
 
             return $limits;
         });
+    }
+
+    /**
+     * Each MCP token (one AI client, for one user, in one workspace) has its
+     * own budget, so ChatGPT's and Claude's shared addresses and a busy
+     * teammate never spend anyone else's. ChatGPT listing the tools before
+     * sign-in carries no token and is never limited.
+     *
+     * @return list<Limit>
+     */
+    private function mcpLimits(Request $request): array
+    {
+        $user = $request->user();
+
+        if (blank($user) || ! $this->app->isProduction()) {
+            return [];
+        }
+
+        $token = $user->token()->oauth_access_token_id;
+
+        return [
+            Limit::perMinute(config()->integer('trypost.mcp_requests_per_minute'))->by("minute:{$token}"),
+            Limit::perHour(config()->integer('trypost.mcp_requests_per_hour'))->by("hour:{$token}"),
+        ];
     }
 
     protected function configureSocialite(): void

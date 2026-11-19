@@ -255,7 +255,31 @@ test('the threads link card cannot be dropped because threads always shows it', 
         ->assertNoJavaScriptErrors();
 });
 
-test('replacing the link card with media attaches the card image', function () {
+test('a threads poll fetches no link card for a link in its question', function () {
+    $url = 'https://93.184.216.34/article';
+    Http::fake([$url => Http::response('<meta property="og:title" content="Article card">')]);
+    [$post, $account] = seedLinkCardPreviewPost(Platform::Threads, "Best tool? {$url}");
+    $post->forceFill(['content_type' => ContentType::ThreadsPoll, 'meta' => ['poll' => ['options' => ['Tabs', 'Spaces']]]])->save();
+    $previewRequests = 0;
+    Event::listen(RequestHandled::class, function (RequestHandled $event) use (&$previewRequests): void {
+        if ($event->request->routeIs('app.posts.link-preview')) {
+            $previewRequests++;
+        }
+    });
+
+    $page = visit(route('app.posts.edit', $post));
+    waitForOpen($page, '@post-composer-dialog');
+    waitFor($page, '@threads-poll-choice-0');
+    letPageRun($page, 1500);
+
+    $page->assertMissing("@composer-link-card-{$account->id}")
+        ->assertNoJavaScriptErrors();
+
+    expect($previewRequests)->toBe(0);
+    Http::assertNothingSent();
+});
+
+test('replacing the link card with media attaches the card image once, however fast it is clicked', function () {
     $url = 'https://93.184.216.34/article';
     $fake = UploadedFile::fake()->image('card.jpg', 1200, 630);
     $image = file_get_contents($fake->getPathname());
@@ -270,7 +294,8 @@ test('replacing the link card with media attaches the card image', function () {
     waitForOpen($page, '@post-composer-dialog');
     waitFor($page, "@{$card}");
 
-    $page->click("@{$card}-replace");
+    $replace = jsSelector("@{$card}-replace");
+    $page->script("const button = document.querySelector({$replace}); button.click(); button.click();");
     waitForOpen($page, '@post-composer-dialog');
     waitFor($page, "@composer-{$account->id}-media-item-0");
 

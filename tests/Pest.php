@@ -3,17 +3,23 @@
 declare(strict_types=1);
 
 use App\Enums\Plan\Slug;
+use App\Enums\Post\Status as PostStatus;
+use App\Enums\PostPlatform\ContentType;
 use App\Enums\SocialAccount\Platform;
 use App\Jobs\Analytics\BootstrapAccountAnalytics;
 use App\Jobs\Analytics\CollectAccountDailySnapshot;
+use App\Mcp\Servers\TryPostServer;
+use App\Mcp\Tools\Post\UpdatePostTool;
 use App\Models\AccessToken;
 use App\Models\Account;
 use App\Models\Plan;
+use App\Models\Post;
 use App\Models\SocialAccount;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Services\Http\HostResolver;
 use App\Support\Social\PendingConnection;
+use App\Support\Social\Poll;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as HttpClientRequest;
 use Illuminate\Support\Facades\Bus;
@@ -22,6 +28,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
+use Laravel\Mcp\Server\Testing\TestResponse as McpTestResponse;
 use Stripe\ApiRequestor;
 use Stripe\HttpClient\ClientInterface;
 use Tests\BrowserTestCase;
@@ -50,7 +57,10 @@ pest()->extend(TestCase::class)
 
 pest()->extend(BrowserTestCase::class)
     ->use(RefreshDatabase::class)
-    ->beforeEach(fn () => fakePwnedPasswords())
+    ->beforeEach(function (): void {
+        fakePwnedPasswords();
+        config(['trypost.tours.enabled' => false]);
+    })
     ->in('Browser');
 
 pest()->in('Feature/Social')
@@ -575,7 +585,7 @@ function mcpAccessToken(
 
 /**
  * Connects an AI to the user's current workspace, as connecting one through
- * MCP does, so the in-app invitation to connect one (`McpPromptCard`) is not
+ * MCP does, so the in-app invitation to connect one (`McpPromptTour`) is not
  * shown. A browser test whose page should not carry the card calls it.
  */
 function connectAiTo(User $user): void
@@ -685,6 +695,98 @@ function parityContext(): array
 }
 
 /**
+ * A post on a channel of a poll's network (X, Mastodon or Threads), owned by a
+ * signed-in member, for the composer's browser tests. Every request to a
+ * network answers empty.
+ *
+ * @param  array<string, mixed>  $attributes
+ * @param  array<string, mixed>  $accountAttributes
+ * @param  array<string, mixed>  $userAttributes
+ */
+function seedPollComposerPost(ContentType $type, array $attributes = [], array $accountAttributes = [], array $userAttributes = []): Post
+{
+    Http::fake(['*' => Http::response([], 200)]);
+
+    $user = User::factory()->create($userAttributes);
+    $workspace = Workspace::factory()->create(['user_id' => $user->id]);
+    $workspace->members()->attach($user->id, membershipPivot('member'));
+    $user->update(['current_workspace_id' => $workspace->id]);
+    connectAiTo($user);
+
+    $account = SocialAccount::factory()->{$type->platform()->value}()->create([
+        'workspace_id' => $workspace->id,
+        'username' => 'trypostit',
+        'token_expires_at' => now()->addDays(20),
+        ...$accountAttributes,
+    ]);
+
+    $post = Post::factory()->forAccount($account, $type)->create([
+        'user_id' => $user->id,
+        'content' => 'Which network brings you the most customers?',
+        ...$attributes,
+    ]);
+
+    test()->actingAs($user);
+
+    return $post;
+}
+
+/**
+ * Opens a post in the composer, once its network's Poll type can be picked.
+ */
+function openPollComposer(Post $post): mixed
+{
+    $pollType = Poll::for($post->platform)::contentType()->value;
+    $page = visit(route('app.posts.edit', $post))->resize(1280, 900);
+    waitFor($page, "@composer-type-{$post->social_account_id}-{$pollType}");
+
+    return $page;
+}
+
+/**
+ * A draft of a poll's network (X, Mastodon or Threads) in the parity
+ * context's workspace, asking 'Tabs or spaces?'.
+ *
+ * @param  array<string, mixed>  $meta
+ * @param  array<string, mixed>  $accountMeta
+ */
+function pollParityPost(ContentType $type, array $meta = [], array $accountMeta = []): Post
+{
+    $account = SocialAccount::factory()->{$type->platform()->value}()->create(['workspace_id' => test()->workspace->id, 'meta' => $accountMeta]);
+
+    return Post::factory()->forAccount($account, $type)->create([
+        'user_id' => test()->user->id,
+        'content' => 'Tabs or spaces?',
+        'status' => PostStatus::Draft,
+        'media' => [],
+        'meta' => $meta,
+    ]);
+}
+
+/**
+ * Sends the same post update through one surface: the web composer, the REST
+ * API or the MCP tool, and returns that surface's own response, which is why
+ * the return type is a union.
+ *
+ * @param  array<string, mixed>  $changes
+ */
+function pollParityUpdate(string $surface, Post $post, array $changes): TestResponse|McpTestResponse
+{
+    $payload = [
+        'content' => $post->content,
+        'content_type' => $post->content_type->value,
+        'status' => PostStatus::Draft->value,
+        ...$changes,
+    ];
+
+    return match ($surface) {
+        'web' => test()->actingAs(test()->user)->putJson(route('app.posts.update', $post), ['media' => [], ...$payload]),
+        'api' => test()->withHeaders(parityApi(test()->token))->putJson(route('api.posts.update', $post), $payload),
+        'mcp' => TryPostServer::actingAs(test()->user)->tool(UpdatePostTool::class, ['post_id' => $post->id, ...$payload]),
+    };
+}
+
+/**
  * @return array<string, string>
  */
 function parityApi(string $token): array
@@ -728,7 +830,8 @@ function waitForWebFonts(mixed $page): void
 
 /**
  * Wait until a JavaScript expression is true in the page, for up to 30
- * seconds (longer for a slow import or a fallback that polls the server).
+ * seconds (longer for a slow import or a fallback that polls the server),
+ * and fail the test when it never is: every wait is also an assertion.
  * Assertions do not wait for the SPA to paint, and a blocking sleep() would
  * starve the server that serves the page, so the page polls.
  */
@@ -736,25 +839,32 @@ function waitForCondition(mixed $page, string $condition, int $seconds = 30): vo
 {
     $attempts = $seconds * 20;
 
-    $page->script(<<<JS
+    $met = $page->script(<<<JS
         (async () => {
             for (let i = 0; i < {$attempts}; i++) {
-                if ({$condition}) return;
+                if ({$condition}) return true;
                 await new Promise((resolve) => setTimeout(resolve, 50));
             }
+
+            return false;
         })();
     JS);
+
+    expect($met)->toBeTrue("Waited {$seconds}s for: {$condition}");
 }
 
 /**
  * Wait until a condition the test reads on the server (a row in the database)
- * holds, letting the page's own requests land between tries.
+ * holds, letting the page's own requests land between tries, and fail the
+ * test when it never does.
  */
 function waitForDatabase(mixed $page, Closure $condition): void
 {
     for ($attempt = 0; $attempt < 50 && ! $condition(); $attempt++) {
         $page->script('new Promise((resolve) => setTimeout(resolve, 100))');
     }
+
+    expect($condition())->toBeTrue('Waited 5s for a condition on the server.');
 }
 
 /**
@@ -779,6 +889,37 @@ function jsSelector(string $selector): string
 }
 
 /**
+ * Wait until the note editor matching the selector shows that text, trimmed.
+ * The editor is a contenteditable, so it has no value to assert. When it never
+ * does, the failure says what the editor shows instead and where the focus is.
+ */
+function waitForEditorText(mixed $page, string $selector, string $text): void
+{
+    $expected = json_encode($text, JSON_THROW_ON_ERROR);
+    $element = 'document.querySelector('.jsSelector($selector).')';
+
+    $result = $page->script(<<<JS
+        (async () => {
+            const read = () => {$element}?.innerText.trim() ?? null;
+
+            for (let i = 0; i < 600; i++) {
+                if (read() === {$expected}) return { met: true };
+                await new Promise((resolve) => setTimeout(resolve, 50));
+            }
+
+            const focused = document.activeElement;
+
+            return { met: false, shown: read(), focus: focused?.dataset?.testid ?? focused?.tagName ?? null };
+        })();
+    JS);
+
+    $shown = json_encode(data_get($result, 'shown'), JSON_UNESCAPED_UNICODE);
+    $focus = json_encode(data_get($result, 'focus'));
+
+    expect(data_get($result, 'met'))->toBeTrue("Waited 30s for {$selector} to show {$expected}; it shows {$shown}, with the focus on {$focus}.");
+}
+
+/**
  * Wait until an element matching the selector exists and the expression,
  * written about `element`, is true: "element.getAttribute('aria-checked') === 'true'".
  */
@@ -787,6 +928,36 @@ function waitForState(mixed $page, string $selector, string $expression, int $se
     $selector = jsSelector($selector);
 
     waitForCondition($page, "((element) => element && ({$expression}))(document.querySelector({$selector}))", $seconds);
+}
+
+/**
+ * Keeps the element matching the selector as `window.__remembered[$name]`, so
+ * a later wait can tell whether the page still shows that same element
+ * (`element === window.__remembered.<name>`) or replaced it.
+ */
+function rememberElement(mixed $page, string $selector, string $name): void
+{
+    waitFor($page, $selector);
+
+    $selector = jsSelector($selector);
+    $name = json_encode($name);
+
+    $page->script("(() => { window.__remembered = { ...window.__remembered, [{$name}]: document.querySelector({$selector}) }; })()");
+}
+
+/**
+ * Presses the pointer down on the element matching the selector, the start of
+ * a click: an open modal layer takes the pointer events of the page around
+ * it, so a real click cannot reach that element, while the layer still hears
+ * the press as one outside it.
+ */
+function pointerDownOn(mixed $page, string $selector): void
+{
+    waitFor($page, $selector);
+
+    $selector = jsSelector($selector);
+
+    $page->script("document.querySelector({$selector}).dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))");
 }
 
 /**
@@ -879,6 +1050,140 @@ function browserStorageItemJs(User $user, string $item, ?string $workspaceId = n
 function browserStorageItem(mixed $page, User $user, string $item, ?string $workspaceId = null): mixed
 {
     return $page->script(browserStorageItemJs($user, $item, $workspaceId));
+}
+
+/**
+ * The whole value of a user's browser storage key (`trypost:<user id>`), as
+ * the page keeps it, or null when it holds none or no JSON.
+ */
+function browserStorage(mixed $page, User $user): mixed
+{
+    $key = json_encode("trypost:{$user->id}");
+
+    return $page->script("(() => { try { return JSON.parse(localStorage.getItem({$key})); } catch { return null; } })()");
+}
+
+/**
+ * Every key the page keeps in its localStorage.
+ *
+ * @return list<string>
+ */
+function localStorageKeys(mixed $page): array
+{
+    return $page->script('Object.keys(localStorage)');
+}
+
+/**
+ * Writes a raw text as a user's browser storage value, for the values the app
+ * must read past (not JSON, another version, a wrong shape); a well-formed
+ * item goes through `setBrowserStorageItem()`.
+ */
+function setRawBrowserStorage(mixed $page, User $user, string $raw): void
+{
+    $key = json_encode("trypost:{$user->id}");
+    $raw = json_encode($raw);
+
+    $page->script("localStorage.setItem({$key}, {$raw})");
+}
+
+/**
+ * Makes the page's browser refuse its storage from now on, as a private
+ * window or blocked site data does, and fails when it still allows it.
+ */
+function refuseBrowserStorage(mixed $page): void
+{
+    $page->script(<<<'JS'
+        (() => {
+            const refuse = () => { throw new DOMException('denied', 'SecurityError'); };
+            Storage.prototype.getItem = refuse;
+            Storage.prototype.setItem = refuse;
+        })()
+    JS);
+
+    expect($page->script("(() => { try { localStorage.getItem('x'); return 'allowed'; } catch { return 'refused'; } })()"))->toBe('refused');
+}
+
+/**
+ * The value of an expression about `element` for every element matching the
+ * selector, in page order.
+ *
+ * @return list<mixed>
+ */
+function elementsMap(mixed $page, string $selector, string $expression): array
+{
+    $selector = jsSelector($selector);
+
+    return $page->script("[...document.querySelectorAll({$selector})].map((element) => ({$expression}))");
+}
+
+/**
+ * Lets the page run for a while without waiting on anything, to show that
+ * something stays as it is (a dialog left open across polls). Never a
+ * PHP `sleep()`, which would stop the page's own requests.
+ */
+function letPageRun(mixed $page, int $milliseconds): void
+{
+    $page->script("new Promise((resolve) => setTimeout(resolve, {$milliseconds}))");
+}
+
+/**
+ * Fires a click on the element matching the selector without moving the
+ * pointer there, for an element an open modal layer keeps out of the
+ * pointer's reach (a click through `$page->click()` would never land).
+ */
+function clickWithoutPointer(mixed $page, string $selector): void
+{
+    waitFor($page, $selector);
+
+    $selector = jsSelector($selector);
+
+    $page->script("document.querySelector({$selector}).click()");
+}
+
+/**
+ * Plays a broadcast on the page as if Reverb delivered it: the event reaches
+ * the `useEcho` listeners of that private channel through the Pusher client
+ * Echo connects with (pusher-js keeps every client in `Pusher.instances`).
+ * Browser tests broadcast with the null driver, so a server event never
+ * arrives on its own. `$channel` is the name the app listens on
+ * (`workspace.{id}`), `$event` the event's `broadcastAs()` name.
+ *
+ * @param  array<string, mixed>  $payload
+ */
+function broadcastToPage(mixed $page, string $channel, string $event, array $payload): void
+{
+    $name = json_encode("private-{$channel}");
+    $eventName = json_encode($event);
+    $data = json_encode($payload);
+
+    waitForCondition($page, "Boolean(window.Pusher.instances[0]?.channel({$name}))");
+    $page->script("window.Pusher.instances[0].channel({$name}).emit({$eventName}, {$data})");
+}
+
+/**
+ * Plays the page's socket dropping and connecting again on the Pusher client
+ * Echo connects with, which Echo reports to `useConnectionStatus()`
+ * listeners. Each change is its own script, so the page sees the drop
+ * before the reconnection.
+ */
+function reconnectPageSocket(mixed $page): void
+{
+    foreach (['disconnected', 'connected'] as $state) {
+        $page->script("const connection = window.Pusher.instances[0].connection; connection.state = '{$state}'; connection.emit('state_change', { current: '{$state}' });");
+        waitForCondition($page, "window.Pusher.instances[0].connection.state === '{$state}'");
+    }
+}
+
+/**
+ * Tells the page that the user's browser storage changed in another tab, as
+ * the browser does with a `storage` event: seed the change with
+ * `setBrowserStorageItem()` first.
+ */
+function announceBrowserStorageFromAnotherTab(mixed $page, User $user): void
+{
+    $key = json_encode("trypost:{$user->id}");
+
+    $page->script("window.dispatchEvent(new StorageEvent('storage', { key: {$key}, newValue: localStorage.getItem({$key}) }))");
 }
 
 /**

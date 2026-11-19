@@ -15,7 +15,23 @@ return [
     'send' => 'Gönder',
     'empty' => 'Henüz not yok. Notları yalnızca ekibin görür.',
     'actions' => 'Not işlemleri',
-    'load_more' => 'Daha eski notları yükle',
+    'react' => 'Tepki ekle',
+    'no_mentionables' => 'Eşleşen ekip üyesi yok',
+    'mention_unknown' => 'bilinmeyen',
+    'mention_everyone' => [
+        'word' => 'herkes',
+        'description' => 'Bu gönderideki herkes',
+    ],
+    'mention_card' => [
+        'local_time' => 'Yerel saat :time',
+    ],
+    'errors' => [
+        'invalid_emoji' => 'Tek bir emoji seç.',
+        'not_saved' => 'Not kaydedilemedi. Tekrar dene.',
+        'not_deleted' => 'Not silinemedi. Tekrar dene.',
+        'not_reacted' => 'Tepki güncellenemedi. Tekrar dene.',
+        'too_long' => 'Notlar en fazla :max karakter olabilir.',
+    ],
     'feedback_requested' => 'Görüş istedi: :names',
     'feedback_requested_with_note' => 'Görüş istedi: :names — :note',
 ];

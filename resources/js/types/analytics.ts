@@ -172,6 +172,8 @@ export interface AnalyticsFilters {
 
 export interface WorkspaceAnalyticsFilters extends AnalyticsFilters {
     channels: string[];
+    labels: string[];
+    untagged: boolean;
 }
 
 export interface AnalyticsChannelOption {
@@ -280,6 +282,10 @@ export interface PublicationPoll {
     voting_status: 'open' | 'closed' | null;
     end_datetime: string | null;
     duration_minutes: number | null;
+    /** Mastodon, multiple choice: how many people voted, which each share is of. */
+    voters?: number | null;
+    /** Mastodon: the votes stay hidden until the poll ends. */
+    totals_hidden?: boolean;
 }
 
 /** The poll of one thread reply; `reply` is its position among the replies, from 0. */

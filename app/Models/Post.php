@@ -17,6 +17,7 @@ use App\Enums\Post\Status as PostStatus;
 use App\Enums\PostPlatform\ContentType;
 use App\Enums\SocialAccount\Platform;
 use App\Enums\TikTok\PrivacyLevel;
+use App\Enums\YouTube\ThumbnailWarning;
 use App\Observers\PostObserver;
 use App\Support\Media\MediaCopyBatch;
 use App\Support\PostPlatformMetaRules;
@@ -421,6 +422,35 @@ class Post extends Model
     }
 
     /**
+     * Approval requests by when they are due, requests without a time last,
+     * then by when they were asked for.
+     */
+    public function scopeApprovalOrder(Builder $query): Builder
+    {
+        return $query->orderByRaw('posts.scheduled_at IS NULL')
+            ->orderBy('posts.scheduled_at')
+            ->orderBy('posts.approval_requested_at');
+    }
+
+    /**
+     * How many posts of the query each channel has, keyed by channel id, in
+     * one grouped count; a channel with none is absent.
+     *
+     * @param  Builder<Post>  $query
+     * @return array<string, int>
+     */
+    public static function countPerChannel(Builder $query): array
+    {
+        return $query->toBase()
+            ->select('posts.social_account_id')
+            ->selectRaw('count(*) as aggregate')
+            ->groupBy('posts.social_account_id')
+            ->pluck('aggregate', 'social_account_id')
+            ->map(fn (mixed $count): int => (int) $count)
+            ->all();
+    }
+
+    /**
      * Posts on any of the channels; no filter when $channelIds is null.
      *
      * @param  list<string>|null  $channelIds
@@ -531,6 +561,36 @@ class Post extends Model
             && filled($this->platform_post_id)
             && ! ctype_digit($this->platform_post_id)
             && PrivacyLevel::tryFrom((string) data_get($this->meta, 'privacy_level')) === PrivacyLevel::PublicToEveryone;
+    }
+
+    /**
+     * A YouTube video TryPost published with an image picked as its cover,
+     * which YouTube only takes once the video is processed (`SetYouTubeCover`).
+     */
+    public function awaitsYouTubeCover(): bool
+    {
+        return $this->platform === Platform::YouTube
+            && $this->origin === Origin::TryPost
+            && $this->publish_status === PublishStatus::Published
+            && filled($this->platform_post_id)
+            && filled($this->mediaItems->first()?->cover());
+    }
+
+    /**
+     * Why YouTube did not set the cover image of this live video as its thumbnail, if it did not.
+     */
+    public function youTubeThumbnailWarning(): ?ThumbnailWarning
+    {
+        return ThumbnailWarning::tryFrom((string) data_get($this->error_context, 'youtube_thumbnail_warning'));
+    }
+
+    /**
+     * The post stays published: the warning sits next to the publication
+     * result, which publishing again clears.
+     */
+    public function recordYouTubeThumbnailWarning(ThumbnailWarning $warning): void
+    {
+        $this->writePublication(['error_context' => [...($this->error_context ?? []), 'youtube_thumbnail_warning' => $warning->value]]);
     }
 
     /**

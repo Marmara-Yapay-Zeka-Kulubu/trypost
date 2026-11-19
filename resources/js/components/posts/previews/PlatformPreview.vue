@@ -18,6 +18,7 @@ import XPreview from '@/components/posts/previews/XPreview.vue';
 import YouTubePreview from '@/components/posts/previews/YouTubePreview.vue';
 import { getPlatformLabel } from '@/composables/usePlatformLogo';
 import { useXLinkDefuser } from '@/composables/useXLinkDefuser';
+import { mediaRuleFor } from '@/lib/contentTypeMediaRules';
 import { filled } from '@/lib/helpers';
 import {
     repliesAreComments,
@@ -25,16 +26,18 @@ import {
     threadRepliesOf,
     threadReplyContentType,
 } from '@/lib/threadReplies';
+import { withCoversFor } from '@/lib/videoFrame';
+import type { ContentTypeValue } from '@/types/content-type';
 import type { MediaItem } from '@/types/media';
-import { THREAD_PLATFORMS } from '@/types/network-options';
-import type { PublishConfig } from '@/types/platform';
+import { isThreadPlatform } from '@/types/network-options';
+import type { PlatformValue, PublishConfig } from '@/types/platform';
 
 interface Props {
-    platform: string;
+    platform: PlatformValue;
     socialAccount: PreviewAccount | null | undefined;
     content: string;
     media: MediaItem[];
-    contentType?: string;
+    contentType?: ContentTypeValue;
     meta?: Record<string, any>;
     /** Local scheduled datetime (datetime-local); falls back to now in previews. */
     postedAt?: string | null;
@@ -55,18 +58,36 @@ const { contentFor } = useXLinkDefuser();
  */
 const previewContent = computed((): string => contentFor(props.content, props.platform));
 
-const shownReplies = computed((): { reply: ThreadReply; index: number }[] =>
-    THREAD_PLATFORMS.includes(props.platform) && !repliesAreComments(props.platform)
-        ? threadRepliesOf(props.meta)
-              .map((reply, index) => ({ reply, index }))
-              .filter(
-                  ({ reply }) =>
-                      filled(reply.text) ||
-                      filled(reply.media) ||
-                      filled(reply.poll),
-              )
-        : [],
-);
+/** Whether this post's network takes a cover image, so its preview shows the one uploaded. */
+const takesCoverImage = computed((): boolean => {
+    if (!filled(props.contentType)) {
+        return false;
+    }
+
+    return mediaRuleFor(props.contentType)?.supports_custom_video_cover ?? false;
+});
+
+const previewMedia = computed((): MediaItem[] => withCoversFor(props.media, takesCoverImage.value));
+
+const shownReplies = computed((): { reply: ThreadReply; index: number }[] => {
+    if (!isThreadPlatform(props.platform) || repliesAreComments(props.platform)) {
+        return [];
+    }
+
+    return threadRepliesOf(props.meta)
+        .map((reply, index) => ({ reply, index }))
+        .filter(({ reply }) => hasContent(reply));
+});
+
+/** A reply shows once it holds text, media or a poll. */
+const hasContent = (reply: ThreadReply): boolean => {
+    if (filled(reply.text) || filled(reply.media)) {
+        return true;
+    }
+
+    return filled(reply.poll);
+};
+
 const threadReplies = computed((): ThreadReply[] =>
     shownReplies.value.map(({ reply }) => reply),
 );
@@ -159,7 +180,7 @@ const previewComponent = computed(() => {
                 :is="previewComponent"
                 :social-account="resolvedSocialAccount"
                 :content="previewContent"
-                :media="media"
+                :media="previewMedia"
                 :content-type="contentType"
                 :meta="meta"
                 :posted-at="postedAt"

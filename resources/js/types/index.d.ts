@@ -87,7 +87,7 @@ export interface CanvaPresetOption {
 }
 
 export interface MediaSourceOption {
-    source: 'google_drive' | 'google_photos' | 'canva' | 'unsplash';
+    source: 'google_drive' | 'google_photos' | 'canva' | 'giphy' | 'unsplash';
     label: string;
     config: Record<string, string>;
     presets?: CanvaPresetOption[];
@@ -117,6 +117,7 @@ export interface SharedData {
     changelog?: SharedChangelog | null;
     changelogEntries?: ScrollChangelogEntries;
     mediaUploadLimits?: MediaUploadLimits | null;
+    toursEnabled?: boolean;
     [key: string]: unknown;
 }
 

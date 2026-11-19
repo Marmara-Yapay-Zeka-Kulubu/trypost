@@ -304,9 +304,9 @@ it('rejects publishing when the uploaded video runs past the content type durati
         ->assertJsonFragment(['Video is 1min 30s long, but this post type allows up to 1min.']);
 });
 
-it('rejects publishing a LinkedIn post with a GIF', function () {
-    $linkedin = SocialAccount::factory()->create(['workspace_id' => $this->workspace->id, 'platform' => Platform::LinkedIn]);
-    $post = Post::factory()->forAccount($linkedin, ContentType::LinkedInPost)->create([
+it('rejects publishing a Facebook post with a GIF', function () {
+    $facebook = SocialAccount::factory()->create(['workspace_id' => $this->workspace->id, 'platform' => Platform::Facebook]);
+    $post = Post::factory()->forAccount($facebook, ContentType::FacebookPost)->create([
         'user_id' => $this->user->id,
         'media' => [[
             'id' => 'gif-1', 'path' => 'medias/loop.gif', 'url' => 'https://example.com/loop.gif',
@@ -317,12 +317,36 @@ it('rejects publishing a LinkedIn post with a GIF', function () {
     $this->withHeaders($this->headers)
         ->putJson(route('api.posts.update', $post), [
             'status' => PostStatus::Publishing->value,
-            'content_type' => ContentType::LinkedInPost->value,
+            'content_type' => ContentType::FacebookPost->value,
         ])
         ->assertUnprocessable()
         ->assertJsonValidationErrors(['content_type'])
         ->assertJsonFragment(['This platform does not accept GIF. Remove the GIF or choose a different network.']);
 });
+
+it('accepts scheduling a LinkedIn post with a GIF', function (Platform $platform, ContentType $type) {
+    $linkedin = SocialAccount::factory()->create(['workspace_id' => $this->workspace->id, 'platform' => $platform]);
+    $post = Post::factory()->forAccount($linkedin, $type)->create([
+        'user_id' => $this->user->id,
+        'media' => [[
+            'id' => 'gif-1', 'path' => 'medias/loop.gif', 'url' => 'https://example.com/loop.gif',
+            'type' => 'image', 'mime_type' => 'image/gif', 'original_filename' => 'loop.gif', 'size' => 2 * 1024 * 1024,
+        ]],
+    ]);
+
+    $this->withHeaders($this->headers)
+        ->putJson(route('api.posts.update', $post), [
+            'status' => PostStatus::Scheduled->value,
+            'scheduled_at' => now()->addDay()->toIso8601String(),
+            'content_type' => $type->value,
+        ])
+        ->assertOk();
+
+    expect($post->fresh()->status)->toBe(PostStatus::Scheduled);
+})->with([
+    'profile' => [Platform::LinkedIn, ContentType::LinkedInPost],
+    'page' => [Platform::LinkedInPage, ContentType::LinkedInPagePost],
+]);
 
 it('rejects publishing an Instagram Reel whose stored video exceeds 300 MB', function () {
     $instagram = SocialAccount::factory()->create(['workspace_id' => $this->workspace->id, 'platform' => Platform::Instagram]);
@@ -1489,7 +1513,7 @@ it('explains what is wrong with an x poll in plain words', function (mixed $poll
     'choice over 25 characters' => [['options' => [Str::repeat('a', 26), 'b'], 'duration_minutes' => 60], 'meta.poll.options.0', 'Each poll choice can have up to 25 characters. Shorten the longer one.'],
     'five options' => [['options' => ['a', 'b', 'c', 'd', 'e'], 'duration_minutes' => 60], 'meta.poll.options', 'A poll can have up to 4 choices. Remove the extra ones.'],
     'duration above 10080' => [['options' => ['a', 'b'], 'duration_minutes' => 10081], 'meta.poll.duration_minutes', 'A poll can stay open from 5 minutes to 7 days. Choose a length in that range.'],
-    'poll that is not an object' => ['Yes or no', 'meta.poll', 'Send the poll with its choices (options) and length (duration_minutes).'],
+    'poll that is not an object' => ['Yes or no', 'meta.poll', 'Send the poll with its choices (options) and, on X and Mastodon, its length (duration_minutes).'],
     'choices sent as text' => [['options' => 'Yes, No', 'duration_minutes' => 60], 'meta.poll.options', 'Send the poll choices as a list of text.'],
     'a choice that is not text' => [['options' => ['Yes', ['No']], 'duration_minutes' => 60], 'meta.poll.options.1', 'Each poll choice must be text.'],
 ]);
@@ -1615,9 +1639,9 @@ it('refuses media on an x poll', function () {
     $this->assertDatabaseMissing(Post::class, ['social_account_id' => $x->id]);
 });
 
-it('refuses to attach media to an x poll', function () {
-    $account = SocialAccount::factory()->x()->create(['workspace_id' => $this->workspace->id]);
-    $post = Post::factory()->forAccount($account, ContentType::XPoll)->create(['user_id' => $this->user->id, 'status' => PostStatus::Draft]);
+it('refuses to attach media to a poll', function (ContentType $type) {
+    $account = SocialAccount::factory()->{$type->platform()->value}()->create(['workspace_id' => $this->workspace->id]);
+    $post = Post::factory()->forAccount($account, $type)->create(['user_id' => $this->user->id, 'status' => PostStatus::Draft]);
     $upload = Media::factory()->temporaryUpload($this->workspace)->stored()->create();
     $storedMedia = Media::query()->count();
     Http::fake();
@@ -1637,7 +1661,11 @@ it('refuses to attach media to an x poll', function () {
     expect($post->fresh()->media)->toBeEmpty()
         ->and(Media::query()->count())->toBe($storedMedia);
     Http::assertNothingSent();
-});
+})->with([
+    'x' => [ContentType::XPoll],
+    'mastodon' => [ContentType::MastodonPoll],
+    'threads' => [ContentType::ThreadsPoll],
+]);
 
 it('still saves a threads ghost post draft with media and attaches media to it, the poll rules being x only', function () {
     $threads = SocialAccount::factory()->threads()->create(['workspace_id' => $this->workspace->id]);

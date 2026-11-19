@@ -14,6 +14,7 @@ use App\Http\Controllers\App\ChannelQueueController;
 use App\Http\Controllers\App\ComposerAccountDataController;
 use App\Http\Controllers\App\ComposerLiveDataController;
 use App\Http\Controllers\App\DiscordController as AppDiscordController;
+use App\Http\Controllers\App\GiphyController;
 use App\Http\Controllers\App\GoogleMediaController;
 use App\Http\Controllers\App\GooglePhotosSessionController;
 use App\Http\Controllers\App\IdeaController;
@@ -38,6 +39,8 @@ use App\Http\Controllers\App\PostFeedbackRequestController;
 use App\Http\Controllers\App\PostGroupController;
 use App\Http\Controllers\App\PostLabelController;
 use App\Http\Controllers\App\PostNoteController;
+use App\Http\Controllers\App\PostNoteMentionableController;
+use App\Http\Controllers\App\PostNoteReactionController;
 use App\Http\Controllers\App\PostRecurrenceController;
 use App\Http\Controllers\App\PostScheduleController;
 use App\Http\Controllers\App\PostTemplateController;
@@ -53,6 +56,7 @@ use App\Http\Controllers\App\Settings\PasswordController;
 use App\Http\Controllers\App\Settings\PreferencesController;
 use App\Http\Controllers\App\Settings\ProfileController;
 use App\Http\Controllers\App\Settings\SessionController;
+use App\Http\Controllers\App\TourController;
 use App\Http\Controllers\App\UnsplashController;
 use App\Http\Controllers\App\WebhookController;
 use App\Http\Controllers\App\WelcomeController;
@@ -222,6 +226,7 @@ Route::middleware(['auth', EnsureAccountReady::class, EnsureHasWorkspace::class]
     Route::get('channels/{account}/calendar/{view?}', [ChannelController::class, 'calendar'])
         ->where('view', 'days|week|month')
         ->name('app.channels.calendar');
+    Route::get('channels/{account}/board', [ChannelController::class, 'board'])->name('app.channels.board');
     Route::get('channels/{account}/insights', [ChannelController::class, 'insights'])->name('app.channels.insights');
     Route::get('channels/{account}/insights/download/{format}', [ChannelController::class, 'downloadInsights'])
         ->whereIn('format', ExportFormat::values())
@@ -244,6 +249,7 @@ Route::middleware(['auth', EnsureAccountReady::class, EnsureHasWorkspace::class]
     Route::get('schedule/calendar/{view?}', [PostController::class, 'calendar'])
         ->where('view', 'days|week|month')
         ->name('app.calendar');
+    Route::get('schedule/board', [PostController::class, 'board'])->name('app.posts.board');
 
     Route::get('posts/composer/live', ComposerLiveDataController::class)->name('app.posts.composer.live');
     Route::get('posts/composer/accounts/{account}', [ComposerAccountDataController::class, 'show'])->name('app.posts.composer.account');
@@ -275,10 +281,13 @@ Route::middleware(['auth', EnsureAccountReady::class, EnsureHasWorkspace::class]
         ->middleware('throttle:10,1')
         ->name('app.posts.ai.alt-text');
 
-    Route::get('posts/{post}/notes', [PostNoteController::class, 'index'])->name('app.posts.notes.index');
+    Route::get('posts/{post}/notes/mentionables', [PostNoteMentionableController::class, 'index'])->name('app.posts.notes.mentionables.index');
     Route::post('posts/{post}/notes', [PostNoteController::class, 'store'])->name('app.posts.notes.store');
+    Route::get('posts/{post}/notes/{note}', [PostNoteController::class, 'show'])->name('app.posts.notes.show');
     Route::put('posts/{post}/notes/{note}', [PostNoteController::class, 'update'])->name('app.posts.notes.update');
     Route::delete('posts/{post}/notes/{note}', [PostNoteController::class, 'destroy'])->name('app.posts.notes.destroy');
+    Route::put('posts/{post}/notes/{note}/reactions', [PostNoteReactionController::class, 'update'])->name('app.posts.notes.reactions.update');
+    Route::delete('posts/{post}/notes/{note}/reactions', [PostNoteReactionController::class, 'destroy'])->name('app.posts.notes.reactions.destroy');
     Route::get('posts/{post}/feedback-requests/recipients', [PostFeedbackRequestController::class, 'recipients'])->name('app.posts.feedback-requests.recipients');
     Route::post('posts/{post}/feedback-requests', [PostFeedbackRequestController::class, 'store'])
         ->middleware('throttle:20,1')
@@ -297,9 +306,12 @@ Route::middleware(['auth', EnsureAccountReady::class, EnsureHasWorkspace::class]
 
     Route::post('media/chunked', [MediaUploadController::class, 'storeChunked'])->name('app.media.store-chunked');
     Route::get('media/{media}/file', [MediaFileController::class, 'show'])->whereUuid('media')->name('app.media.file');
-    Route::post('media/from-url', [MediaUploadController::class, 'storeFromUrl'])
-        ->middleware('throttle:media-imports')
-        ->name('app.media.store-from-url');
+    Route::get('media/giphy/search', [GiphyController::class, 'search'])
+        ->middleware('throttle:giphy')
+        ->name('app.media.giphy.search');
+    Route::get('media/giphy/trending', [GiphyController::class, 'trending'])
+        ->middleware('throttle:giphy')
+        ->name('app.media.giphy.trending');
     Route::get('media/unsplash/search', [UnsplashController::class, 'search'])
         ->middleware('throttle:unsplash')
         ->name('app.media.unsplash.search');
@@ -397,6 +409,10 @@ Route::middleware(['auth', EnsureAccountReady::class, EnsureHasWorkspace::class]
     Route::post('settings/workspace/mcp/prompt', [McpPromptController::class, 'store'])
         ->middleware('throttle:30,1')
         ->name('app.mcp.prompt.store');
+
+    Route::post('tours', [TourController::class, 'store'])
+        ->middleware('throttle:30,1')
+        ->name('app.tours.store');
 
     Route::get('repurposes', [RepurposeController::class, 'index'])->name('app.repurposes.index');
     Route::post('repurposes', [RepurposeController::class, 'store'])->name('app.repurposes.store');

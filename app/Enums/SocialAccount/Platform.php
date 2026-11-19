@@ -9,6 +9,8 @@ use App\Enums\TikTok\PrivacyLevel;
 use App\Enums\YouTube\Category;
 use App\Marmara\Hooks\AnalyticsPlatformGate;
 use App\Support\Hashtags;
+use App\Support\Social\MastodonPoll;
+use App\Support\Social\ThreadsPoll;
 use App\Support\Social\XPoll;
 use Illuminate\Support\Str;
 
@@ -203,9 +205,20 @@ enum Platform: string
      * Whether the platform's API accepts image alt text (accessibility
      * description) on published media.
      */
-    public function supportsAltText(): bool
+    public function supportsImageAltText(): bool
     {
         return $this->altTextMaxLength() !== null;
+    }
+
+    /**
+     * Whether the platform's API also takes alt text on a video: Bluesky
+     * (`alt` on `app.bsky.embed.video`), Mastodon (`description` on the media
+     * upload), Threads (`alt_text` on a video container) and Discord
+     * (`description` on the attachment).
+     */
+    public function supportsVideoAltText(): bool
+    {
+        return in_array($this, [self::Bluesky, self::Mastodon, self::Threads, self::Discord], true);
     }
 
     /**
@@ -591,9 +604,9 @@ enum Platform: string
                 'categoryOptions' => Category::options(),
                 'defaultCategoryId' => Category::DEFAULT->value,
             ],
-            self::X => [
-                'poll' => XPoll::limits(),
-            ],
+            self::X => ['poll' => XPoll::limits()],
+            self::Mastodon => ['poll' => MastodonPoll::limits()],
+            self::Threads => ['poll' => ThreadsPoll::limits()],
             default => [],
         };
     }

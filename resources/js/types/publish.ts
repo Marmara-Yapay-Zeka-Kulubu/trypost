@@ -3,6 +3,7 @@ import type {
     MetricsUnavailableReason,
     PublicationAnalyticsDetail,
 } from '@/types/analytics';
+import type { ContentTypeValue } from '@/types/content-type';
 import type { MediaItem } from '@/types/media';
 import type { PlatformValue } from '@/types/platform';
 import type {
@@ -18,6 +19,11 @@ import type { SocialAccountStatusValue } from '@/types/social-account-status';
 export type PublishTab = 'queue' | 'approvals' | 'drafts' | 'sent';
 
 export type PublishScope = 'all' | 'channel';
+
+/** The ways the Publish page shows posts; the Instagram grid is not one of them. */
+export const PUBLISH_VIEWS = ['list', 'calendar', 'board'] as const;
+
+export type PublishView = (typeof PUBLISH_VIEWS)[number];
 
 export type PublishCounts = Record<PublishTab, number>;
 
@@ -56,6 +62,9 @@ export interface UnavailablePostMetrics {
 
 export type PostCardMetrics = PublicationAnalyticsDetail | UnavailablePostMetrics;
 
+/** Why YouTube did not set the cover image of a live video as its thumbnail (`App\Enums\YouTube\ThumbnailWarning`). */
+export type YouTubeThumbnailWarning = 'forbidden' | 'daily_limit' | 'invalid_image' | 'failed';
+
 export interface PostCardFailure {
     category?: string | null;
     failed_at?: string | null;
@@ -68,12 +77,13 @@ export interface PostCard {
     publish_status: PublishStatusValue;
     social_account_id: string | null;
     social_account: PublishSocialAccount | null;
-    platform: string | null;
-    content_type?: string | null;
+    platform: PlatformValue | null;
+    content_type?: ContentTypeValue | null;
     meta?: Record<string, any> | null;
     platform_url?: string | null;
     error_message?: string | null;
     failure?: PostCardFailure | null;
+    youtube_thumbnail_warning?: YouTubeThumbnailWarning | null;
     retry_at?: string | null;
     origin: PostOriginValue;
     created_at: string;
@@ -111,6 +121,7 @@ export interface QueueDay {
 }
 
 export interface QueuePostPosition {
+    canMoveToTop: boolean;
     canMoveUp: boolean;
     canMoveDown: boolean;
 }
@@ -130,6 +141,7 @@ export interface QueueView {
 
 export interface ScrollPostCards {
     data: PostCard[];
+    total: number;
 }
 
 export type PostCardMove = 'top' | 'up' | 'down';
