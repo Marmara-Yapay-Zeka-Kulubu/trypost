@@ -18,6 +18,57 @@ club frame on the auth screens) and
 channel, with replies, for the team and for Echo / Hermes). Each lists its own
 upstream touch points.
 
+## Upstream merges
+
+Last upstream merge: v2.1.0 (tag `b569076f`, merged November 19, 2026; the
+previous base was upstream `main` at `e1c984d4`, v2.0.1 + 11 commits).
+
+### Fork changes outside `app/Marmara`
+
+Besides the module touch points below, the fork carries features written
+straight into upstream files (WhatsApp approval bridge, approval webhooks,
+"ask for feedback"). These are where upstream merges conflict:
+
+| File | What the fork adds |
+| --- | --- |
+| `lang/*/notes.php` | `feedback_requested`, `feedback_requested_with_note` at the end of the file |
+| `lang/*/posts.php` | `approvals.errors.changed`, `approvals.errors.request_conflict`, the `feedback` block at the end |
+| `lang/*/webhooks.php` | `post_approval_requested`, `post_approved`, `post_rejected`, `post_feedback_requested` (and the inbox event) in `events` and `event_descriptions` |
+| `app/Enums/Webhook/EventType.php`, `resources/js/components/webhook/webhook-events.ts` | The approval, feedback and inbox events |
+| `routes/app.php`, `routes/api.php` | `posts/{post}/feedback-requests` routes, after the post note routes |
+| `resources/js/components/publish/PostCardMenu.vue` | `feedback` prop and the "Ask for feedback" item (`request_feedback`) |
+| `resources/js/composables/publish/usePostCardMenuActions.ts` | `request_feedback` case, `feedbackOpen` / `feedbackPost` (the menu actions moved here from `PostTimelineCard.vue` in v2.1.0) |
+| `resources/js/components/publish/PostTimelineCard.vue`, `board/PostBoardCard.vue` | `PostFeedbackRequestDialog` next to the recurrence dialog, `feedback` on `PostDetailsDialog` |
+| `resources/js/components/publish/PostDetailsDialog.vue`, `resources/js/types/publish.ts` | `feedback` prop, `request_feedback` action |
+| `tests/fixtures/single-line-copy.php` | Length budgets of the fork's webhook descriptions and feedback copy |
+
+### How to take an upstream release
+
+1. `git remote add upstream https://github.com/trypostit/trypost.git` (once),
+   `git fetch upstream --tags`. If the clone is shallow, run
+   `git fetch --unshallow upstream` first, or the merge base is wrong.
+2. `git merge-base HEAD vX.Y.Z` and `git describe --tags <base>`; list
+   `git log <base>..HEAD` (ours) and `git log HEAD..vX.Y.Z` (theirs). Part of
+   a release may already be in the base when the fork last merged `main`.
+3. `git merge --no-ff vX.Y.Z -m "Merge TryPost vX.Y.Z"` (never rebase).
+   On a conflict take upstream's side and put the fork's lines back; the
+   tables above and below say which.
+4. New locale upstream (`id` arrived in v2.1.0): copy every fork key into it.
+   Compare each `lang/<locale>/*.php` key set with `lang/en` and check the
+   budgets in `tests/fixtures/single-line-copy.php` for the new locale.
+5. Check `bootstrap/providers.php` and `bootstrap/app.php` upstream: the
+   servers bind-mount their own copies, so any provider or middleware change
+   has to be made there too.
+6. Look for new migrations (`git diff --name-status <base> vX.Y.Z --
+   database/migrations`) and compare names and tables with
+   `app/Marmara/*/database/migrations`.
+7. Read `.env.example`, `config/*.php`, `config/horizon.php`,
+   `routes/console.php` diffs for new env keys, queues and scheduled commands.
+8. Grep the touch points (`git grep -n -i marmara -- ':!app/Marmara'`) and
+   update the line numbers in this file.
+9. `php -l` and `vendor/bin/pint --test` on changed PHP files, grep for
+   conflict markers; the full Pest and Vitest suites run in CI.
+
 ## Zernio: TikTok and LinkedIn page publishing and analytics
 
 TikTok refused the club's own TikTok app for production ("personal or internal
@@ -76,13 +127,13 @@ that column.
 
 | File | Lines | Change |
 | --- | --- | --- |
-| `bootstrap/providers.php` | 6, 15-16 | `use App\Marmara\Zernio\ZernioServiceProvider;` and the provider in the list |
+| `bootstrap/providers.php` | 8, 17-18 | `use App\Marmara\Zernio\ZernioServiceProvider;` and the provider in the list |
 | `app/Jobs/PublishToSocialPlatform.php` | 18, 100-107, 109, 115, 124 | `use App\Marmara\Hooks\SocialAccountPublishGuard;`; in `handle()` a commented call `app(SocialAccountPublishGuard::class)->check($this->post)` that can fail the post, and `$guard->checksNativeConnection &&` in front of the three native checks (disconnected, token expired, missing scopes) |
 
 | `app/Models/SocialAccount.php` | 19, 624-638 | `use App\Marmara\Hooks\AnalyticsAccountGuard;` and a commented `scopeConnectedForAnalytics()`: `connected()`, or `orWhereIn(id, AnalyticsAccountGuard::alsoUsableAccountIds())`. The default guard returns `[]`, i.e. exactly `connected()` |
 | `app/Jobs/Analytics/{AbstractPublicationSync,BootstrapAccountAnalytics,CollectPublicationMetrics,CollectAccountDailySnapshot,FinalizeAccountDailySnapshot,FinalizeAccountDailySnapshots}.php`, `app/Console/Commands/Analytics/{DispatchPublicationDiscovery,DispatchPublicationMetrics,DispatchAccountDailyAnalytics}.php`, `app/Actions/Analytics/{DispatchAccountAnalytics,BuildFollowerAnalyticsReport,BuildWorkspaceAnalyticsReport}.php` | one line each | `->connected()` became `->connectedForAnalytics() // Marmara AI fork hook` in the channel query. On a conflict keep upstream's line and swap the scope back in |
-| `app/Enums/SocialAccount/Platform.php` | 10, 51-53 | `use App\Marmara\Hooks\AnalyticsPlatformGate;`; in `isIncludedInAnalytics()` a commented arm `self::LinkedInPage => app(AnalyticsPlatformGate::class)->includes($this)` (LinkedInPage taken out of the `false` arm). The default gate answers false, i.e. upstream behaviour |
-| `app/Jobs/ResolveTikTokVideoId.php` | 8, 54-57 | `use App\Marmara\Hooks\SocialAccountPublishGuard;`; in `handle()` a commented `requiresConnectedChannel($this->post)` call, and the "channel connected" check only applies when it is true |
+| `app/Enums/SocialAccount/Platform.php` | 10, 53-54 | `use App\Marmara\Hooks\AnalyticsPlatformGate;`; in `isIncludedInAnalytics()` a commented arm `self::LinkedInPage => app(AnalyticsPlatformGate::class)->includes($this)` (LinkedInPage taken out of the `false` arm). The default gate answers false, i.e. upstream behaviour |
+| `app/Jobs/ResolveTikTokVideoId.php` | 8, 54-58 | `use App\Marmara\Hooks\SocialAccountPublishGuard;`; in `handle()` a commented `requiresConnectedChannel($this->post)` call, and the "channel connected" check only applies when it is true |
 
 Those are the only upstream files edited. On a merge conflict in
 `handle()`, keep upstream's checks and put the guard call and the three
@@ -90,12 +141,12 @@ Those are the only upstream files edited. On a merge conflict in
 them, on these upstream contracts. If a merge changes one, re-check the module:
 
 - `app/Jobs/PublishToSocialPlatform.php` `getPublisher()` resolves
-  `app(TikTokPublisher::class)` (line ~568). This is the extension point: the
+  `app(TikTokPublisher::class)` (line ~584). This is the extension point: the
   provider binds `TikTokPublisher` to a closure that returns
   `ZernioTikTokPublisher` when `ZERNIO_ENABLED=true`, else the plain native
   publisher. If upstream ever builds the publisher with `new`, add back a
   container call there and list it here.
-- `getPublisher()` resolves `app(LinkedInPagePublisher::class)` (line ~576)
+- `getPublisher()` resolves `app(LinkedInPagePublisher::class)` (line ~582)
   the same way; the provider binds it to `ZernioLinkedInPagePublisher` when
   `ZERNIO_ENABLED=true`. It relies on `publish(Post): array` and the
   protected `validateContentLength()`.
@@ -420,6 +471,13 @@ Written from Zernio's docs (November 2026) and tested with `Http::fake` only:
   is accepted when the Zernio account is the page itself; that follower
   stats cover organization pages; that `platformSpecificData` is accepted
   without other fields (spec types it as a `oneOf`).
+- LinkedIn comment on publish (upstream #475, the post's one thread reply):
+  `ZernioLinkedInPagePublisher` does not send it, so a page mapped to Zernio
+  publishes the post without its comment. Pages on the native publisher get
+  it from upstream's `AbstractLinkedInPublisher`.
+- GIFs on LinkedIn (upstream v2.1.0, #514): composer validation now lets a
+  GIF through for LinkedIn pages, and this module passes it to Zernio with
+  its own mime type; whether Zernio keeps it animated is untested.
 
 ### Analytics (TikTok through Zernio)
 
@@ -523,7 +581,7 @@ analytics. Publishing is unchanged: TryPost's native `LinkedInPagePublisher`
 
 | File | Lines | Change |
 | --- | --- | --- |
-| `bootstrap/providers.php` | 5, 20-21 | `use App\Marmara\LinkedIn\LinkedInServiceProvider;` and the provider in the list |
+| `bootstrap/providers.php` | 6, 21-22 | `use App\Marmara\LinkedIn\LinkedInServiceProvider;` and the provider in the list |
 
 Nothing else upstream is edited. It reuses the Zernio module's hooks
 (`AnalyticsPlatformGate` in `Platform::isIncludedInAnalytics()`,
@@ -821,9 +879,9 @@ The club website (marmaraai.com) is not used for colours or layout.
 
 | File | Lines | Change |
 | --- | --- | --- |
-| `bootstrap/providers.php` | 5, 17-18 | `use App\Marmara\Portal\PortalServiceProvider;` and the provider in the list |
+| `bootstrap/providers.php` | 7, 19-20 | `use App\Marmara\Portal\PortalServiceProvider;` and the provider in the list |
 | `resources/js/layouts/AuthLayout.vue` | 2 | `import AuthLayout from '@/marmara/AuthLayoutSwitch.vue'` instead of `'@/layouts/auth/AuthSplitLayout.vue'`. On a conflict take upstream's file and change this import back |
-| `resources/js/composables/useGuestLocale.ts` | 6, 36-41 | `import { portalDefaultLocale } ...`; `portalDefaultLocale(page.props) ??` before `browserLocale.value` in `signupLocale` |
+| `resources/js/composables/useGuestLocale.ts` | 6, 35-41 | `import { portalDefaultLocale } ...`; `portalDefaultLocale(page.props) ??` before `browserLocale.value` in `signupLocale` |
 
 Contracts relied on without editing them: `SetLocale` is not final and is
 resolved from the container (`$middleware->web(append: [SetLocale::class])`
@@ -879,8 +937,8 @@ its own flag; a missing permission shows as "needs permission X" (page,
 | `bootstrap/providers.php` | 5, 23-24 | `use App\Marmara\Inbox\InboxServiceProvider;` and the provider in the list |
 | `app/Enums/Webhook/EventType.php` | 24 | `case InboxItemReceived = 'inbox.item_received';` (webhook validation, the MCP webhook tools and the UI picker all read the enum) |
 | `resources/js/components/webhook/webhook-events.ts` | 19 | `'inbox.item_received'` in the event list, so the webhook dialogs offer it |
-| `lang/*/webhooks.php` (16 locales) | 2 lines each | `events.inbox_item_received` and `event_descriptions.inbox_item_received`, after `post_feedback_requested` (WebhookTranslationsTest wants every event in every locale) |
-| `resources/js/components/AppSidebar.vue` | 41, 94 | `import { marmaraInboxNavItems } ...` and `...marmaraInboxNavItems(page.props),` in `mainNavItems` (empty while the module is off) |
+| `lang/*/webhooks.php` (17 locales, `id` since v2.1.0) | 2 lines each | `events.inbox_item_received` and `event_descriptions.inbox_item_received`, after `post_feedback_requested` (WebhookTranslationsTest wants every event in every locale) |
+| `resources/js/components/AppSidebar.vue` | 48, 104 | `import { marmaraInboxNavItems } ...` and `...marmaraInboxNavItems(page.props),` in `mainNavItems` (empty while the module is off) |
 | `tests/fixtures/single-line-copy.php`, `tests/Unit/Enums/WebhookEventTypeTest.php` | 1 line each | The new description's length budget and the enum value |
 
 Not edited, relied on: Laravel resolves route controllers through the
@@ -892,6 +950,15 @@ laravel/mcp builds the server with `Container::make(TryPostServer::class)`
 (web transport and `TryPostServer::actingAs()` alike), so `TryPostServer` is
 bound to `InboxTryPostServer`, whose `boot()` adds the three tools; each
 tool's `shouldRegister()` hides it while `MARMARA_INBOX_ENABLED` is off.
+The subclass inherits upstream's `$tools` list (new upstream tools need no
+change here), and the route middleware in `routes/ai.php` (since v2.1.0 also
+`throttle:mcp`, per token, production only) is attached to the route, not to
+the class, so the inbox tools share upstream's MCP rate limit.
+Comments the channel posts itself never become inbox items: every provider
+sets `fromSelf` (LinkedIn: the comment's `actor` is the page's
+`urn:li:organization:{id}`, the same URN upstream's LinkedIn "first comment"
+uses as its actor), and `InboxItemStore::ingest()` drops those and our own
+`InboxReply` ids before storing or firing `inbox.item_received`.
 `WebhookService::dispatch()` and `DispatchWebhook` sign the event exactly like
 the `post.*` events. On an upstream conflict in any file above, keep
 upstream's version and re-add the one line.
