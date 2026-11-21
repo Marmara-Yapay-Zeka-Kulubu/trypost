@@ -9,7 +9,6 @@ use App\Marmara\Designs\Drive\DriveException;
 use App\Marmara\Designs\Models\Design;
 use App\Marmara\Designs\Sync\RevisionSync;
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
@@ -18,9 +17,10 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * Reads one design's revisions and keeps them forever on Drive. Queued by
- * the sync whenever a file is new or its content changed.
+ * the sync whenever a file is new or its content changed. Running it twice
+ * is harmless (revisions are upserted, kept ones are not patched again).
  */
-class SyncDesignRevisions implements ShouldBeUnique, ShouldQueue
+class SyncDesignRevisions implements ShouldQueue
 {
     use Dispatchable;
     use InteractsWithQueue;
@@ -29,14 +29,7 @@ class SyncDesignRevisions implements ShouldBeUnique, ShouldQueue
 
     public int $tries = 3;
 
-    public int $uniqueFor = 600;
-
     public function __construct(public readonly string $designId) {}
-
-    public function uniqueId(): string
-    {
-        return $this->designId;
-    }
 
     /**
      * @return list<int>
