@@ -41,6 +41,10 @@ class CommentOnDesignTool extends Tool
             return $workspace;
         }
 
+        if (! app(DesignsConfig::class)->isDesignsWorkspace($workspace)) {
+            return Response::error('Designs are not available in this workspace.');
+        }
+
         $validated = $request->validate([
             'design_id' => ['required', 'uuid'],
             'body' => ['required', 'string', 'max:5000'],

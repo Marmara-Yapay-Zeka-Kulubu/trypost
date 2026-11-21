@@ -180,7 +180,7 @@ test('the mcp tools list, read and comment on designs, and hide while the module
     Queue::assertPushed(DispatchWebhook::class, fn (DispatchWebhook $job): bool => $job->eventType === 'design.commented');
 
     ['user' => $stranger] = createApiTestToken();
-    TryPostServer::actingAs($stranger)->tool(GetDesignTool::class, ['design_id' => $this->design->id])->assertHasErrors(['Design not found.']);
+    TryPostServer::actingAs($stranger)->tool(GetDesignTool::class, ['design_id' => $this->design->id])->assertHasErrors(['Designs are not available in this workspace.']);
 
     config()->set('marmara-designs.enabled', false);
     TryPostServer::actingAs($this->owner)->tools()->assertNotRegistered([ListDesignsTool::class, GetDesignTool::class, CommentOnDesignTool::class]);

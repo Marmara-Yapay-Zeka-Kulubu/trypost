@@ -42,6 +42,10 @@ class ListDesignsTool extends Tool
             return $workspace;
         }
 
+        if (! app(DesignsConfig::class)->isDesignsWorkspace($workspace)) {
+            return Response::error('Designs are not available in this workspace.');
+        }
+
         $validated = $request->validate([
             'q' => ['sometimes', 'nullable', 'string', 'max:100'],
             'folder' => ['sometimes', 'nullable', 'string', 'max:1000'],
@@ -58,7 +62,7 @@ class ListDesignsTool extends Tool
 
         $limit = (int) ($validated['limit'] ?? 20);
         $page = (int) ($validated['page'] ?? 1);
-        $designs = DesignQuery::for($workspace, $validated)->forPage($page, $limit + 1)->get();
+        $designs = DesignQuery::for($workspace, $validated)->skip(($page - 1) * $limit)->take($limit + 1)->get();
 
         return Response::structured([
             'designs' => $designs->take($limit)->map(fn (Design $design): array => DesignPayload::item($design, signedThumbnails: true))->values()->all(),

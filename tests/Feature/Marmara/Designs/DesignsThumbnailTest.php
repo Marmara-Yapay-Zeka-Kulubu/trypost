@@ -42,7 +42,7 @@ test('members get the drive thumbnail through the proxy; it is fetched with the 
 
 test('the proxy needs a session and a member of the design\'s workspace', function () {
     $this->get("/designs/{$this->design->id}/thumbnail/400")->assertRedirect();
-    $this->actingAs(workspaceOutsider($this->workspace))->get("/designs/{$this->design->id}/thumbnail/400")->assertForbidden();
+    $this->actingAs(workspaceOutsider($this->workspace))->get("/designs/{$this->design->id}/thumbnail/400")->assertNotFound();
 
     ['user' => $stranger] = createApiTestToken();
     $this->actingAs($stranger)->get("/designs/{$this->design->id}/thumbnail/400")->assertNotFound();

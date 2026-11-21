@@ -27,12 +27,12 @@ class DesignsApiController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $workspace = $this->workspace($request);
+        $workspace = $this->tokenWorkspace($request);
         $validated = $request->validate([...DesignQuery::rules(), 'limit' => ['nullable', 'integer', 'min:1', 'max:100'], 'page' => ['nullable', 'integer', 'min:1']]);
         $limit = (int) ($validated['limit'] ?? 20);
         $page = (int) ($validated['page'] ?? 1);
 
-        $designs = DesignQuery::for($workspace, $validated)->forPage($page, $limit + 1)->get();
+        $designs = DesignQuery::for($workspace, $validated)->skip(($page - 1) * $limit)->take($limit + 1)->get();
 
         return response()->json([
             'data' => $designs->take($limit)->map(fn (Design $design): array => DesignPayload::item($design, signedThumbnails: true))->values()->all(),
@@ -42,11 +42,14 @@ class DesignsApiController extends Controller
 
     public function show(Request $request, string $design): JsonResponse
     {
+        $this->tokenWorkspace($request);
+
         return response()->json(DesignPayload::detail($this->design($request, $design), $request->user(), signedThumbnails: true));
     }
 
     public function comment(Request $request, string $design, DesignActions $actions): JsonResponse
     {
+        $this->tokenWorkspace($request);
         $model = $this->design($request, $design);
         $this->authorize('comment', $model);
         $validated = $request->validate(['body' => ['required', 'string', 'max:5000']]);
@@ -58,6 +61,7 @@ class DesignsApiController extends Controller
 
     public function status(Request $request, string $design, DesignActions $actions): JsonResponse
     {
+        $this->tokenWorkspace($request);
         $model = $this->design($request, $design);
         $validated = $request->validate(['status' => ['required', 'string', Rule::in(DesignStatus::values())]]);
         $status = DesignStatus::from($validated['status']);

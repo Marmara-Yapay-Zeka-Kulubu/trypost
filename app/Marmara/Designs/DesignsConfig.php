@@ -44,6 +44,23 @@ class DesignsConfig
         return $workspaces->count() === 1 ? $workspaces->first() : null;
     }
 
+    /**
+     * The module runs only when it is on and its workspace is known (the
+     * configured one, or the install's only workspace).
+     */
+    public function available(): bool
+    {
+        return $this->enabled() && $this->workspace() !== null;
+    }
+
+    /**
+     * Whether a workspace is the designs workspace (and the module runs).
+     */
+    public function isDesignsWorkspace(?Workspace $workspace): bool
+    {
+        return $workspace !== null && $this->enabled() && $this->workspace()?->id === $workspace->id;
+    }
+
     public function driveApi(): string
     {
         return (string) config('marmara-designs.drive_api', 'https://www.googleapis.com/drive/v3');

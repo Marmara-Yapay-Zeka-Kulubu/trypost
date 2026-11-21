@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Marmara\Designs\Http;
 
 use App\Http\Controllers\Controller;
+use App\Marmara\Designs\DesignsConfig;
 use App\Marmara\Designs\Drive\DriveClient;
 use App\Marmara\Designs\Drive\DriveException;
 use App\Marmara\Designs\Models\Design;
@@ -33,7 +34,7 @@ class DesignMediaController extends Controller
     public function signedThumbnail(Request $request, string $design, int $size, DesignThumbnails $thumbnails): Response
     {
         abort_unless(Str::isUuid($design), 404);
-        $model = Design::query()->find($design);
+        $model = Design::query()->where('workspace_id', app(DesignsConfig::class)->workspace()?->id)->find($design);
         abort_if($model === null, 404);
 
         return $this->thumbnailResponse($model, $size, $request, $thumbnails, 'public');

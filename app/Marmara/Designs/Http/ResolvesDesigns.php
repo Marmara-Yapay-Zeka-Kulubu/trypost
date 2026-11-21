@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Marmara\Designs\Http;
 
+use App\Marmara\Designs\DesignsConfig;
 use App\Marmara\Designs\Models\Design;
 use App\Marmara\Designs\Models\DesignComment;
 use App\Models\Workspace;
@@ -11,16 +12,32 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
 /**
- * Designs are looked up inside the user's current workspace only: an id of
- * another workspace answers 404, like the inbox.
+ * Everything in the module belongs to the one designs workspace
+ * (DesignsConfig::workspace(), MARMARA_DESIGNS_WORKSPACE_ID): whoever is not
+ * a member of it gets 404, whatever their current workspace is or which
+ * rights they have elsewhere. Callers then check the right they need
+ * (createPost, update, …) on this workspace.
  */
 trait ResolvesDesigns
 {
     protected function workspace(Request $request): Workspace
     {
-        $workspace = $request->user()?->currentWorkspace;
-        abort_unless($workspace instanceof Workspace, 404);
-        $this->authorize('view', $workspace);
+        $workspace = app(DesignsConfig::class)->workspace();
+        $user = $request->user();
+
+        abort_unless($workspace instanceof Workspace && $user !== null && $user->can('view', $workspace), 404);
+
+        return $workspace;
+    }
+
+    /**
+     * An API key belongs to one workspace: only a key of the designs
+     * workspace reads it.
+     */
+    protected function tokenWorkspace(Request $request): Workspace
+    {
+        $workspace = $this->workspace($request);
+        abort_unless($request->user()?->currentWorkspace?->id === $workspace->id, 404);
 
         return $workspace;
     }

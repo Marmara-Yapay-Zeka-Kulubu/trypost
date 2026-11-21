@@ -40,6 +40,10 @@ class GetDesignTool extends Tool
             return $workspace;
         }
 
+        if (! app(DesignsConfig::class)->isDesignsWorkspace($workspace)) {
+            return Response::error('Designs are not available in this workspace.');
+        }
+
         $validated = $request->validate(['design_id' => ['required', 'uuid']]);
         $design = Design::query()->where('workspace_id', $workspace->id)->find($validated['design_id']);
 

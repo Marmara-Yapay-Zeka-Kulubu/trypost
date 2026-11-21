@@ -27,7 +27,9 @@ class DesignPolicy
     {
         $workspace = $design->workspace;
 
-        return $workspace instanceof Workspace && $user->can('view', $workspace);
+        return $workspace instanceof Workspace
+            && app(DesignsConfig::class)->isDesignsWorkspace($workspace)
+            && $user->can('view', $workspace);
     }
 
     public function comment(User $user, Design $design): bool

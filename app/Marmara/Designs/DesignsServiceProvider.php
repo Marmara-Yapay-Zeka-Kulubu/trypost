@@ -85,8 +85,11 @@ class DesignsServiceProvider extends ServiceProvider
         // The sidebar entry (resources/js/marmara/designs/nav.ts) reads this.
         Inertia::share('marmaraDesigns', function (): ?array {
             $user = Auth::user();
+            $config = $this->app->make(DesignsConfig::class);
+            $workspace = $config->enabled() ? $config->workspace() : null;
 
-            if (! $this->app->make(DesignsConfig::class)->enabled() || ! $user instanceof User || $user->currentWorkspace === null) {
+            // Only members of the designs workspace see the entry.
+            if ($workspace === null || ! $user instanceof User || ! $user->can('view', $workspace)) {
                 return null;
             }
 
