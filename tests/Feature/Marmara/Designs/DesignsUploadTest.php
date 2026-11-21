@@ -48,7 +48,9 @@ test('connecting asks google for drive.file only, offline, with pkce and a state
         ->and($query['prompt'])->toBe('consent')
         ->and($query['code_challenge_method'])->toBe('S256')
         ->and($query['redirect_uri'])->toBe(route('marmara.designs.drive.callback'))
-        ->and(strlen($query['state']))->toBe(40);
+        ->and(strlen($query['state']))->toBe(40)
+        ->and(session('marmara-designs.oauth.state'))->toBe($query['state'])
+        ->and(session('marmara-designs.oauth.workspace_id'))->toBe($this->workspace->id);
 });
 
 test('only workspace admins connect the upload permission', function () {
@@ -56,15 +58,17 @@ test('only workspace admins connect the upload permission', function () {
 });
 
 test('the callback stores the lead\'s tokens encrypted and asks for the folder next', function () {
-    $this->actingAs($this->owner)->get('/designs/drive/connect');
-    $state = session('marmara-designs.oauth.state');
+    // The pending flow as connect() stores it (explicit, so the test does not
+    // depend on the session surviving between test requests).
+    $state = str_repeat('s', 40);
+    $pending = ['marmara-designs.oauth' => ['state' => $state, 'verifier' => str_repeat('v', 64), 'workspace_id' => $this->workspace->id]];
 
     Http::fake([
         'oauth2.googleapis.com/token' => Http::response(['access_token' => 'ya29.lead', 'refresh_token' => '1//refresh', 'expires_in' => 3599, 'scope' => 'https://www.googleapis.com/auth/drive.file', 'token_type' => 'Bearer']),
         'www.googleapis.com/drive/v3/about*' => Http::response(['user' => ['displayName' => 'Yusuf Kulüp', 'emailAddress' => 'lead@example.com']]),
     ]);
 
-    $this->actingAs($this->owner)->get("/designs/drive/callback?state={$state}&code=auth-code")
+    $this->actingAs($this->owner)->withSession($pending)->get("/designs/drive/callback?state={$state}&code=auth-code")
         ->assertRedirect(route('marmara.designs.index', ['drive' => 'pick']));
 
     $connection = DesignDriveConnection::query()->sole();
@@ -74,13 +78,15 @@ test('the callback stores the lead\'s tokens encrypted and asks for the folder n
         ->and($connection->folder_granted_at)->toBeNull()
         ->and(DB::table('marmara_design_drive_connections')->value('refresh_token'))->not->toContain('1//refresh');
 
-    Http::assertSent(fn (Request $request): bool => $request->url() === 'https://oauth2.googleapis.com/token' && $request['grant_type'] === 'authorization_code' && filled($request['code_verifier']));
+    Http::assertSent(fn (Request $request): bool => $request->url() === 'https://oauth2.googleapis.com/token' && $request['grant_type'] === 'authorization_code' && $request['code_verifier'] === str_repeat('v', 64));
 });
 
 test('a callback with a wrong state is refused', function () {
-    $this->actingAs($this->owner)->get('/designs/drive/connect');
-
-    $this->actingAs($this->owner)->get('/designs/drive/callback?state=forged&code=x')->assertForbidden();
+    $this->actingAs($this->owner)
+        ->withSession(['marmara-designs.oauth' => ['state' => str_repeat('s', 40), 'verifier' => 'v', 'workspace_id' => $this->workspace->id]])
+        ->get('/designs/drive/callback?state=forged&code=x')
+        ->assertForbidden();
+    $this->actingAs($this->owner)->get('/designs/drive/callback?state=anything&code=x')->assertForbidden();
     expect(DesignDriveConnection::query()->count())->toBe(0);
 });
 

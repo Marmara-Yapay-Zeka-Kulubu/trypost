@@ -34,7 +34,7 @@ test('the service account signs an RS256 jwt bearer assertion and caches the tok
 
         return $request->url() === 'https://oauth2.googleapis.com/token'
             && $request['grant_type'] === 'urn:ietf:params:oauth:grant-type:jwt-bearer'
-            && json_decode(base64_decode(strtr($header, '-_', '+/')), true) === ['typ' => 'JWT', 'alg' => 'RS256', 'kid' => 'kid-123']
+            && json_decode(base64_decode(strtr($header, '-_', '+/')), true) == ['typ' => 'JWT', 'alg' => 'RS256', 'kid' => 'kid-123']
             && $claims['iss'] === $key['client_email']
             && $claims['scope'] === 'https://www.googleapis.com/auth/drive'
             && $claims['aud'] === 'https://oauth2.googleapis.com/token'
