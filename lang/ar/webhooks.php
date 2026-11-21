@@ -97,6 +97,9 @@ return [
         'post_rejected' => 'تم رفض المنشور',
         'post_feedback_requested' => 'طلب رأي في منشور',
         'inbox_item_received' => 'رسالة أو تعليق جديد في البريد الوارد',
+        'design_added' => 'تصميم جديد في Drive',
+        'design_commented' => 'تعليق جديد على تصميم',
+        'design_status_changed' => 'تغيّرت حالة تصميم',
     ],
     'event_descriptions' => [
         'post_created' => 'عند إنشاء منشور جديد.',
@@ -112,6 +115,9 @@ return [
         'post_rejected' => 'عند رفض منشور قيد الانتظار.',
         'post_feedback_requested' => 'عندما يطلب عضو آراء الفريق في منشور.',
         'inbox_item_received' => 'عند وصول تعليق أو رسالة مباشرة إلى البريد الوارد.',
+        'design_added' => 'عند إضافة تصميم إلى مجلد Drive المشترك.',
+        'design_commented' => 'عندما يعلّق عضو على تصميم.',
+        'design_status_changed' => 'عند تغيير حالة تصميم.',
     ],
     'http_reasons' => [
         'unknown' => 'غير معروف',

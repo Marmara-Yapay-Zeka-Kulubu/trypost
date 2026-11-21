@@ -12,6 +12,7 @@ import {
     IconMessageCircle,
     IconPhoto,
     IconSearch,
+    IconSend,
     IconThumbUp,
     IconUpload,
     IconVideo,
@@ -25,10 +26,12 @@ import { Input } from '@/components/ui/input';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import AppLayout from '@/layouts/AppLayout.vue';
 
+import CreatePostDialog from './CreatePostDialog.vue';
 import DesignDrawer from './DesignDrawer.vue';
 import DesignUploadDialog from './DesignUploadDialog.vue';
 import DriveUploadPanel from './DriveUploadPanel.vue';
 import {
+    fill,
     formatDateTime,
     makeTranslator,
     type Copy,
@@ -101,6 +104,7 @@ const close = (): void => visit({ design: null }, { keepPage: true });
 const kindIcons: Record<string, Component> = { pdf: IconFileTypePdf, video: IconVideo };
 
 const uploadOpen = ref(false);
+const postOpen = ref(false);
 const highlightPick = computed(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('drive') === 'pick');
 
 const select = (key: keyof Filters) => (value: unknown) => visit({ [key]: String(value ?? '') || null, page: null, design: null });
@@ -233,6 +237,25 @@ const select = (key: keyof Filters) => (value: unknown) => visit({ [key]: String
             :can-approve="permissions.canApprove"
             :urls="urls"
             @close="close"
+        >
+            <template #actions>
+                <Button
+                    v-if="selected.can.create_post"
+                    data-testid="marmara-designs-create-post"
+                    @click="postOpen = true"
+                >
+                    <IconSend class="size-4" />
+                    {{ t('post.create') }}
+                </Button>
+            </template>
+        </DesignDrawer>
+
+        <CreatePostDialog
+            v-if="selected"
+            v-model:open="postOpen"
+            :t="t"
+            :channels="postChannels"
+            :url="fill(urls.posts ?? '', selected.id)"
         />
 
         <DesignUploadDialog

@@ -179,7 +179,7 @@ class DesignsPageController extends Controller
             'vote' => route('marmara.designs.vote', ['design' => '__ID__']),
             'versions' => route('marmara.designs.versions.link', ['design' => '__ID__']),
             'original' => route('marmara.designs.original', ['design' => '__ID__']),
-            'posts' => route('marmara.designs.index').'/__ID__/posts',
+            'posts' => route('marmara.designs.posts.store', ['design' => '__ID__']),
             'drive_connect' => route('marmara.designs.drive.connect'),
             'drive_picker_token' => route('marmara.designs.drive.picker-token'),
             'drive_folder' => route('marmara.designs.drive.folder'),

@@ -97,6 +97,9 @@ return [
         'post_rejected' => 'Η ανάρτηση απορρίφθηκε',
         'post_feedback_requested' => 'Ζητήθηκε γνώμη για ανάρτηση',
         'inbox_item_received' => 'Νέο σχόλιο ή μήνυμα στα εισερχόμενα',
+        'design_added' => 'Νέο σχέδιο στο Drive',
+        'design_commented' => 'Νέο σχόλιο σε σχέδιο',
+        'design_status_changed' => 'Άλλαξε η κατάσταση σχεδίου',
     ],
     'event_descriptions' => [
         'post_created' => 'Όταν δημιουργείται μια νέα ανάρτηση.',
@@ -112,6 +115,9 @@ return [
         'post_rejected' => 'Όταν απορρίπτεται μια ανάρτηση σε αναμονή.',
         'post_feedback_requested' => 'Όταν ένα μέλος ζητά γνώμη για μια ανάρτηση.',
         'inbox_item_received' => 'Όταν φτάνει σχόλιο ή άμεσο μήνυμα στα εισερχόμενα.',
+        'design_added' => 'Όταν προστίθεται σχέδιο στον κοινό φάκελο Drive.',
+        'design_commented' => 'Όταν ένα μέλος σχολιάζει ένα σχέδιο.',
+        'design_status_changed' => 'Όταν αλλάζει η κατάσταση ενός σχεδίου.',
     ],
     'http_reasons' => [
         'unknown' => 'Άγνωστο',

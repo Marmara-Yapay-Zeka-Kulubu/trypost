@@ -97,6 +97,9 @@ return [
         'post_rejected' => 'Bericht afgewezen',
         'post_feedback_requested' => 'Feedback gevraagd op bericht',
         'inbox_item_received' => 'Nieuwe reactie of bericht in inbox',
+        'design_added' => 'Nieuw ontwerp in Drive',
+        'design_commented' => 'Nieuwe reactie op ontwerp',
+        'design_status_changed' => 'Ontwerpstatus gewijzigd',
     ],
     'event_descriptions' => [
         'post_created' => 'Wanneer een nieuwe post wordt aangemaakt.',
@@ -112,6 +115,9 @@ return [
         'post_rejected' => 'Wanneer een wachtend bericht wordt afgewezen.',
         'post_feedback_requested' => 'Wanneer een lid om feedback op een bericht vraagt.',
         'inbox_item_received' => 'Wanneer een reactie of direct bericht binnenkomt.',
+        'design_added' => 'Wanneer een ontwerp in de gedeelde map komt.',
+        'design_commented' => 'Wanneer een lid op een ontwerp reageert.',
+        'design_status_changed' => 'Wanneer de status van een ontwerp wijzigt.',
     ],
     'http_reasons' => [
         'unknown' => 'Onbekend',

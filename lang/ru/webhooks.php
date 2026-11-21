@@ -97,6 +97,9 @@ return [
         'post_rejected' => 'Пост отклонён',
         'post_feedback_requested' => 'Запрошен отзыв о посте',
         'inbox_item_received' => 'Новый комментарий или сообщение во входящих',
+        'design_added' => 'Новый дизайн в Drive',
+        'design_commented' => 'Новый комментарий к дизайну',
+        'design_status_changed' => 'Статус дизайна изменён',
     ],
     'event_descriptions' => [
         'post_created' => 'Когда создаётся новый пост.',
@@ -112,6 +115,9 @@ return [
         'post_rejected' => 'Когда ожидающий пост отклонён.',
         'post_feedback_requested' => 'Когда участник просит отзыв о посте.',
         'inbox_item_received' => 'Когда приходит комментарий или личное сообщение.',
+        'design_added' => 'Когда дизайн появляется в общей папке Drive.',
+        'design_commented' => 'Когда участник комментирует дизайн.',
+        'design_status_changed' => 'Когда у дизайна меняется статус.',
     ],
     'http_reasons' => [
         'unknown' => 'Неизвестно',

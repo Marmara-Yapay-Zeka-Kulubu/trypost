@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace App\Marmara\Designs\Sync;
 
+use App\Marmara\Designs\DesignEvents;
 use App\Marmara\Designs\DesignsConfig;
 use App\Marmara\Designs\Drive\DriveClient;
 use App\Marmara\Designs\Drive\DriveException;
 use App\Marmara\Designs\Jobs\SyncDesignRevisions;
 use App\Marmara\Designs\Models\Design;
+use App\Marmara\Designs\Models\DesignActivity;
 use App\Marmara\Designs\Models\DesignFolder;
 use App\Marmara\Designs\Models\DesignSyncState;
 use App\Marmara\Designs\Support\DesignTypes;
@@ -43,6 +45,7 @@ class DesignSync
     public function __construct(
         private readonly DesignsConfig $config,
         private readonly DriveClient $drive,
+        private readonly DesignEvents $events,
     ) {}
 
     public function run(bool $full = false): SyncResult
@@ -323,11 +326,19 @@ class DesignSync
     }
 
     /**
-     * Hook for the design.added webhook (DesignEvents).
+     * A file seen for the first time: one activity line, and the design.added
+     * webhook unless it is the first sync's backlog or older than
+     * MARMARA_DESIGNS_NOTIFY_MAX_AGE_HOURS.
      */
-    protected function onAdded(Design $design, bool $notify): void
+    private function onAdded(Design $design, bool $notify): void
     {
-        //
+        DesignActivity::record($design, null, 'added');
+
+        $since = CarbonImmutable::now()->subHours($this->config->notifyMaxAgeHours());
+
+        if ($notify && ($design->drive_created_at === null || $design->drive_created_at->greaterThanOrEqualTo($since))) {
+            $this->events->added($design);
+        }
     }
 
     private function upsertFolder(Workspace $workspace, string $driveId, ?string $parentId, string $name, string $path, bool $isRoot): DesignFolder

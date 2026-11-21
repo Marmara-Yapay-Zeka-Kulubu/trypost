@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Marmara\Designs\Actions;
 
+use App\Marmara\Designs\DesignEvents;
 use App\Marmara\Designs\Models\Design;
 use App\Marmara\Designs\Models\DesignActivity;
 use App\Marmara\Designs\Models\DesignComment;
@@ -20,7 +21,8 @@ use Illuminate\Validation\ValidationException;
 /**
  * The club's own changes to a design, shared by the page, the API and MCP.
  * Authorization is the caller's job (DesignPolicy / the status gate); every
- * change writes one activity line.
+ * change writes one activity line; comments and status changes fire the
+ * design.commented / design.status_changed webhooks (DesignEvents).
  */
 class DesignActions
 {
@@ -234,16 +236,13 @@ class DesignActions
         $design->forceFill(['votes_count' => DesignVote::query()->where('design_id', $design->id)->count()])->save();
     }
 
-    /**
-     * Hooks for the design.* webhooks (DesignEvents, see below).
-     */
-    protected function statusChanged(Design $design, User $user, DesignStatus $from): void
+    private function statusChanged(Design $design, User $user, DesignStatus $from): void
     {
-        //
+        app(DesignEvents::class)->statusChanged($design, $user, $from);
     }
 
-    protected function commented(Design $design, DesignComment $comment, User $user): void
+    private function commented(Design $design, DesignComment $comment, User $user): void
     {
-        //
+        app(DesignEvents::class)->commented($design, $comment, $user);
     }
 }

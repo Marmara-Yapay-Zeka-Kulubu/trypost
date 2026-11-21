@@ -6,6 +6,7 @@ use App\Http\Middleware\App\EnsureAccountReady;
 use App\Http\Middleware\App\EnsureHasWorkspace;
 use App\Marmara\Designs\Http\DesignController;
 use App\Marmara\Designs\Http\DesignMediaController;
+use App\Marmara\Designs\Http\DesignPostController;
 use App\Marmara\Designs\Http\DesignsApiController;
 use App\Marmara\Designs\Http\DesignsPageController;
 use App\Marmara\Designs\Http\DesignUploadController;
@@ -43,6 +44,7 @@ Route::middleware(['web', 'auth', EnsureAccountReady::class, EnsureHasWorkspace:
         Route::delete('{design}/vote', [DesignController::class, 'unvote'])->name('unvote');
         Route::post('{design}/versions', [DesignController::class, 'linkVersion'])->name('versions.link');
         Route::delete('{design}/versions', [DesignController::class, 'unlinkVersion'])->name('versions.unlink');
+        Route::post('{design}/posts', [DesignPostController::class, 'store'])->middleware('throttle:10,1')->name('posts.store');
     });
 
 // Thumbnails for readers without a session (webhook payloads, API, MCP): temporary signed URLs.

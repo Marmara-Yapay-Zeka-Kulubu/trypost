@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Marmara\Designs\Upload;
 
+use App\Marmara\Designs\DesignEvents;
 use App\Marmara\Designs\DesignsConfig;
 use App\Marmara\Designs\Drive\DriveClient;
 use App\Marmara\Designs\Drive\DriveException;
@@ -109,6 +110,10 @@ class DesignUploader
         );
 
         DesignActivity::record($design, $user, 'uploaded', ['name' => $uploaderName]);
+
+        if ($design->wasRecentlyCreated) {
+            app(DesignEvents::class)->added($design);
+        }
         SyncDesignRevisions::dispatch($design->id);
 
         return $design;

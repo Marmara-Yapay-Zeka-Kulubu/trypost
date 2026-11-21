@@ -97,6 +97,9 @@ return [
         'post_rejected' => '投稿が却下されました',
         'post_feedback_requested' => '投稿へのフィードバック依頼',
         'inbox_item_received' => '受信箱に新しいコメントまたはメッセージ',
+        'design_added' => 'Drive に新しいデザイン',
+        'design_commented' => 'デザインへの新しいコメント',
+        'design_status_changed' => 'デザインのステータス変更',
     ],
     'event_descriptions' => [
         'post_created' => '新しい投稿が作成されたとき。',
@@ -112,6 +115,9 @@ return [
         'post_rejected' => '承認待ちの投稿が却下されたとき。',
         'post_feedback_requested' => 'メンバーが投稿へのフィードバックを依頼したとき。',
         'inbox_item_received' => 'コメントやダイレクトメッセージが届いたとき。',
+        'design_added' => '共有 Drive フォルダにデザインが追加されたとき。',
+        'design_commented' => 'メンバーがデザインにコメントしたとき。',
+        'design_status_changed' => 'デザインのステータスが変わったとき。',
     ],
     'http_reasons' => [
         'unknown' => '不明',

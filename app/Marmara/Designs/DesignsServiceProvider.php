@@ -8,11 +8,17 @@ use App\Marmara\Designs\Console\DesignsStatus;
 use App\Marmara\Designs\Console\SyncDesigns;
 use App\Marmara\Designs\Drive\DriveClient;
 use App\Marmara\Designs\Drive\ServiceAccountToken;
+use App\Marmara\Designs\Mcp\CommentOnDesignTool;
+use App\Marmara\Designs\Mcp\GetDesignTool;
+use App\Marmara\Designs\Mcp\ListDesignsTool;
 use App\Marmara\Designs\Models\Design;
 use App\Marmara\Designs\Models\DesignComment;
 use App\Marmara\Designs\Support\DesignStatus;
 use App\Marmara\Designs\Sync\DesignSync;
 use App\Marmara\Designs\Thumbnails\ThumbnailCache;
+use App\Marmara\Hooks\MarmaraMcpTools;
+use App\Marmara\Hooks\MarmaraTryPostServer;
+use App\Mcp\Servers\TryPostServer;
 use App\Models\User;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Auth;
@@ -24,8 +30,10 @@ use Inertia\Inertia;
  * Marmara AI fork module: the "Tasarımlar" gallery of the club's shared
  * Google Drive folder (see app/Marmara/README.md, "Designs").
  *
- * Nothing upstream is rebound. While MARMARA_DESIGNS_ENABLED is off the
- * routes answer 404, the schedule skips the sync and the MCP tools hide.
+ * Nothing upstream is rebound (TryPostServer only when the inbox module
+ * has not already bound it). While MARMARA_DESIGNS_ENABLED is off the
+ * routes answer 404, the schedule skips the sync, no webhook fires and the
+ * MCP tools hide.
  */
 class DesignsServiceProvider extends ServiceProvider
 {
@@ -43,6 +51,16 @@ class DesignsServiceProvider extends ServiceProvider
         $this->app->singleton(ThumbnailCache::class);
         $this->app->bind(DriveClient::class);
         $this->app->bind(DesignSync::class);
+
+        // MCP: the inbox module binds TryPostServer to its server, which
+        // extends MarmaraTryPostServer; without it this module binds the
+        // shared one. Either way the tools below are added (and hide while
+        // the module is off).
+        MarmaraMcpTools::register([ListDesignsTool::class, GetDesignTool::class, CommentOnDesignTool::class]);
+
+        if (! $this->app->bound(TryPostServer::class)) {
+            $this->app->bind(TryPostServer::class, MarmaraTryPostServer::class);
+        }
     }
 
     public function boot(): void

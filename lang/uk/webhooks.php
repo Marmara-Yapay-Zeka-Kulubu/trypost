@@ -97,6 +97,9 @@ return [
         'post_rejected' => 'Допис відхилено',
         'post_feedback_requested' => 'Запит відгуку про допис',
         'inbox_item_received' => 'Новий коментар або повідомлення у вхідних',
+        'design_added' => 'Новий дизайн у Drive',
+        'design_commented' => 'Новий коментар до дизайну',
+        'design_status_changed' => 'Статус дизайну змінено',
     ],
     'event_descriptions' => [
         'post_created' => 'Коли створено новий пост.',
@@ -112,6 +115,9 @@ return [
         'post_rejected' => 'Коли допис, що очікує, відхилено.',
         'post_feedback_requested' => 'Коли учасник просить відгук про допис.',
         'inbox_item_received' => 'Коли надходить коментар або особисте повідомлення.',
+        'design_added' => 'Коли дизайн з’являється у спільній папці Drive.',
+        'design_commented' => 'Коли учасник коментує дизайн.',
+        'design_status_changed' => 'Коли змінюється статус дизайну.',
     ],
     'http_reasons' => [
         'unknown' => 'Невідомо',

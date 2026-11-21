@@ -97,6 +97,9 @@ return [
         'post_rejected' => 'Gönderi reddedildi',
         'post_feedback_requested' => 'Gönderi için görüş istendi',
         'inbox_item_received' => 'Gelen kutusuna yeni yorum veya mesaj',
+        'design_added' => 'Drive\'da yeni tasarım',
+        'design_commented' => 'Tasarıma yeni yorum',
+        'design_status_changed' => 'Tasarım durumu değişti',
     ],
     'event_descriptions' => [
         'post_created' => 'Yeni bir gönderi oluşturulduğunda.',
@@ -112,6 +115,9 @@ return [
         'post_rejected' => 'Onay bekleyen bir gönderi reddedildiğinde.',
         'post_feedback_requested' => 'Bir üye bir gönderi için ekibinden görüş istediğinde.',
         'inbox_item_received' => 'Gelen kutusuna yorum ya da doğrudan mesaj geldiğinde.',
+        'design_added' => 'Ortak Drive klasörüne tasarım eklendiğinde.',
+        'design_commented' => 'Bir üye bir tasarıma yorum yaptığında.',
+        'design_status_changed' => 'Bir tasarımın durumu değiştiğinde.',
     ],
     'http_reasons' => [
         'unknown' => 'Bilinmiyor',

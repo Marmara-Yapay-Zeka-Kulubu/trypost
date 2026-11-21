@@ -97,6 +97,9 @@ return [
         'post_rejected' => 'Post rifiutato',
         'post_feedback_requested' => 'Feedback richiesto sul post',
         'inbox_item_received' => 'Nuovo commento o messaggio in arrivo',
+        'design_added' => 'Nuovo design in Drive',
+        'design_commented' => 'Nuovo commento su un design',
+        'design_status_changed' => 'Stato del design cambiato',
     ],
     'event_descriptions' => [
         'post_created' => 'Quando viene creato un nuovo post.',
@@ -112,6 +115,9 @@ return [
         'post_rejected' => 'Quando un post in attesa viene rifiutato.',
         'post_feedback_requested' => 'Quando un membro chiede un feedback su un post.',
         'inbox_item_received' => 'Quando arriva un commento o un messaggio diretto.',
+        'design_added' => 'Quando un design arriva nella cartella condivisa.',
+        'design_commented' => 'Quando un membro commenta un design.',
+        'design_status_changed' => 'Quando un design cambia stato.',
     ],
     'http_reasons' => [
         'unknown' => 'Sconosciuto',

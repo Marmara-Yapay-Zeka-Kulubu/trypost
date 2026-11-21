@@ -97,6 +97,9 @@ return [
         'post_rejected' => 'Post odrzucony',
         'post_feedback_requested' => 'Prośba o opinię o poście',
         'inbox_item_received' => 'Nowy komentarz lub wiadomość w skrzynce',
+        'design_added' => 'Nowy projekt w Drive',
+        'design_commented' => 'Nowy komentarz do projektu',
+        'design_status_changed' => 'Zmiana statusu projektu',
     ],
     'event_descriptions' => [
         'post_created' => 'Gdy zostanie utworzony nowy post.',
@@ -112,6 +115,9 @@ return [
         'post_rejected' => 'Gdy oczekujący post zostanie odrzucony.',
         'post_feedback_requested' => 'Gdy członek prosi o opinię o poście.',
         'inbox_item_received' => 'Gdy przychodzi komentarz lub wiadomość prywatna.',
+        'design_added' => 'Gdy projekt trafi do wspólnego folderu Drive.',
+        'design_commented' => 'Gdy członek skomentuje projekt.',
+        'design_status_changed' => 'Gdy projekt zmieni status.',
     ],
     'http_reasons' => [
         'unknown' => 'Nieznany',

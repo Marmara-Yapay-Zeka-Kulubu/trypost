@@ -97,6 +97,9 @@ return [
         'post_rejected' => '帖子已拒绝',
         'post_feedback_requested' => '已请求帖子反馈',
         'inbox_item_received' => '收件箱有新评论或消息',
+        'design_added' => 'Drive 中有新设计',
+        'design_commented' => '设计有新评论',
+        'design_status_changed' => '设计状态已更改',
     ],
     'event_descriptions' => [
         'post_created' => '创建新帖子时。',
@@ -112,6 +115,9 @@ return [
         'post_rejected' => '待审批的帖子被拒绝时。',
         'post_feedback_requested' => '成员请求对帖子提供反馈时。',
         'inbox_item_received' => '收到新的评论或私信时。',
+        'design_added' => '共享 Drive 文件夹中新增设计时。',
+        'design_commented' => '成员评论设计时。',
+        'design_status_changed' => '设计状态变更时。',
     ],
     'http_reasons' => [
         'unknown' => '未知',

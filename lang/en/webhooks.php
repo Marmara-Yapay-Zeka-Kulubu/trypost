@@ -97,6 +97,9 @@ return [
         'post_rejected' => 'Post rejected',
         'post_feedback_requested' => 'Post feedback requested',
         'inbox_item_received' => 'New inbox comment or message',
+        'design_added' => 'New design in Drive',
+        'design_commented' => 'New design comment',
+        'design_status_changed' => 'Design status changed',
     ],
     'event_descriptions' => [
         'post_created' => 'When a new post is created.',
@@ -112,6 +115,9 @@ return [
         'post_rejected' => 'When a pending post is rejected.',
         'post_feedback_requested' => 'When a member asks teammates for feedback on a post.',
         'inbox_item_received' => 'When a comment or direct message reaches the inbox.',
+        'design_added' => 'When a design lands in the shared Drive folder.',
+        'design_commented' => 'When a member comments on a design.',
+        'design_status_changed' => 'When a design moves to another status.',
     ],
     'http_reasons' => [
         'unknown' => 'Unknown',

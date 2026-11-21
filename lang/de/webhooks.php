@@ -97,6 +97,9 @@ return [
         'post_rejected' => 'Beitrag abgelehnt',
         'post_feedback_requested' => 'Feedback zu Beitrag angefragt',
         'inbox_item_received' => 'Neuer Kommentar oder Nachricht im Posteingang',
+        'design_added' => 'Neues Design in Drive',
+        'design_commented' => 'Neuer Kommentar zu einem Design',
+        'design_status_changed' => 'Designstatus geändert',
     ],
     'event_descriptions' => [
         'post_created' => 'Wenn ein neuer Beitrag erstellt wird.',
@@ -112,6 +115,9 @@ return [
         'post_rejected' => 'Wenn ein wartender Beitrag abgelehnt wird.',
         'post_feedback_requested' => 'Wenn ein Mitglied Feedback zu einem Beitrag anfragt.',
         'inbox_item_received' => 'Wenn ein Kommentar oder eine Direktnachricht eingeht.',
+        'design_added' => 'Wenn ein Design im geteilten Drive-Ordner landet.',
+        'design_commented' => 'Wenn ein Mitglied ein Design kommentiert.',
+        'design_status_changed' => 'Wenn sich der Status eines Designs ändert.',
     ],
     'http_reasons' => [
         'unknown' => 'Unbekannt',

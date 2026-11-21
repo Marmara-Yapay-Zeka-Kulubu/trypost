@@ -168,6 +168,10 @@ function designsFakeDrive(array $children = [], array $changes = [], array $revi
             return isset($content[$key]) ? Http::response($content[$key]) : Http::response(['error' => ['code' => 404, 'message' => 'Revision not found']], 404);
         }
 
+        if (preg_match('#^/drive/v3/files/([^/]+)/export$#', $path, $match) === 1) {
+            return isset($content["{$match[1]}@export"]) ? Http::response($content["{$match[1]}@export"]) : Http::response(['error' => ['code' => 404, 'message' => 'File not found']], 404);
+        }
+
         if (preg_match('#^/drive/v3/files/([^/]+)/revisions$#', $path, $match) === 1) {
             return Http::response(['kind' => 'drive#revisionList', 'revisions' => $revisions[$match[1]] ?? []]);
         }

@@ -97,6 +97,9 @@ return [
         'post_rejected' => 'Postingan ditolak',
         'post_feedback_requested' => 'Masukan untuk postingan diminta',
         'inbox_item_received' => 'Komentar atau pesan baru di kotak masuk',
+        'design_added' => 'Desain baru di Drive',
+        'design_commented' => 'Komentar baru pada desain',
+        'design_status_changed' => 'Status desain berubah',
     ],
     'event_descriptions' => [
         'post_created' => 'Saat postingan baru dibuat.',
@@ -112,6 +115,9 @@ return [
         'post_rejected' => 'Saat postingan yang menunggu ditolak.',
         'post_feedback_requested' => 'Saat anggota minta masukan rekan tim untuk postingan.',
         'inbox_item_received' => 'Saat komentar atau DM masuk ke kotak masuk.',
+        'design_added' => 'Saat desain masuk ke folder Drive bersama.',
+        'design_commented' => 'Saat anggota mengomentari desain.',
+        'design_status_changed' => 'Saat status desain berubah.',
     ],
     'http_reasons' => [
         'unknown' => 'Tidak diketahui',
