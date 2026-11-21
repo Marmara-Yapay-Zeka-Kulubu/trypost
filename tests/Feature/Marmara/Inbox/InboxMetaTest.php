@@ -328,8 +328,8 @@ test('instagram dms read story mentions, story replies, media and reactions as t
     expect(inboxMetaSync($this->instagram, 'message'))->toBe(5);
 
     expect(InboxItem::query()->pluck('text', 'external_id')->all())->toEqual([
-        'm_mention' => "📸 Hikâyende bizi etiketledi\nhttps://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=2",
-        'm_reply' => "↩️ Hikâyene cevap verdi: 🔥🔥\nhttps://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=3",
+        'm_mention' => '📸 Hikâyende bizi etiketledi',
+        'm_reply' => '↩️ Hikâyene cevap verdi: 🔥🔥',
         'm_photo' => "Afiş\n🖼️ Görsel gönderdi",
         'm_odd' => 'Desteklenmeyen mesaj türü',
         'reaction:m_ours:😍' => '😍 Mesaja tepki verdi',
