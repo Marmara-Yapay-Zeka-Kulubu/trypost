@@ -53,6 +53,8 @@ return [
         'not_configured' => 'Drive klasörü henüz bağlanmadı. Kurulum adımları için app/Marmara/README.md dosyasındaki "Designs" bölümüne bakın.',
         'last_sync' => 'Son eşitleme: :time',
         'sync_problem' => 'Son Drive eşitlemesi başarısız oldu: :detail',
+        'content_changed' => 'İçerik değişti',
+        'changed_after_use' => 'Kullanıldıktan sonra değişti',
     ],
     'detail' => [
         'close' => 'Kapat',
@@ -73,6 +75,8 @@ return [
         'status_needs_approver' => 'Onaylandı ve Kullanıldı durumlarını yalnızca gönderi onaylayabilen üyeler seçebilir.',
         'activity' => 'Hareketler',
         'removed' => "Bu dosya Drive'da artık yok (çöp kutusunda, silinmiş ya da klasörden taşınmış).",
+        'content_changed' => 'İçerik değişti; yeniden değerlendirme gerekiyor. Onay, onaylanan dosya içindi.',
+        'changed_after_use' => "Kullanıldıktan sonra değişti: yayımlanan gönderi eski içeriği gösteriyor, Drive'daki dosya artık farklı.",
     ],
     'versions' => [
         'title' => 'Sürümler',
@@ -164,7 +168,10 @@ return [
         'version_linked' => 'Yeni sürüm olarak bağlandı',
         'version_unlinked' => 'Sürüm bağı kaldırıldı',
         'post_created' => 'Gönderi taslağı oluşturdu',
+        'content_changed' => 'İçerik değişti; yeniden değerlendirme gerekiyor',
+        'changed_after_use' => 'Kullanıldıktan sonra değişti',
         'someone' => 'Biri',
+        'drive' => 'Drive',
     ],
     'errors' => [
         'status_forbidden' => 'Bu durumu seçme yetkiniz yok.',

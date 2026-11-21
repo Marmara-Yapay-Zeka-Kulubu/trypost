@@ -206,6 +206,21 @@ const select = (key: keyof Filters) => (value: unknown) => visit({ [key]: String
                         <img v-if="design.thumbnail_url" :src="design.thumbnail_url" :alt="design.title" loading="lazy" class="h-full w-full object-cover" />
                         <component :is="kindIcons[design.kind] ?? IconPhoto" v-else class="size-8 text-muted-foreground" />
                         <Badge variant="secondary" class="absolute top-1.5 left-1.5">{{ t(`statuses.${design.status}`) }}</Badge>
+                        <Badge
+                            v-if="design.status === 'in_review' && design.status_reason === 'content_changed'"
+                            variant="secondary"
+                            class="absolute bottom-1.5 left-1.5"
+                            :data-testid="`marmara-designs-content-changed-${design.id}`"
+                        >
+                            {{ t('gallery.content_changed') }}
+                        </Badge>
+                        <Badge
+                            v-else-if="design.status === 'used' && design.changed_after_use_at"
+                            variant="secondary"
+                            class="absolute bottom-1.5 left-1.5"
+                        >
+                            {{ t('gallery.changed_after_use') }}
+                        </Badge>
                         <Badge v-if="(design.versions_count ?? 1) > 1" variant="secondary" class="absolute top-1.5 right-1.5">
                             {{ t('gallery.versions', { count: design.versions_count ?? 1 }) }}
                         </Badge>

@@ -36,7 +36,14 @@ class DesignActions
             return false;
         }
 
-        $design->forceFill(['status' => $status, 'status_changed_at' => CarbonImmutable::now()])->save();
+        $design->forceFill([
+            'status' => $status,
+            'status_changed_at' => CarbonImmutable::now(),
+            // The approval is for this content; DesignSync reopens it when the file changes.
+            'approved_version' => $status->needsApprover() ? $design->approvalVersion() : null,
+            'status_reason' => null,
+            'changed_after_use_at' => null,
+        ])->save();
         DesignActivity::record($design, $user, 'status_changed', ['from' => $from->value, 'to' => $status->value]);
         $this->statusChanged($design, $user, $from);
 

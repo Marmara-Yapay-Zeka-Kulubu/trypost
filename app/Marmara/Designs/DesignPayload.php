@@ -34,6 +34,9 @@ class DesignPayload
             'mime_type' => $design->mime_type,
             'status' => $design->status->value,
             'status_label' => $design->status->label(),
+            // content_changed: the approved file changed, so it is back in review.
+            'status_reason' => $design->status_reason,
+            'changed_after_use_at' => $design->changed_after_use_at?->toIso8601String(),
             'folder' => $design->folder_path,
             'uploader' => ['name' => $design->uploaderLabel()],
             'tags' => $design->relationLoaded('tags') ? $design->tags->pluck('tag')->values()->all() : $design->tags()->pluck('tag')->all(),

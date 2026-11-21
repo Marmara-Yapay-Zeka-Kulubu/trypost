@@ -6,6 +6,7 @@
  */
 import { router, useForm } from '@inertiajs/vue3';
 import {
+    IconAlertTriangle,
     IconColumns,
     IconDownload,
     IconExternalLink,
@@ -218,6 +219,22 @@ const activityText = (type: string, data: Record<string, unknown>): string => {
                 <p v-if="design.removed" class="rounded-md border border-border-strong p-3 text-sm text-muted-foreground">
                     {{ t('detail.removed') }}
                 </p>
+                <p
+                    v-if="design.status === 'in_review' && design.status_reason === 'content_changed'"
+                    class="flex items-start gap-2 rounded-md border border-border-strong p-3 text-sm"
+                    data-testid="marmara-designs-content-changed"
+                >
+                    <IconAlertTriangle class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                    {{ t('detail.content_changed') }}
+                </p>
+                <p
+                    v-if="design.status === 'used' && design.changed_after_use_at"
+                    class="flex items-start gap-2 rounded-md border border-border-strong p-3 text-sm"
+                    data-testid="marmara-designs-changed-after-use"
+                >
+                    <IconAlertTriangle class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                    {{ t('detail.changed_after_use') }} ({{ formatDateTime(design.changed_after_use_at) }})
+                </p>
 
                 <!-- Preview, or two versions side by side -->
                 <div v-if="comparing && compared.length > 0" class="grid grid-cols-2 gap-2" data-testid="marmara-designs-compare">
@@ -415,7 +432,7 @@ const activityText = (type: string, data: Record<string, unknown>): string => {
                     <h3 class="text-sm font-medium">{{ t('detail.activity') }}</h3>
                     <ul class="flex flex-col gap-1 text-xs text-muted-foreground">
                         <li v-for="entry in design.activity" :key="entry.id">
-                            <span class="font-medium text-foreground">{{ entry.user?.name ?? t('activity.someone') }}</span>
+                            <span class="font-medium text-foreground">{{ entry.user?.name ?? (['added', 'content_changed', 'changed_after_use'].includes(entry.type) ? t('activity.drive') : t('activity.someone')) }}</span>
                             · {{ activityText(entry.type, entry.data) }} · {{ formatDateTime(entry.created_at) }}
                         </li>
                     </ul>

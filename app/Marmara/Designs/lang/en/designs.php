@@ -53,6 +53,8 @@ return [
         'not_configured' => 'The Drive folder is not connected yet. See the "Designs" section of app/Marmara/README.md.',
         'last_sync' => 'Last sync: :time',
         'sync_problem' => 'The last Drive sync failed: :detail',
+        'content_changed' => 'Content changed',
+        'changed_after_use' => 'Changed after use',
     ],
     'detail' => [
         'close' => 'Close',
@@ -73,6 +75,8 @@ return [
         'status_needs_approver' => 'Only members who can approve posts can choose Approved and Used.',
         'activity' => 'Activity',
         'removed' => 'This file is no longer in Drive (trashed, deleted or moved out of the folder).',
+        'content_changed' => 'The content changed; it needs a new review. The approval was for the approved file.',
+        'changed_after_use' => 'Changed after use: the published post shows the old content, the file in Drive is now different.',
     ],
     'versions' => [
         'title' => 'Versions',
@@ -164,7 +168,10 @@ return [
         'version_linked' => 'Linked as a new version',
         'version_unlinked' => 'Removed the version link',
         'post_created' => 'Created a post draft',
+        'content_changed' => 'The content changed; it needs a new review',
+        'changed_after_use' => 'Changed after use',
         'someone' => 'Someone',
+        'drive' => 'Drive',
     ],
     'errors' => [
         'status_forbidden' => 'You cannot choose this status.',

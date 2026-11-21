@@ -45,6 +45,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $head_revision_id
  * @property DesignStatus $status
  * @property CarbonImmutable|null $status_changed_at
+ * @property string|null $approved_version
+ * @property string|null $status_reason
+ * @property CarbonImmutable|null $changed_after_use_at
  * @property string|null $family_id
  * @property bool $family_latest
  * @property int $votes_count
@@ -84,6 +87,9 @@ class Design extends Model
         'head_revision_id',
         'status',
         'status_changed_at',
+        'approved_version',
+        'status_reason',
+        'changed_after_use_at',
         'family_id',
         'family_latest',
         'votes_count',
@@ -112,6 +118,7 @@ class Design extends Model
             'drive_modified_at' => 'immutable_datetime',
             'status' => DesignStatus::class,
             'status_changed_at' => 'immutable_datetime',
+            'changed_after_use_at' => 'immutable_datetime',
             'family_latest' => 'boolean',
             'votes_count' => 'integer',
             'comments_count' => 'integer',
@@ -210,6 +217,16 @@ class Design extends Model
     public function isGoogleNative(): bool
     {
         return DesignTypes::isGoogleNative($this->mime_type);
+    }
+
+    /**
+     * The content an approval is tied to: the file's md5 (binary files), or
+     * its head revision (Google Drawings have no md5). A rename or a move
+     * does not change it.
+     */
+    public function approvalVersion(): ?string
+    {
+        return $this->md5 ?? $this->head_revision_id ?? $this->drive_modified_at?->toIso8601String();
     }
 
     /**

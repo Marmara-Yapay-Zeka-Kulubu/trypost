@@ -1244,6 +1244,26 @@ the server's copy, after `App\Marmara\Inbox\InboxServiceProvider::class,`
   Google Drawings (exported as PNG). Canva's Drive exports are plain PNG / PDF /
   MP4 files and need nothing special. The rest is skipped.
 
+### Approval and content
+
+An approval belongs to the content that was approved. Setting Onaylandı or
+Kullanıldı stores the file's content version (`approved_version`: the md5,
+or the head revision of a Google Drawing). When the sync sees new content
+(a rename or a move is not new content):
+
+- **Onaylandı** goes back to **Değerlendirmede** by itself, with the
+  activity line "İçerik değişti; yeniden değerlendirme gerekiyor", the
+  `design.status_changed` webhook with `reason: "content_changed"` and
+  `changed_by: null`, and a notice on the card and in the drawer. Someone
+  with the approve right approves the new content again.
+- **Kullanıldı** stays Kullanıldı: the post already went out with the old
+  content, and moving it back would hide that it was used. It is flagged
+  instead (`changed_after_use_at`, activity "Kullanıldıktan sonra değişti",
+  notice on the card and in the drawer); no webhook, since the status did not
+  change.
+
+Any status set by hand clears the flag and the reason.
+
 ### Versions
 
 - Drive revisions: a new or changed file queues `SyncDesignRevisions`
@@ -1280,6 +1300,15 @@ the server's copy, after `App\Marmara\Inbox\InboxServiceProvider::class,`
 - `GET /designs/{id}/original`: streamed from Drive, never stored.
 
 ### Roles
+
+Everything belongs to one workspace: `MARMARA_DESIGNS_WORKSPACE_ID`, or, when
+it is empty, the install's only workspace (with several workspaces and no id
+the module is off). Every route (page, actions, thumbnail and original
+proxies, upload, Drive connect and callback, "Gönderi oluştur"), the REST API
+and the MCP tools resolve that workspace and answer 404 to anyone who is not
+a member of it, whatever their current workspace or their rights elsewhere.
+The API and MCP also need a key / grant of that workspace. The sidebar entry
+shows only for its members.
 
 | Action | Who |
 | --- | --- |
@@ -1339,7 +1368,8 @@ personal Drive. Uploads use the lead's own Google token instead:
   sync, at most `MARMARA_DESIGNS_NOTIFY_MAX_AGE_HOURS` old, or an upload),
   `design.commented` (+ `comment: {id, body, author: {id, name},
   created_at}`), `design.status_changed` (+ `status: {from, from_label, to,
-  to_label, changed_by: {id, name}}`). Fired after commit, signed with
+  to_label, changed_by: {id, name}|null, reason: null|"content_changed"}`).
+  The design also carries `status_reason` and `changed_after_use_at`. Fired after commit, signed with
   `X-Webhook-Signature`.
 - REST (API key): `GET /api/designs?q=&folder=&uploader=&status=&tag=&kind=&from=&to=&sort=&limit=&page=`
   → `{data, has_more}`; `GET /api/designs/{id}` → design + `comments_list`,
@@ -1413,7 +1443,8 @@ personal Drive. Uploads use the lead's own Google token instead:
 
 1. Push / deploy the branch as usual; the migrations
    (`2026_11_22_120000_create_marmara_design_drive_tables`,
-   `2026_11_22_120100_create_marmara_design_app_tables`) run with the others.
+   `2026_11_22_120100_create_marmara_design_app_tables`,
+   `2026_11_22_120200_add_marmara_design_approval_version`) run with the others.
    With `MARMARA_DESIGNS_ENABLED=false` nothing changes.
 2. Do the setup above, add the provider line to the server's
    `providers.php`, then `docker compose up -d --force-recreate app` (the

@@ -12,6 +12,9 @@ export interface DesignItem {
     mime_type: string;
     status: DesignStatus;
     status_label: string;
+    /** content_changed: the approved file changed and is back in review. */
+    status_reason: string | null;
+    changed_after_use_at: string | null;
     folder: string;
     uploader: { name: string | null };
     tags: string[];

@@ -43,7 +43,12 @@ class DesignEvents
         ]);
     }
 
-    public function statusChanged(Design $design, User $user, DesignStatus $from): void
+    /**
+     * `reason` is null for a member's change, `content_changed` when the
+     * file of an approved design changed and the sync reopened it (then
+     * `changed_by` is null).
+     */
+    public function statusChanged(Design $design, ?User $user, DesignStatus $from, ?string $reason = null): void
     {
         $this->send($design, EventType::DesignStatusChanged, [
             'status' => [
@@ -51,7 +56,8 @@ class DesignEvents
                 'from_label' => $from->label(),
                 'to' => $design->status->value,
                 'to_label' => $design->status->label(),
-                'changed_by' => ['id' => $user->id, 'name' => $user->name],
+                'changed_by' => $user === null ? null : ['id' => $user->id, 'name' => $user->name],
+                'reason' => $reason,
             ],
         ]);
     }

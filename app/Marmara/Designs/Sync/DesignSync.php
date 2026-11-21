@@ -13,6 +13,7 @@ use App\Marmara\Designs\Models\Design;
 use App\Marmara\Designs\Models\DesignActivity;
 use App\Marmara\Designs\Models\DesignFolder;
 use App\Marmara\Designs\Models\DesignSyncState;
+use App\Marmara\Designs\Support\DesignStatus;
 use App\Marmara\Designs\Support\DesignTypes;
 use App\Models\Workspace;
 use Carbon\CarbonImmutable;
@@ -295,6 +296,7 @@ class DesignSync
         $isNew = ! $design->exists;
         $previousFolder = $design->folder_drive_id;
         $previousVersion = $design->exists ? $design->contentVersion() : null;
+        $approvedVersion = $design->exists ? ($design->approved_version ?? $design->approvalVersion()) : null;
 
         $design->fill([
             ...self::attributes($file),
@@ -316,6 +318,8 @@ class DesignSync
             if ($previousFolder !== null && $previousFolder !== $folder->drive_id) {
                 $result->moved++;
             }
+
+            $this->checkApproval($design, $approvedVersion);
         }
 
         if ($contentChanged) {
@@ -323,6 +327,39 @@ class DesignSync
         }
 
         return $design;
+    }
+
+    /**
+     * An approval belongs to the content that was approved. When the file of
+     * an Onaylandı design changes, it goes back to Değerlendirmede (with an
+     * activity line and design.status_changed, reason content_changed). A
+     * Kullanıldı design already went out, so it stays Kullanıldı and is
+     * flagged "kullanıldıktan sonra değişti" (changed_after_use_at) instead.
+     */
+    private function checkApproval(Design $design, ?string $approvedVersion): void
+    {
+        if (! $design->status->needsApprover() || $approvedVersion === null || $approvedVersion === $design->approvalVersion()) {
+            return;
+        }
+
+        if ($design->status === DesignStatus::Approved) {
+            $design->forceFill([
+                'status' => DesignStatus::InReview,
+                'status_changed_at' => CarbonImmutable::now(),
+                'status_reason' => 'content_changed',
+                'approved_version' => null,
+            ])->save();
+            DesignActivity::record($design, null, 'content_changed', ['from' => DesignStatus::Approved->value, 'to' => DesignStatus::InReview->value]);
+            $this->events->statusChanged($design, null, DesignStatus::Approved, 'content_changed');
+
+            return;
+        }
+
+        $design->forceFill([
+            'changed_after_use_at' => CarbonImmutable::now(),
+            'approved_version' => $design->approvalVersion(),
+        ])->save();
+        DesignActivity::record($design, null, 'changed_after_use');
     }
 
     /**
