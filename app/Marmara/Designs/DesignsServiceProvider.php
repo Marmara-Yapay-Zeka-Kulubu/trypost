@@ -8,8 +8,14 @@ use App\Marmara\Designs\Console\DesignsStatus;
 use App\Marmara\Designs\Console\SyncDesigns;
 use App\Marmara\Designs\Drive\DriveClient;
 use App\Marmara\Designs\Drive\ServiceAccountToken;
+use App\Marmara\Designs\Models\Design;
+use App\Marmara\Designs\Models\DesignComment;
+use App\Marmara\Designs\Support\DesignStatus;
 use App\Marmara\Designs\Sync\DesignSync;
+use App\Marmara\Designs\Thumbnails\ThumbnailCache;
+use App\Models\User;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -21,17 +27,32 @@ use Illuminate\Support\ServiceProvider;
  */
 class DesignsServiceProvider extends ServiceProvider
 {
+    /** Onaylandı / Kullanıldı need the approve right: one gate for the page, the API and MCP. */
+    public const string STATUS_ABILITY = 'set-design-status';
+
+    public const string COMMENT_UPDATE_ABILITY = 'update-design-comment';
+
+    public const string COMMENT_DELETE_ABILITY = 'delete-design-comment';
+
     public function register(): void
     {
         $this->app->singleton(DesignsConfig::class);
         $this->app->singleton(ServiceAccountToken::class);
+        $this->app->singleton(ThumbnailCache::class);
         $this->app->bind(DriveClient::class);
         $this->app->bind(DesignSync::class);
     }
 
     public function boot(): void
     {
+        Gate::policy(Design::class, DesignPolicy::class);
+        Gate::define(self::STATUS_ABILITY, fn (User $user, Design $design, DesignStatus|string $status): bool => (new DesignPolicy)->setStatus($user, $design, $status));
+        Gate::define(self::COMMENT_UPDATE_ABILITY, fn (User $user, DesignComment $comment): bool => (new DesignPolicy)->updateComment($user, $comment));
+        Gate::define(self::COMMENT_DELETE_ABILITY, fn (User $user, DesignComment $comment): bool => (new DesignPolicy)->deleteComment($user, $comment));
+
         $this->loadMigrationsFrom(__DIR__.'/database/migrations');
+        $this->loadTranslationsFrom(__DIR__.'/lang', 'marmara-designs');
+        $this->loadRoutesFrom(__DIR__.'/routes.php');
 
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
             $schedule->command(SyncDesigns::class)

@@ -218,3 +218,16 @@ function designsMake(Workspace $workspace, array $attributes = []): Design
         ...$attributes,
     ]);
 }
+
+/**
+ * A real PNG of the given size (GD), for thumbnail and byte-for-byte tests.
+ */
+function designsPng(int $width = 1200, int $height = 900): string
+{
+    $image = imagecreatetruecolor($width, $height);
+    imagefilledrectangle($image, 0, 0, intdiv($width, 2), $height, (int) imagecolorallocate($image, 200, 30, 60));
+    ob_start();
+    imagepng($image);
+
+    return (string) ob_get_clean();
+}

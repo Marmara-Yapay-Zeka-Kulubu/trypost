@@ -1,0 +1,189 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Marmara\Designs\Http;
+
+use App\Http\Controllers\Controller;
+use App\Marmara\Designs\DesignPayload;
+use App\Marmara\Designs\DesignQuery;
+use App\Marmara\Designs\DesignsConfig;
+use App\Marmara\Designs\DesignsServiceProvider;
+use App\Marmara\Designs\DesignsTranslations;
+use App\Marmara\Designs\Models\Design;
+use App\Marmara\Designs\Models\DesignDriveConnection;
+use App\Marmara\Designs\Models\DesignSyncState;
+use App\Marmara\Designs\Models\DesignVote;
+use App\Marmara\Designs\Support\DesignStatus;
+use App\Marmara\Designs\Support\DesignTypes;
+use App\Marmara\Designs\Upload\DesignUploader;
+use App\Marmara\Designs\Upload\DesignUploadUnavailable;
+use App\Models\SocialAccount;
+use App\Models\User;
+use App\Models\Workspace;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
+use Inertia\Inertia;
+use Inertia\Response;
+
+/**
+ * The "Tasarımlar" page: the gallery with filters and sorts, and the
+ * selected design (`?design=`) in a drawer.
+ *
+ * Prop names never reuse a shared prop (HandleInertiaRequests, the other
+ * modules' Inertia::share): a page prop silently replaces the shared one for
+ * the whole layout, which once emptied the sidebar's `channels`. So the
+ * channels for "Gönderi oluştur" are `postChannels`. PAGE_PROPS lists every
+ * prop; a test checks it against the shared ones.
+ */
+class DesignsPageController extends Controller
+{
+    use ResolvesDesigns;
+
+    public const int PER_PAGE = 48;
+
+    public const array PAGE_PROPS = [
+        'copy',
+        'filters',
+        'filterOptions',
+        'designs',
+        'pagination',
+        'selected',
+        'permissions',
+        'driveUpload',
+        'syncInfo',
+        'postChannels',
+        'linkCandidates',
+        'urls',
+    ];
+
+    public function index(Request $request, DesignsConfig $config, DesignUploader $uploader): Response
+    {
+        $workspace = $this->workspace($request);
+        /** @var User $user */
+        $user = $request->user();
+        $validated = $request->validate([...DesignQuery::rules(), 'page' => ['nullable', 'integer', 'min:1', 'max:50'], 'design' => ['nullable', 'uuid']]);
+        $page = (int) ($validated['page'] ?? 1);
+        $filters = collect($validated)->only(array_keys(DesignQuery::rules()))->filter(fn (mixed $value): bool => $value !== null && $value !== '')->all();
+
+        $designs = DesignQuery::for($workspace, $filters)->limit($page * self::PER_PAGE + 1)->get();
+        $visible = $designs->take($page * self::PER_PAGE);
+        $voted = DesignVote::query()->where('user_id', $user->id)->whereIn('design_id', $visible->pluck('id'))->pluck('design_id')->flip();
+        $versionCounts = Design::query()->where('workspace_id', $workspace->id)->active()->whereNotNull('family_id')
+            ->whereIn('family_id', $visible->pluck('family_id')->filter()->unique())
+            ->selectRaw('family_id, count(*) as aggregate')->groupBy('family_id')->pluck('aggregate', 'family_id');
+
+        $selected = isset($validated['design'])
+            ? Design::query()->where('workspace_id', $workspace->id)->find($validated['design'])
+            : null;
+
+        return Inertia::render('marmara/Designs', [
+            'copy' => DesignsTranslations::forLocale(app()->getLocale()),
+            'filters' => ['sort' => 'newest', ...$filters],
+            'filterOptions' => [
+                ...DesignQuery::options($workspace),
+                'statuses' => DesignStatus::values(),
+                'kinds' => DesignTypes::KINDS,
+                'sorts' => DesignQuery::SORTS,
+            ],
+            'designs' => $visible->map(fn (Design $design): array => [
+                ...DesignPayload::item($design),
+                'voted' => $voted->has($design->id),
+                'versions_count' => $design->family_id !== null ? (int) ($versionCounts[$design->family_id] ?? 1) : 1,
+            ])->values()->all(),
+            'pagination' => ['page' => $page, 'has_more' => $designs->count() > $visible->count(), 'per_page' => self::PER_PAGE],
+            'selected' => $selected === null ? null : [
+                ...DesignPayload::detail($selected, $user),
+                'owner_email' => $selected->owner_email,
+                'modifier_email' => $selected->modifier_email,
+                'voted' => DesignVote::query()->where('design_id', $selected->id)->where('user_id', $user->id)->exists(),
+                'can' => [
+                    'statuses' => collect(DesignStatus::cases())->filter(fn (DesignStatus $status): bool => Gate::forUser($user)->allows(DesignsServiceProvider::STATUS_ABILITY, [$selected, $status]))->map->value->values()->all(),
+                    'create_post' => $user->can('createPost', $selected) && $selected->removed_at === null,
+                ],
+            ],
+            'permissions' => [
+                'canApprove' => $user->can('approvePosts', $workspace),
+                'canCreatePost' => $user->can('createPost', $workspace),
+                'canManageDrive' => $user->can('update', $workspace),
+            ],
+            'driveUpload' => $this->driveUpload($workspace, $config, $uploader),
+            'syncInfo' => $this->syncInfo($workspace, $config),
+            'postChannels' => $selected === null ? [] : SocialAccount::query()->where('workspace_id', $workspace->id)->orderBy('platform')->get()
+                ->map(fn (SocialAccount $account): array => ['id' => $account->id, 'name' => $account->display_name ?? $account->username, 'platform' => $account->platform->value, 'connected' => $account->status?->value === 'connected'])
+                ->values()->all(),
+            'linkCandidates' => $selected === null ? [] : Design::query()->where('workspace_id', $workspace->id)->active()->whereKeyNot($selected->id)
+                ->when($selected->family_id !== null, fn ($query) => $query->where(fn ($inner) => $inner->whereNull('family_id')->orWhere('family_id', '!=', $selected->family_id)))
+                ->orderByDesc('drive_created_at')->limit(200)->get(['id', 'title', 'folder_path', 'drive_created_at'])
+                ->map(fn (Design $design): array => ['id' => $design->id, 'title' => $design->title, 'folder' => $design->folder_path])->values()->all(),
+            'urls' => $this->urls(),
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function driveUpload(Workspace $workspace, DesignsConfig $config, DesignUploader $uploader): array
+    {
+        $connection = DesignDriveConnection::query()->where('workspace_id', $workspace->id)->first();
+        $message = null;
+
+        try {
+            $uploader->connection();
+        } catch (DesignUploadUnavailable $unavailable) {
+            $message = $unavailable->getMessage();
+        }
+
+        $picker = $config->picker();
+
+        return [
+            'configured' => $config->oauthConfigured(),
+            'picker_configured' => $picker['api_key'] !== null,
+            'connected' => $connection?->refresh_token !== null,
+            'email' => $connection?->google_email,
+            'folder_granted' => $connection?->folder_granted_at !== null,
+            'available' => $message === null,
+            'message' => $message,
+            'max_mb' => intdiv($config->uploadMaxBytes(), 1048576),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function syncInfo(Workspace $workspace, DesignsConfig $config): array
+    {
+        $configured = $config->folderId() !== null && $config->serviceAccountKeyPath() !== null && $config->workspace()?->id === $workspace->id;
+        $state = $configured ? DesignSyncState::query()->where('workspace_id', $workspace->id)->where('folder_id', $config->folderId())->first() : null;
+
+        return [
+            'configured' => $configured,
+            'status' => $state->status ?? null,
+            'detail' => $state !== null && $state->status !== DesignSyncState::STATUS_OK ? $state->status_detail : null,
+            'last_synced_at' => $state?->last_synced_at?->toIso8601String(),
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function urls(): array
+    {
+        return [
+            'index' => route('marmara.designs.index'),
+            'upload' => route('marmara.designs.upload'),
+            'status' => route('marmara.designs.status', ['design' => '__ID__']),
+            'tags' => route('marmara.designs.tags', ['design' => '__ID__']),
+            'comments' => route('marmara.designs.comments.store', ['design' => '__ID__']),
+            'comment' => route('marmara.designs.comments.update', ['design' => '__ID__', 'comment' => '__COMMENT__']),
+            'vote' => route('marmara.designs.vote', ['design' => '__ID__']),
+            'versions' => route('marmara.designs.versions.link', ['design' => '__ID__']),
+            'original' => route('marmara.designs.original', ['design' => '__ID__']),
+            'posts' => route('marmara.designs.index').'/__ID__/posts',
+            'drive_connect' => route('marmara.designs.drive.connect'),
+            'drive_picker_token' => route('marmara.designs.drive.picker-token'),
+            'drive_folder' => route('marmara.designs.drive.folder'),
+            'drive_disconnect' => route('marmara.designs.drive.disconnect'),
+        ];
+    }
+}

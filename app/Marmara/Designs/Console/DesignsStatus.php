@@ -9,6 +9,7 @@ use App\Marmara\Designs\Drive\DriveClient;
 use App\Marmara\Designs\Drive\DriveException;
 use App\Marmara\Designs\Drive\ServiceAccountToken;
 use App\Marmara\Designs\Models\Design;
+use App\Marmara\Designs\Models\DesignDriveConnection;
 use App\Marmara\Designs\Models\DesignFolder;
 use App\Marmara\Designs\Models\DesignRevision;
 use App\Marmara\Designs\Models\DesignSyncState;
@@ -74,7 +75,14 @@ class DesignsStatus extends Command
             DesignThumbnail::query()->count(),
         ));
 
-        $this->extraLines();
+        $connection = $workspace === null ? null : DesignDriveConnection::query()->where('workspace_id', $workspace->id)->first();
+        $this->line('Drive uploads: '.match (true) {
+            ! $config->oauthConfigured() => 'off (MARMARA_DESIGNS_OAUTH_CLIENT_ID / _SECRET not set)',
+            $connection === null => 'not connected',
+            $connection->refresh_token === null => 'needs reconnecting ('.($connection->last_error ?? 'no token').')',
+            $connection->folder_granted_at === null => "connected as {$connection->google_email}, folder not granted yet",
+            default => "connected as {$connection->google_email}, folder granted",
+        });
 
         if (! $this->option('check')) {
             return self::SUCCESS;
@@ -95,13 +103,5 @@ class DesignsStatus extends Command
         }
 
         return self::SUCCESS;
-    }
-
-    /**
-     * Lines added by later parts of the module (the upload connection).
-     */
-    protected function extraLines(): void
-    {
-        //
     }
 }

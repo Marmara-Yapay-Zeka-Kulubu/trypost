@@ -138,6 +138,38 @@ class Design extends Model
     }
 
     /**
+     * @return HasMany<DesignTag, $this>
+     */
+    public function tags(): HasMany
+    {
+        return $this->hasMany(DesignTag::class)->orderBy('tag');
+    }
+
+    /**
+     * @return HasMany<DesignComment, $this>
+     */
+    public function comments(): HasMany
+    {
+        return $this->hasMany(DesignComment::class)->orderBy('created_at')->orderBy('id');
+    }
+
+    /**
+     * @return HasMany<DesignVote, $this>
+     */
+    public function votes(): HasMany
+    {
+        return $this->hasMany(DesignVote::class);
+    }
+
+    /**
+     * @return HasMany<DesignActivity, $this>
+     */
+    public function activities(): HasMany
+    {
+        return $this->hasMany(DesignActivity::class)->orderByDesc('created_at')->orderByDesc('id');
+    }
+
+    /**
      * @param  Builder<Design>  $query
      * @return Builder<Design>
      */
