@@ -17,7 +17,7 @@ test('zernio text passes through untouched, emoji included', function () {
         ->and($rendered['meta']['message_parts'])->toBe(['text']);
 });
 
-test('a zernio story mention says so and links the story', function () {
+test('a zernio story mention says so and leaves the signed lookaside url to meta', function () {
     $rendered = InboxMessageText::zernio([
         'id' => 'mid.2',
         'message' => null,
@@ -29,14 +29,14 @@ test('a zernio story mention says so and links the story', function () {
         ]],
     ]);
 
-    expect($rendered['text'])->toBe("📸 Hikâyende bizi etiketledi\nhttps://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=1&signature=abc")
+    expect($rendered['text'])->toBe('📸 Hikâyende bizi etiketledi')
         ->and($rendered['meta']['message_parts'])->toBe(['story_mention'])
         ->and($rendered['meta']['story_url'])->toStartWith('https://lookaside.fbsbx.com/')
         ->and($rendered['meta']['source']['isStoryMention'])->toBeTrue()
         ->and($rendered['meta']['source']['attachments'][0]['originalType'])->toBe('story_mention');
 });
 
-test('a zernio story reply keeps the emoji answer', function () {
+test('a zernio story reply keeps the emoji answer and leaves the story url to meta', function () {
     $rendered = InboxMessageText::zernio([
         'id' => 'mid.3',
         'message' => '😍',
@@ -44,8 +44,45 @@ test('a zernio story reply keeps the emoji answer', function () {
         'attachments' => [],
     ]);
 
-    expect($rendered['text'])->toBe("↩️ Hikâyene cevap verdi: 😍\nhttps://cdn.example/story.mp4")
-        ->and($rendered['meta']['message_parts'])->toBe(['text', 'story_reply']);
+    expect($rendered['text'])->toBe('↩️ Hikâyene cevap verdi: 😍')
+        ->and($rendered['meta']['message_parts'])->toBe(['text', 'story_reply'])
+        ->and($rendered['meta']['story_url'])->toBe('https://cdn.example/story.mp4');
+});
+
+/*
+ * Copied from marmara:inbox:raw on prod: an Instagram story reaction or quick
+ * reply Zernio gives as an empty string, with no emoji and a signed story URL.
+ */
+test('a zernio story reply with an empty message is a reaction to our story, without the expiring link', function (mixed $message) {
+    $rendered = InboxMessageText::zernio([
+        'id' => 'aWdfaWdfZAG06Ojc0ODk1',
+        'conversationId' => 'aWdfZAG06MTQ6',
+        'platform' => 'instagram',
+        'message' => $message,
+        'senderId' => '17841400000000000',
+        'senderName' => 'deniz_ml',
+        'direction' => 'incoming',
+        'createdAt' => '2026-11-20T21:14:07.000Z',
+        'attachments' => [],
+        'storyReply' => ['storyId' => '18047000000000000', 'storyUrl' => 'https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=18047000000000000&signature=AbCdEf0123456789'],
+    ]);
+
+    expect($rendered['text'])->toBe(InboxMessageText::STORY_REACTION)
+        ->and($rendered['text'])->toBe('↩️ Hikâyene tepki verdi')
+        ->and($rendered['text'])->not->toContain('lookaside')
+        ->and($rendered['meta']['message_parts'])->toBe(['story_reply'])
+        ->and($rendered['meta']['story_url'])->toBe('https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=18047000000000000&signature=AbCdEf0123456789')
+        ->and($rendered['meta']['source']['storyReply']['storyId'])->toBe('18047000000000000');
+})->with(['empty string' => '', 'whitespace only' => ' ', 'null' => null]);
+
+test('a story mention keeps a link that is not a signed lookaside url', function () {
+    $rendered = InboxMessageText::zernio([
+        'message' => '',
+        'attachments' => [['type' => 'share', 'originalType' => 'story_mention', 'url' => 'https://cdn.example/s.jpg']],
+    ]);
+
+    expect($rendered['text'])->toBe("📸 Hikâyende bizi etiketledi\nhttps://cdn.example/s.jpg")
+        ->and($rendered['meta']['message_parts'])->toBe(['story_mention']);
 });
 
 test('zernio media and shares become labels, next to the text when there is one', function (array $attachments, ?string $text, string $expected) {
@@ -82,7 +119,9 @@ test('graph story mentions, story replies, media, shares and unsupported message
     expect(InboxMessageText::graph(['id' => 'mid.g', 'created_time' => '2026-11-17T18:03:00+0000', ...$message])['text'])->toBe($expected);
 })->with([
     'story mention' => [['story' => ['mention' => ['link' => 'https://cdn.example/story.jpg', 'id' => '1790']]], "📸 Hikâyende bizi etiketledi\nhttps://cdn.example/story.jpg"],
-    'story reply' => [['message' => '😍', 'story' => ['reply_to' => ['link' => 'https://cdn.example/ours.jpg', 'id' => '1791']]], "↩️ Hikâyene cevap verdi: 😍\nhttps://cdn.example/ours.jpg"],
+    'story reply' => [['message' => '😍', 'story' => ['reply_to' => ['link' => 'https://cdn.example/ours.jpg', 'id' => '1791']]], '↩️ Hikâyene cevap verdi: 😍'],
+    'story reply without text' => [['message' => '', 'story' => ['reply_to' => ['link' => 'https://cdn.example/ours.jpg', 'id' => '1791']]], '↩️ Hikâyene tepki verdi'],
+    'signed story mention' => [['story' => ['mention' => ['link' => 'https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=1&signature=abc', 'id' => '1792']]], '📸 Hikâyende bizi etiketledi'],
     'image' => [['attachments' => ['data' => [['id' => 'a1', 'image_data' => ['url' => 'https://cdn.example/i.jpg', 'width' => 10, 'height' => 10]]]]], '🖼️ Görsel gönderdi'],
     'sticker' => [['attachments' => ['data' => [['id' => 'a2', 'image_data' => ['url' => 'https://cdn.example/s.png', 'render_as_sticker' => true]]]]], '💟 Çıkartma gönderdi'],
     'video' => [['attachments' => ['data' => [['id' => 'a3', 'video_data' => ['url' => 'https://cdn.example/v.mp4']]]]], '🎥 Video gönderdi'],

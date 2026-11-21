@@ -997,14 +997,19 @@ providers, so moving a channel between the native provider and Zernio does
 not store its messages again.
 
 DMs that are not text are stored with readable text (sent to Echo as is):
-"📸 Hikâyende bizi etiketledi" plus the story link, "↩️ Hikâyene cevap verdi:
-😍", "😍 Mesaja tepki verdi", "🖼️ Görsel gönderdi", "🎥 Video gönderdi",
+"📸 Hikâyende bizi etiketledi", "↩️ Hikâyene cevap verdi: 😍", "↩️ Hikâyene
+tepki verdi" (a story reply with no text, usually an emoji Zernio does not
+give), "😍 Mesaja tepki verdi", "🖼️ Görsel gönderdi", "🎥 Video gönderdi",
 "🔗 Gönderi paylaştı", "Desteklenmeyen mesaj türü"; text and attachment show
 both. A reaction is an item of its own, `reaction:{message id}:{emoji}`, the
 same id from Zernio's list (`reactions[]`), its `reaction.received` webhook
 and Graph (`reactions`). A DM Zernio polled without content
 (`contentNotRetained`) reads "Mesajın içeriği Zernio'da saklanmıyor" until
-the webhook brings its text.
+the webhook brings its text; a row stored with no text (null, '' or
+whitespace) is filled the same way on the next sync. Story URLs are signed CDN
+links that expire: they stay in `meta.story_url`, a story reply never links
+one in the text, and a mention links it only when it is not a
+`lookaside.fbsbx.com` URL.
 
 ### Endpoints and versions (verified November 2026)
 

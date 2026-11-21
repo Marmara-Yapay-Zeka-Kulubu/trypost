@@ -11,6 +11,9 @@ namespace App\Marmara\Inbox\Support;
  * it is stored once on the item and sent as is in `inbox.item_received`.
  * The person's own text (emoji included) passes through untouched; a message
  * with text and an attachment shows both. The source fields go to `meta`.
+ * Story URLs are signed CDN links that expire: they stay in `meta` but the
+ * text links a story only when the URL is not a signed lookaside one, and
+ * never for a story reply.
  *
  * Zernio: GET /v1/inbox/conversations/{id}/messages and the message.received
  * webhook (https://docs.zernio.com/messages/get-inbox-conversation-messages,
@@ -22,6 +25,9 @@ final class InboxMessageText
     public const string STORY_MENTION = '📸 Hikâyende bizi etiketledi';
 
     public const string STORY_REPLY = '↩️ Hikâyene cevap verdi';
+
+    /** A story reply with no text: Zernio gives no content, usually an emoji reaction. */
+    public const string STORY_REACTION = '↩️ Hikâyene tepki verdi';
 
     public const string REACTION = 'Mesaja tepki verdi';
 
@@ -58,8 +64,7 @@ final class InboxMessageText
      */
     public static function zernio(array $message): array
     {
-        $text = data_get($message, 'message') ?? data_get($message, 'text');
-        $text = is_string($text) && $text !== '' ? $text : null;
+        $text = self::text(data_get($message, 'message')) ?? self::text(data_get($message, 'text'));
         $attachments = array_values(array_filter((array) data_get($message, 'attachments', []), 'is_array'));
         $storyReply = data_get($message, 'storyReply');
         $notRetained = (bool) data_get($message, 'contentNotRetained', false);
@@ -106,13 +111,7 @@ final class InboxMessageText
             $labels[] = self::UNSUPPORTED;
         }
 
-        $rendered = self::compose(
-            $text,
-            array_values(array_unique($labels)),
-            $isStoryReply ? self::url(data_get($storyReply, 'storyUrl')) : null,
-            $isStoryReply,
-            $notRetained,
-        );
+        $rendered = self::compose($text, array_values(array_unique($labels)), $isStoryReply, $notRetained);
 
         return [
             'text' => $rendered,
@@ -141,8 +140,7 @@ final class InboxMessageText
      */
     public static function graph(array $message): array
     {
-        $text = data_get($message, 'message');
-        $text = is_string($text) && $text !== '' ? $text : null;
+        $text = self::text(data_get($message, 'message'));
         $labels = [];
         $parts = [];
         $mentionUrl = self::url(data_get($message, 'story.mention.link'));
@@ -203,7 +201,7 @@ final class InboxMessageText
         $replyUrl = $isStoryReply ? self::url(data_get($replyTo, 'link')) : null;
 
         return [
-            'text' => self::compose($text, array_values(array_unique($labels)), $replyUrl, $isStoryReply, false),
+            'text' => self::compose($text, array_values(array_unique($labels)), $isStoryReply, false),
             'meta' => array_filter([
                 'message_parts' => $text !== null ? ['text', ...$parts] : $parts,
                 'story_url' => $mentionUrl ?? $replyUrl,
@@ -240,10 +238,10 @@ final class InboxMessageText
     /**
      * @param  list<string>  $labels
      */
-    private static function compose(?string $text, array $labels, ?string $storyUrl, bool $isStoryReply, bool $notRetained): ?string
+    private static function compose(?string $text, array $labels, bool $isStoryReply, bool $notRetained): ?string
     {
         if ($isStoryReply) {
-            $head = self::STORY_REPLY.($text !== null ? ': '.$text : '').self::link($storyUrl);
+            $head = $text !== null ? self::STORY_REPLY.': '.$text : self::STORY_REACTION;
 
             return implode("\n", [$head, ...$labels]);
         }
@@ -257,9 +255,26 @@ final class InboxMessageText
         return $notRetained ? self::NOT_RETAINED : self::UNSUPPORTED;
     }
 
+    /**
+     * A story link for the text, left out when it is a signed lookaside
+     * URL that expires (it stays in `meta`).
+     */
     private static function link(?string $url): string
     {
-        return $url !== null ? "\n".$url : '';
+        if ($url === null || preg_match('#^https?://([^/?\#]+\.)?lookaside\.fbsbx\.com([/?\#:]|$)#i', $url) === 1) {
+            return '';
+        }
+
+        return "\n".$url;
+    }
+
+    /**
+     * The person's text, or null when there is none ('' and whitespace only
+     * count as none).
+     */
+    private static function text(mixed $value): ?string
+    {
+        return is_string($value) && trim($value) !== '' ? $value : null;
     }
 
     private static function url(mixed $value): ?string

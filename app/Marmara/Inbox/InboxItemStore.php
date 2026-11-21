@@ -166,8 +166,8 @@ class InboxItemStore
      */
     private function refresh(InboxItem $item, InboxItemData $data): void
     {
-        $storedWithoutContent = $item->text === null || (bool) data_get($item->meta, 'content_not_retained', false);
-        $hasContent = $data->text !== null && ! (bool) ($data->meta['content_not_retained'] ?? false);
+        $storedWithoutContent = self::blank($item->text) || (bool) data_get($item->meta, 'content_not_retained', false);
+        $hasContent = ! self::blank($data->text) && ! (bool) ($data->meta['content_not_retained'] ?? false);
 
         if ($storedWithoutContent && $hasContent) {
             $item->text = $data->text;
@@ -183,6 +183,15 @@ class InboxItemStore
         if ($item->isDirty()) {
             $item->save();
         }
+    }
+
+    /**
+     * Null, '' and whitespace only: rows stored before the renderer existed
+     * hold '' for a story reply with no text.
+     */
+    private static function blank(?string $text): bool
+    {
+        return $text === null || trim($text) === '';
     }
 
     /**

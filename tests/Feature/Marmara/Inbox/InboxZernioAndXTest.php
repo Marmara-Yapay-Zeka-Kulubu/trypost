@@ -402,7 +402,7 @@ test('an instagram story mention and a reaction from zernio are two readable ite
     $mention = InboxItem::query()->where('external_id', 'aWdfmid_mention')->sole();
     $reaction = InboxItem::query()->where('external_id', 'reaction:aWdfmid_ours:😍')->sole();
 
-    expect($mention->text)->toBe("📸 Hikâyende bizi etiketledi\nhttps://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=1")
+    expect($mention->text)->toBe('📸 Hikâyende bizi etiketledi')
         ->and($mention->meta['message_parts'])->toBe(['story_mention'])
         ->and($mention->meta['story_url'])->toBe('https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=1')
         ->and($reaction->text)->toBe('😍 Mesaja tepki verdi')
@@ -455,7 +455,7 @@ test('the zernio webhook renders a story mention and stores a reaction under the
     inboxZernioSignedPost($this, ['id' => 'evt_removed', 'event' => 'reaction.received', 'account' => $account, 'conversation' => $conversation, 'reaction' => [...$reaction, 'emoji' => '🔥', 'action' => 'removed'], 'timestamp' => '2026-11-17T18:04:03Z']);
 
     expect(InboxItem::query()->pluck('text', 'external_id')->all())->toEqual([
-        'aWdfmid_mention' => "📸 Hikâyende bizi etiketledi\nhttps://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=1",
+        'aWdfmid_mention' => '📸 Hikâyende bizi etiketledi',
         'reaction:aWdfmid_ours:😍' => '😍 Mesaja tepki verdi',
     ]);
 
@@ -480,6 +480,31 @@ test('a dm polled while zernio kept no content gets its text from the webhook', 
     $item = InboxItem::query()->sole();
     expect($item->text)->toBe('Kulübe nasıl katılırım?')
         ->and($item->meta['content_not_retained'])->toBeFalse();
+});
+
+test('an instagram story reply stored with an empty text before the renderer existed is filled on the next sync', function () {
+    $instagram = inboxZernioInstagram($this);
+    // The shape marmara:inbox:raw shows on prod: an empty message, no attachments, a signed story URL.
+    inboxZernioOverride('GET /api/v1/inbox/conversations/igconv1/messages', [
+        'status' => 'success',
+        'messages' => [[
+            'id' => 'aWdfmid_storyreply', 'conversationId' => 'igconv1', 'platform' => 'instagram', 'message' => '', 'senderId' => 'ig555',
+            'senderName' => 'Yönetim ve Liderlik Zirvesi', 'direction' => 'incoming', 'createdAt' => '2026-11-17T11:30:00.000Z', 'attachments' => [],
+            'storyReply' => ['storyId' => '18047000000000000', 'storyUrl' => 'https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=18047000000000000&signature=AbCdEf0123456789'],
+        ]],
+        'pagination' => ['hasMore' => false, 'nextCursor' => null],
+    ]);
+    InboxItem::query()->create([
+        'workspace_id' => $this->workspace->id, 'social_account_id' => $instagram->id, 'provider' => 'zernio', 'platform' => 'instagram',
+        'kind' => 'message', 'external_id' => 'aWdfmid_storyreply', 'thread_id' => 'igconv1', 'text' => '', 'received_at' => '2026-11-17T11:30:00Z',
+    ]);
+
+    expect(inboxZernioSync($instagram, 'message'))->toBe(0);
+
+    $item = InboxItem::query()->sole();
+    expect($item->text)->toBe('↩️ Hikâyene tepki verdi')
+        ->and($item->meta['message_parts'])->toBe(['story_reply'])
+        ->and($item->meta['story_url'])->toBe('https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=18047000000000000&signature=AbCdEf0123456789');
 });
 
 test('one instagram account connected twice is read by one channel only', function () {
