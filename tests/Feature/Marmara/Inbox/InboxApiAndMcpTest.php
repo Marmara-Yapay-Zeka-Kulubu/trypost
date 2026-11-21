@@ -233,13 +233,33 @@ test('the inbox page lists items, opens a thread and archives it', function () {
             ->where('selected.id', $this->comment->id)
             ->where('selected.can_hide', true)
             ->where('canReply', true)
-            ->where('channels.0.provider', 'facebook')
+            ->where('inboxChannels.0.provider', 'facebook')
             ->where('marmaraInbox.unread', 1));
 
     expect($this->comment->fresh()->read_at)->not->toBeNull();
 
     $this->actingAs($this->owner)->post("/inbox/{$this->comment->id}/archive")->assertRedirect();
     expect($this->comment->fresh()->archived_at)->not->toBeNull();
+});
+
+test('the inbox page keeps the shared sidebar channels and puts its sync statuses under inboxChannels', function () {
+    $this->actingAs($this->owner)
+        ->get('/inbox')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('marmara/Inbox')
+            ->has('channels', 1, fn (AssertableInertia $channel) => $channel
+                ->where('id', $this->page->id)
+                ->where('platform', $this->page->platform->value)
+                ->has('display_label')
+                ->has('avatar_url')
+                ->where('scheduled_posts_count', 0)
+                ->etc())
+            ->has('inboxChannels', 1, fn (AssertableInertia $channel) => $channel
+                ->where('id', $this->page->id)
+                ->where('provider', 'facebook')
+                ->has('kinds')
+                ->etc()));
 });
 
 test('the inbox page speaks turkish', function () {

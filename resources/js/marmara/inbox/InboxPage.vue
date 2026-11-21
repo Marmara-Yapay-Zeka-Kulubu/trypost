@@ -86,7 +86,7 @@ const props = defineProps<{
     items: InboxItem[];
     selected: SelectedItem | null;
     canReply: boolean;
-    channels: ChannelStatus[];
+    inboxChannels: ChannelStatus[];
     urls: Record<string, string>;
 }>();
 
@@ -143,7 +143,7 @@ const visit = (params: Record<string, string | null>): void => {
 const statusTabs = ['open', 'unread', 'archived', 'all'];
 
 const problems = computed(() =>
-    props.channels.flatMap((channel) =>
+    props.inboxChannels.flatMap((channel) =>
         channel.kinds
             .filter(
                 (kind) =>

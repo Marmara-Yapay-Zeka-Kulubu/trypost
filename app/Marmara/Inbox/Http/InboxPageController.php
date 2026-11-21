@@ -70,7 +70,8 @@ class InboxPageController extends Controller
                 'can_hide' => $this->canHide($selected, $providers),
             ],
             'canReply' => $request->user()->can('publishDirectly', $workspace),
-            'channels' => $this->channelStatuses($workspace, $providers),
+            // Not `channels`: that is the shared sidebar prop (HandleInertiaRequests).
+            'inboxChannels' => $this->channelStatuses($workspace, $providers),
             'urls' => [
                 'index' => route('marmara.inbox.index'),
                 'item' => route('marmara.inbox.index', ['item' => '__ID__']),
