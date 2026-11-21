@@ -10,6 +10,7 @@ use App\Marmara\Inbox\Models\InboxItem;
 use App\Marmara\Inbox\Providers\FetchResult;
 use App\Marmara\Inbox\Providers\InboxItemData;
 use App\Marmara\Inbox\Providers\InboxProvider;
+use App\Marmara\Inbox\Support\InboxMessageText;
 use App\Models\SocialAccount;
 use Carbon\CarbonImmutable;
 
@@ -125,7 +126,7 @@ abstract class MetaInboxProvider implements InboxProvider
         $since = is_string($since) ? CarbonImmutable::parse($since) : null;
         $response = $this->graph->get($account, $this->conversationsPath($account), [
             'platform' => $this->conversationsPlatform(),
-            'fields' => 'id,updated_time,messages.limit(20){id,created_time,from,to,message}',
+            'fields' => 'id,updated_time,messages.limit(20){'.$this->messageFields().'}',
             'limit' => 25,
         ], 'conversations');
 
@@ -151,6 +152,8 @@ abstract class MetaInboxProvider implements InboxProvider
                 if ($item !== null) {
                     $items[] = $item;
                 }
+
+                array_push($items, ...$this->mapReactions($account, (array) $message, (string) data_get($conversation, 'id'), $selfIds, $updated));
             }
         }
 
@@ -172,7 +175,7 @@ abstract class MetaInboxProvider implements InboxProvider
 
         $from = (string) data_get($message, 'from.id', '');
         $at = CarbonImmutable::parse($created)->utc();
-        $text = data_get($message, 'message');
+        $rendered = InboxMessageText::graph($message);
         $username = data_get($message, 'from.username');
         $name = data_get($message, 'from.name');
 
@@ -180,7 +183,7 @@ abstract class MetaInboxProvider implements InboxProvider
             kind: InboxItem::KIND_MESSAGE,
             externalId: $id,
             receivedAt: $at,
-            text: is_string($text) ? $text : null,
+            text: $rendered['text'],
             threadId: $conversationId,
             authorId: $from !== '' ? $from : null,
             authorName: is_string($name) ? $name : (is_string($username) ? $username : null),
@@ -188,7 +191,88 @@ abstract class MetaInboxProvider implements InboxProvider
             canReply: $this->missingReplyPermission($account, InboxItem::KIND_MESSAGE) === null,
             replyWindowEndsAt: $at->addHours(self::MESSAGING_WINDOW_HOURS),
             fromSelf: in_array($from, $selfIds, true),
+            meta: $rendered['meta'],
         );
+    }
+
+    /**
+     * The fields read for each message: text plus what makes a story
+     * mention, a share or media readable.
+     */
+    protected function messageFields(): string
+    {
+        return 'id,created_time,from,to,message,attachments,shares,sticker';
+    }
+
+    /**
+     * A reaction of the person (on our message or theirs) is an item of its
+     * own, under the id Zernio's path gives it too. Graph has no reaction
+     * time, so the conversation's last update stands in for it.
+     *
+     * @param  array<string, mixed>  $message
+     * @param  list<string>  $selfIds
+     * @return list<InboxItemData>
+     */
+    protected function mapReactions(SocialAccount $account, array $message, string $conversationId, array $selfIds, ?CarbonImmutable $updated): array
+    {
+        $id = data_get($message, 'id');
+        $created = data_get($message, 'created_time');
+
+        if (! is_string($id) || ! is_string($created)) {
+            return [];
+        }
+
+        $at = $updated ?? CarbonImmutable::parse($created)->utc();
+        $items = [];
+
+        foreach ((array) data_get($message, 'reactions.data', []) as $reaction) {
+            $emoji = is_string(data_get($reaction, 'reaction')) ? (string) data_get($reaction, 'reaction') : null;
+
+            foreach ((array) data_get($reaction, 'users', []) as $user) {
+                $userId = is_scalar(data_get($user, 'id')) ? (string) data_get($user, 'id') : '';
+
+                if ($userId === '' || in_array($userId, $selfIds, true)) {
+                    continue;
+                }
+
+                $username = is_string(data_get($user, 'username')) ? (string) data_get($user, 'username') : null;
+                $items[] = new InboxItemData(
+                    kind: InboxItem::KIND_MESSAGE,
+                    externalId: InboxMessageText::reactionId($id, $emoji),
+                    receivedAt: $at,
+                    text: InboxMessageText::reaction($emoji),
+                    threadId: $conversationId,
+                    authorId: $userId,
+                    authorName: $username,
+                    authorHandle: $username,
+                    canReply: $this->missingReplyPermission($account, InboxItem::KIND_MESSAGE) === null,
+                    replyWindowEndsAt: $at->addHours(self::MESSAGING_WINDOW_HOURS),
+                    meta: ['message_parts' => ['reaction'], 'reacted_message_id' => $id, 'source' => ['reaction' => $reaction]],
+                );
+            }
+        }
+
+        return $items;
+    }
+
+    /**
+     * The raw Graph JSON of an item's message or comment, for
+     * `marmara:inbox:raw`. Read only.
+     *
+     * @return array{request: string, match: mixed, response: array<string, mixed>}
+     */
+    public function rawMessage(InboxItem $item): array
+    {
+        $account = $this->owner($item);
+        $id = (string) (data_get($item->meta, 'reacted_message_id') ?? $item->external_id);
+        $fields = match (true) {
+            $item->kind === InboxItem::KIND_MESSAGE => $this->messageFields(),
+            $this->key() === 'instagram' => 'id,from,text,timestamp,username',
+            default => 'id,from,message,created_time',
+        };
+        $answer = $this->graph->get($account, $id, ['fields' => $fields], 'raw message');
+
+        return ['request' => "GET /{$id}?fields={$fields}", 'match' => $answer, 'response' => $answer];
     }
 
     /**

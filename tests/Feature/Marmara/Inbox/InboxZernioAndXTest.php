@@ -2,16 +2,20 @@
 
 declare(strict_types=1);
 
+use App\Enums\SocialAccount\Platform;
 use App\Enums\Webhook\EventType;
 use App\Jobs\DispatchWebhook;
 use App\Marmara\Inbox\Actions\SendInboxReply;
+use App\Marmara\Inbox\Console\InboxRaw;
 use App\Marmara\Inbox\Exceptions\InboxReplyRefused;
 use App\Marmara\Inbox\InboxProviders;
 use App\Marmara\Inbox\InboxSync;
 use App\Marmara\Inbox\Models\InboxItem;
 use App\Marmara\Inbox\Models\InboxSyncState;
+use App\Marmara\Inbox\Providers\Meta\InstagramInboxProvider;
 use App\Marmara\Inbox\Providers\XInboxProvider;
 use App\Marmara\Inbox\Providers\ZernioInboxProvider;
+use App\Marmara\Inbox\Support\InboxMessageText;
 use App\Models\SocialAccount;
 use App\Models\User;
 use App\Models\Webhook;
@@ -345,4 +349,191 @@ test('x mentions are read through the native connection and answered as a reply 
     // DMs need dm.read, which the default X connect does not ask for.
     inboxZernioSync($x, 'message');
     expect(InboxSyncState::query()->where('kind', 'message')->sole()->status_detail)->toContain('dm.read');
+});
+
+const INBOX_ZERNIO_IG_ACCOUNT = '8c2d3e4f5a6b7c8d9e0f1a2b';
+
+/**
+ * An Instagram channel read through Zernio, and its conversation with the
+ * summit account: a story mention (18:03) and their reaction to our thank
+ * you (18:04), shaped like GET /v1/inbox/conversations/{id}/messages.
+ */
+function inboxZernioInstagram(object $test): SocialAccount
+{
+    $instagram = SocialAccount::factory()->instagram()->create(['workspace_id' => $test->workspace->id, 'username' => 'marmaraai']);
+    config()->set('marmara-inbox.zernio.accounts', ['instagram' => ['@marmaraai' => INBOX_ZERNIO_IG_ACCOUNT]]);
+
+    inboxZernioOverride('GET /api/v1/inbox/conversations', [
+        'data' => [[
+            'id' => 'igconv1', 'platform' => 'instagram', 'accountId' => INBOX_ZERNIO_IG_ACCOUNT, 'participantId' => 'ig555',
+            'participantName' => 'yonetimveliderlikzirvesi', 'participantPicture' => null, 'updatedTime' => '2026-11-17T18:04:00Z', 'url' => null,
+        ]],
+        'pagination' => ['hasMore' => false, 'nextCursor' => null],
+        'meta' => ['failedAccounts' => []],
+    ]);
+    inboxZernioOverride('GET /api/v1/inbox/conversations/igconv1/messages', [
+        'status' => 'success',
+        'messages' => [
+            [
+                'id' => 'aWdfmid_ours', 'conversationId' => 'igconv1', 'platform' => 'instagram', 'message' => 'Teşekkürler 🙏', 'senderId' => 'me',
+                'direction' => 'outgoing', 'createdAt' => '2026-11-17T18:03:30Z', 'attachments' => [],
+                'reactions' => [['emoji' => '😍', 'fromMe' => false, 'reactedAt' => '2026-11-17T18:04:00Z']],
+            ],
+            [
+                'id' => 'aWdfmid_mention', 'conversationId' => 'igconv1', 'platform' => 'instagram', 'message' => null, 'senderId' => 'ig555',
+                'senderName' => 'Yönetim ve Liderlik Zirvesi', 'direction' => 'incoming', 'createdAt' => '2026-11-17T18:03:00Z',
+                'isStoryMention' => true, 'reactions' => [],
+                'attachments' => [['id' => 'att1', 'type' => 'share', 'originalType' => 'story_mention', 'url' => 'https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=1']],
+            ],
+        ],
+        'pagination' => ['hasMore' => false, 'nextCursor' => null],
+    ]);
+
+    return $instagram;
+}
+
+test('an instagram story mention and a reaction from zernio are two readable items and echo gets their text', function () {
+    $this->travelTo(CarbonImmutable::parse('2026-11-17 18:10:00 UTC'));
+    Webhook::factory()->create(['workspace_id' => $this->workspace->id, 'events' => [EventType::InboxItemReceived->value]]);
+    $instagram = inboxZernioInstagram($this);
+
+    expect(inboxZernioSync($instagram, 'message'))->toBe(2);
+
+    $mention = InboxItem::query()->where('external_id', 'aWdfmid_mention')->sole();
+    $reaction = InboxItem::query()->where('external_id', 'reaction:aWdfmid_ours:😍')->sole();
+
+    expect($mention->text)->toBe("📸 Hikâyende bizi etiketledi\nhttps://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=1")
+        ->and($mention->meta['message_parts'])->toBe(['story_mention'])
+        ->and($mention->meta['story_url'])->toBe('https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=1')
+        ->and($reaction->text)->toBe('😍 Mesaja tepki verdi')
+        ->and($reaction->author_external_id)->toBe('ig555')
+        ->and($reaction->meta['reacted_message_id'])->toBe('aWdfmid_ours')
+        ->and(InboxItem::query()->where('external_id', 'aWdfmid_ours')->exists())->toBeFalse();
+
+    // The text Echo receives is the rendered one, emoji intact.
+    Queue::assertPushed(DispatchWebhook::class, 2);
+    Queue::assertPushed(DispatchWebhook::class, fn (DispatchWebhook $job): bool => $job->payload['item']['text'] === '😍 Mesaja tepki verdi'
+        && json_decode((string) json_encode($job->payload), true)['item']['text'] === '😍 Mesaja tepki verdi');
+
+    // The next run reads the same messages again: nothing new.
+    InboxSyncState::query()->update(['cursor' => null]);
+    expect(inboxZernioSync($instagram, 'message'))->toBe(0)
+        ->and(InboxItem::query()->count())->toBe(2);
+});
+
+function inboxZernioSignedPost(object $test, array $payload): void
+{
+    $body = (string) json_encode($payload);
+
+    $test->call('POST', '/api/marmara/zernio/inbox-webhook', [], [], [], [
+        'CONTENT_TYPE' => 'application/json',
+        'HTTP_X_ZERNIO_SIGNATURE' => hash_hmac('sha256', $body, 'whsec_inbox'),
+    ], $body)->assertOk();
+}
+
+test('the zernio webhook renders a story mention and stores a reaction under the id polling gives it', function () {
+    $this->travelTo(CarbonImmutable::parse('2026-11-17 18:05:00 UTC'));
+    config()->set('marmara-inbox.zernio.webhook_secret', 'whsec_inbox');
+    $instagram = inboxZernioInstagram($this);
+    $account = ['id' => INBOX_ZERNIO_IG_ACCOUNT, 'accountId' => INBOX_ZERNIO_IG_ACCOUNT, 'platform' => 'instagram'];
+    $conversation = ['id' => 'igconv1', 'participantId' => 'ig555', 'participantName' => 'yonetimveliderlikzirvesi'];
+
+    inboxZernioSignedPost($this, [
+        'id' => 'evt_mention', 'event' => 'message.received', 'account' => $account, 'conversation' => $conversation, 'timestamp' => '2026-11-17T18:03:01Z',
+        'message' => [
+            'id' => '665f00000000000000000001', 'conversationId' => 'igconv1', 'platform' => 'instagram', 'platformMessageId' => 'aWdfmid_mention',
+            'direction' => 'incoming', 'text' => null, 'sentAt' => '2026-11-17T18:03:00Z', 'isRead' => false,
+            'attachments' => [['type' => 'share', 'originalType' => 'story_mention', 'url' => 'https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=1']],
+            'sender' => ['id' => 'ig555', 'name' => 'Yönetim ve Liderlik Zirvesi', 'username' => 'yonetimveliderlikzirvesi'],
+        ],
+    ]);
+    $reaction = ['emoji' => '😍', 'action' => 'added', 'platformMessageId' => 'aWdfmid_ours', 'reactedAt' => '2026-11-17T18:04:00Z',
+        'sender' => ['id' => 'ig555', 'name' => 'Yönetim ve Liderlik Zirvesi']];
+    inboxZernioSignedPost($this, ['id' => 'evt_reaction', 'event' => 'reaction.received', 'account' => $account, 'conversation' => $conversation, 'reaction' => $reaction, 'timestamp' => '2026-11-17T18:04:01Z']);
+    // Our own reaction and a removal are not items.
+    inboxZernioSignedPost($this, ['id' => 'evt_ours', 'event' => 'reaction.received', 'account' => $account, 'conversation' => $conversation, 'reaction' => [...$reaction, 'emoji' => '👍', 'sender' => ['id' => 'me']], 'timestamp' => '2026-11-17T18:04:02Z']);
+    inboxZernioSignedPost($this, ['id' => 'evt_removed', 'event' => 'reaction.received', 'account' => $account, 'conversation' => $conversation, 'reaction' => [...$reaction, 'emoji' => '🔥', 'action' => 'removed'], 'timestamp' => '2026-11-17T18:04:03Z']);
+
+    expect(InboxItem::query()->pluck('text', 'external_id')->all())->toEqual([
+        'aWdfmid_mention' => "📸 Hikâyende bizi etiketledi\nhttps://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=1",
+        'reaction:aWdfmid_ours:😍' => '😍 Mesaja tepki verdi',
+    ]);
+
+    // Polling the same conversation afterwards adds nothing.
+    expect(inboxZernioSync($instagram, 'message'))->toBe(0)
+        ->and(InboxItem::query()->count())->toBe(2);
+});
+
+test('a dm polled while zernio kept no content gets its text from the webhook', function () {
+    config()->set('marmara-inbox.zernio.webhook_secret', 'whsec_inbox');
+    inboxZernioOverride('GET /api/v1/inbox/conversations/conv1/messages', [
+        'status' => 'success',
+        'messages' => [['id' => 'msg2', 'conversationId' => 'conv1', 'message' => null, 'contentNotRetained' => true, 'attachments' => [], 'senderId' => 'p1', 'direction' => 'incoming', 'createdAt' => '2026-11-17T11:00:00Z']],
+        'pagination' => ['hasMore' => false],
+    ]);
+
+    inboxZernioSync($this->tiktok, 'message');
+    expect(InboxItem::query()->sole()->text)->toBe(InboxMessageText::NOT_RETAINED);
+
+    inboxZernioMessageWebhook($this, 'evt_m9');
+
+    $item = InboxItem::query()->sole();
+    expect($item->text)->toBe('Kulübe nasıl katılırım?')
+        ->and($item->meta['content_not_retained'])->toBeFalse();
+});
+
+test('one instagram account connected twice is read by one channel only', function () {
+    config()->set('marmara-inbox.providers.instagram', true);
+    $native = SocialAccount::factory()->instagram()->create(['workspace_id' => $this->workspace->id, 'username' => 'marmaraai', 'created_at' => now()->subDay()]);
+    $viaFacebook = SocialAccount::factory()->instagram()->create([
+        'workspace_id' => $this->workspace->id, 'platform' => Platform::InstagramFacebook, 'username' => 'MarmaraAI', 'created_at' => now(),
+    ]);
+    $providers = app(InboxProviders::class);
+
+    // Both native: the one connected first reads.
+    expect($providers->for($native))->toBeInstanceOf(InstagramInboxProvider::class)
+        ->and($providers->for($viaFacebook))->toBeNull()
+        ->and($providers->readThroughTwin($viaFacebook)?->id)->toBe($native->id);
+
+    // The Facebook-login channel mapped to Zernio: Zernio reads, the native one stops.
+    config()->set('marmara-inbox.zernio.accounts', ['instagram-facebook' => ['@marmaraai' => INBOX_ZERNIO_IG_ACCOUNT]]);
+    expect($providers->for($viaFacebook))->toBeInstanceOf(ZernioInboxProvider::class)
+        ->and($providers->for($native))->toBeNull();
+
+    // Another account of the workspace is not a twin.
+    $other = SocialAccount::factory()->instagram()->create(['workspace_id' => $this->workspace->id, 'username' => 'baska.hesap']);
+    expect($providers->for($other))->toBeInstanceOf(InstagramInboxProvider::class);
+});
+
+test('a message a channel already has from another provider is not stored again', function () {
+    $instagram = inboxZernioInstagram($this);
+    InboxItem::query()->create([
+        'workspace_id' => $this->workspace->id, 'social_account_id' => $instagram->id, 'provider' => 'instagram', 'platform' => 'instagram',
+        'kind' => 'message', 'external_id' => 'aWdfmid_mention', 'thread_id' => 'aWdfZAG06', 'text' => null, 'received_at' => '2026-11-17T18:03:00Z',
+    ]);
+
+    expect(inboxZernioSync($instagram, 'message'))->toBe(1);
+
+    expect(InboxItem::query()->where('external_id', 'aWdfmid_mention')->count())->toBe(1)
+        ->and(InboxItem::query()->where('external_id', 'aWdfmid_mention')->sole()->text)->toStartWith('📸 Hikâyende bizi etiketledi');
+});
+
+test('marmara:inbox:raw prints the stored meta and zernio\'s raw message without the key', function () {
+    $instagram = inboxZernioInstagram($this);
+    inboxZernioSync($instagram, 'message');
+    $item = InboxItem::query()->where('external_id', 'aWdfmid_mention')->sole();
+
+    $this->artisan('marmara:inbox:raw', ['item' => $item->id])
+        ->expectsOutputToContain('"external_id": "aWdfmid_mention"')
+        ->expectsOutputToContain('GET /inbox/conversations/igconv1/messages')
+        ->expectsOutputToContain('"originalType": "story_mention"')
+        ->doesntExpectOutputToContain('sk_test_inbox')
+        ->assertSuccessful();
+
+    $this->artisan('marmara:inbox:raw', ['item' => $item->id, '--stored' => true])
+        ->doesntExpectOutputToContain('Full answer')
+        ->assertSuccessful();
+
+    expect(InboxRaw::redact(['access_token' => 'EAAB', 'url' => 'https://graph.facebook.com/x?access_token=EAAB&a=1', 'h' => 'Bearer abc.def']))
+        ->toBe(['access_token' => '[redacted]', 'url' => 'https://graph.facebook.com/x?access_token=[redacted]&a=1', 'h' => 'Bearer [redacted]']);
 });

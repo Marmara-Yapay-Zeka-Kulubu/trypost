@@ -12,6 +12,7 @@ use App\Marmara\Inbox\Connect\InboxFacebookController;
 use App\Marmara\Inbox\Connect\InboxInstagramController;
 use App\Marmara\Inbox\Connect\InboxInstagramFacebookController;
 use App\Marmara\Inbox\Connect\InboxXController;
+use App\Marmara\Inbox\Console\InboxRaw;
 use App\Marmara\Inbox\Console\InboxStatus;
 use App\Marmara\Inbox\Console\SyncInbox;
 use App\Marmara\Inbox\Mcp\InboxTryPostServer;
@@ -95,6 +96,7 @@ class InboxServiceProvider extends ServiceProvider
 
         if ($this->app->runningInConsole()) {
             $this->commands([
+                InboxRaw::class,
                 InboxStatus::class,
                 SyncInbox::class,
             ]);

@@ -40,6 +40,12 @@ class InboxStatus extends Command
                 $provider = $providers->for($account);
 
                 if ($provider === null) {
+                    $twin = $providers->readThroughTwin($account);
+
+                    if ($twin !== null) {
+                        $rows[] = [$account->id, $account->platform->value.' '.$account->username, '-', '-', '-', 'skipped', "read through {$twin->platform->value} channel {$twin->id}", '-'];
+                    }
+
                     return;
                 }
 

@@ -8,6 +8,7 @@ use App\Enums\SocialAccount\Platform;
 use App\Marmara\Inbox\Exceptions\InboxProviderException;
 use App\Marmara\Inbox\InboxConfig;
 use App\Marmara\Inbox\Models\InboxItem;
+use App\Marmara\Inbox\Support\InboxMessageText;
 use App\Marmara\Zernio\ZernioConfig;
 use App\Models\SocialAccount;
 use App\Support\Analytics\RetryAfter;
@@ -159,6 +160,34 @@ class ZernioInboxProvider implements InboxProvider
             '/inbox/comments/'.rawurlencode((string) $item->post_external_id).'/'.rawurlencode($item->external_id).'/hide',
             ['accountId' => (string) data_get($item->meta, 'zernio_account_id')],
         ), 'hide comment');
+    }
+
+    /**
+     * The raw Zernio JSON of an item's conversation (or post comments) and
+     * the entry that is the item, for `marmara:inbox:raw`. Read only.
+     *
+     * @return array{request: string, match: mixed, response: array<string, mixed>}
+     */
+    public function rawMessage(InboxItem $item): array
+    {
+        $accountId = (string) (data_get($item->meta, 'zernio_account_id') ?? ($item->socialAccount ? $this->zernioAccountId($item->socialAccount) : ''));
+        $wanted = array_filter([$item->external_id, data_get($item->meta, 'reacted_message_id'), data_get($item->meta, 'zernio_message_id')], 'is_string');
+
+        if ($item->kind === InboxItem::KIND_MESSAGE) {
+            $path = '/inbox/conversations/'.rawurlencode((string) $item->thread_id).'/messages';
+            $answer = $this->send(fn (PendingRequest $http): Response => $http->get($path, ['accountId' => $accountId, 'sortOrder' => 'desc', 'limit' => 50]), 'messages');
+            $match = collect((array) data_get($answer, 'messages', []))->first(fn (mixed $message): bool => in_array(data_get($message, 'id'), $wanted, true));
+
+            return ['request' => "GET {$path}", 'match' => $match, 'response' => $answer];
+        }
+
+        $path = '/inbox/comments/'.rawurlencode((string) $item->post_external_id);
+        $answer = $this->send(fn (PendingRequest $http): Response => $http->get($path, ['accountId' => $accountId, 'limit' => 50]), 'comments');
+        $match = collect((array) data_get($answer, 'comments', []))
+            ->flatMap(fn (mixed $comment): array => [$comment, ...(array) data_get($comment, 'replies', [])])
+            ->first(fn (mixed $comment): bool => in_array(data_get($comment, 'id'), $wanted, true));
+
+        return ['request' => "GET {$path}", 'match' => $match, 'response' => $answer];
     }
 
     public function replyTextProblem(InboxItem $item, string $text): ?string
@@ -323,25 +352,54 @@ class ZernioInboxProvider implements InboxProvider
                 }
 
                 $at = CarbonImmutable::parse($created)->utc();
-                $text = data_get($message, 'message');
                 $senderName = data_get($message, 'senderName') ?? data_get($conversation, 'participantName');
                 $picture = data_get($conversation, 'participantPicture');
+                $participantName = is_string(data_get($conversation, 'participantName')) ? (string) data_get($conversation, 'participantName') : null;
+                $permalink = is_string(data_get($conversation, 'url')) ? (string) data_get($conversation, 'url') : null;
+                $rendered = InboxMessageText::zernio((array) $message);
 
                 $items[] = new InboxItemData(
                     kind: InboxItem::KIND_MESSAGE,
                     externalId: $id,
                     receivedAt: $at,
-                    text: is_string($text) ? $text : null,
+                    text: $rendered['text'],
                     threadId: $conversationId,
                     authorId: is_scalar(data_get($message, 'senderId')) ? (string) data_get($message, 'senderId') : null,
                     authorName: is_string($senderName) ? $senderName : null,
-                    authorHandle: is_string(data_get($conversation, 'participantName')) ? (string) data_get($conversation, 'participantName') : null,
+                    authorHandle: $participantName,
                     authorAvatarUrl: is_string($picture) ? $picture : null,
-                    permalink: is_string(data_get($conversation, 'url')) ? (string) data_get($conversation, 'url') : null,
+                    permalink: $permalink,
                     replyWindowEndsAt: $window === null ? null : $at->addHours($window),
                     fromSelf: data_get($message, 'direction') === 'outgoing',
-                    meta: ['zernio_account_id' => $accountId, 'zernio_platform' => $platform],
+                    meta: ['zernio_account_id' => $accountId, 'zernio_platform' => $platform, ...$rendered['meta']],
                 );
+
+                // The person's reactions (on our message or theirs) are items of their own.
+                foreach ((array) data_get($message, 'reactions', []) as $reaction) {
+                    $reactedAt = data_get($reaction, 'reactedAt');
+
+                    if ((bool) data_get($reaction, 'fromMe', false) || ! is_string($reactedAt)) {
+                        continue;
+                    }
+
+                    $emoji = is_string(data_get($reaction, 'emoji')) ? (string) data_get($reaction, 'emoji') : null;
+                    $reactionAt = CarbonImmutable::parse($reactedAt)->utc();
+
+                    $items[] = new InboxItemData(
+                        kind: InboxItem::KIND_MESSAGE,
+                        externalId: InboxMessageText::reactionId($id, $emoji),
+                        receivedAt: $reactionAt,
+                        text: InboxMessageText::reaction($emoji),
+                        threadId: $conversationId,
+                        authorId: is_scalar(data_get($conversation, 'participantId')) ? (string) data_get($conversation, 'participantId') : null,
+                        authorName: $participantName,
+                        authorHandle: $participantName,
+                        authorAvatarUrl: is_string($picture) ? $picture : null,
+                        permalink: $permalink,
+                        replyWindowEndsAt: $window === null ? null : $reactionAt->addHours($window),
+                        meta: ['zernio_account_id' => $accountId, 'zernio_platform' => $platform, 'message_parts' => ['reaction'], 'reacted_message_id' => $id, 'source' => ['reaction' => $reaction]],
+                    );
+                }
             }
         }
 

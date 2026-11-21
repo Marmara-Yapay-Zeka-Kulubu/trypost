@@ -926,7 +926,8 @@ its own flag; a missing permission shows as "needs permission X" (page,
 | `app/Marmara/Inbox/Mcp/*` | `list-inbox-items-tool`, `get-inbox-item-tool`, `reply-to-inbox-item-tool`, `InboxTryPostServer` |
 | `app/Marmara/Inbox/Connect/*` | Upstream's Facebook, Instagram, Instagram (Facebook) and X connect controllers with the inbox scopes added |
 | `app/Marmara/Inbox/lang/{en,tr}/inbox.php` | The page's copy (namespace `marmara-inbox`; other locales fall back to English) |
-| `app/Marmara/Inbox/Console/*` | `marmara:inbox:sync [--account=] [--now] [--force]`, `marmara:inbox:status [--account=]` |
+| `app/Marmara/Inbox/Console/*` | `marmara:inbox:sync [--account=] [--now] [--force]`, `marmara:inbox:status [--account=]`, `marmara:inbox:raw {item} [--stored]` (read only: the stored text and meta, then the provider's raw JSON for that message, tokens redacted) |
+| `app/Marmara/Inbox/Support/InboxMessageText.php` | Turns DMs that are not (only) text into Turkish text: story mention (with the story link), story reply, reaction, media, shared post or reel, unsupported; the source fields go to the item's `meta` |
 | `resources/js/marmara/inbox/*`, `resources/js/pages/marmara/Inbox.vue` | The page (the file under `pages/` only forwards to it, since Inertia resolves pages there) and the sidebar entry |
 | `tests/Feature/Marmara/Inbox/*` | Pest tests |
 
@@ -988,7 +989,22 @@ Which provider reads a channel: a channel listed in
 `MARMARA_INBOX_ZERNIO_ACCOUNTS` goes to Zernio; otherwise the native provider
 of its network when its flag is on; otherwise Zernio when the channel is
 mapped in `ZERNIO_ACCOUNTS` (TikTok; a LinkedIn page still published through
-Zernio). Never two providers for one channel.
+Zernio). Never two providers for one channel, and of two channels of the
+same Instagram account (Instagram login and Facebook login, matched by
+username) only one reads: the one in `MARMARA_INBOX_ZERNIO_ACCOUNTS`, else
+the one connected first. Items are unique per channel and network id across
+providers, so moving a channel between the native provider and Zernio does
+not store its messages again.
+
+DMs that are not text are stored with readable text (sent to Echo as is):
+"📸 Hikâyende bizi etiketledi" plus the story link, "↩️ Hikâyene cevap verdi:
+😍", "😍 Mesaja tepki verdi", "🖼️ Görsel gönderdi", "🎥 Video gönderdi",
+"🔗 Gönderi paylaştı", "Desteklenmeyen mesaj türü"; text and attachment show
+both. A reaction is an item of its own, `reaction:{message id}:{emoji}`, the
+same id from Zernio's list (`reactions[]`), its `reaction.received` webhook
+and Graph (`reactions`). A DM Zernio polled without content
+(`contentNotRetained`) reads "Mesajın içeriği Zernio'da saklanmıyor" until
+the webhook brings its text.
 
 ### Endpoints and versions (verified November 2026)
 
@@ -997,7 +1013,7 @@ Zernio). Never two providers for one channel.
 | LinkedIn | `GET /rest/socialActions/{postUrn}/comments?start=0&count=50`, `POST /rest/socialActions/{parent commentUrn}/comments` with `actor` (organization), `object` (post URN), `message.text`, `parentComment`; `LinkedIn-Version: MARMARA_LINKEDIN_API_VERSION` (202610), Rest.li 2.0. Posts list: the LinkedIn module's `/rest/posts?q=author` | [Comments API](https://learn.microsoft.com/linkedin/marketing/community-management/shares/comments-api) (li-lms-2026-10) |
 | Instagram Login | `GET /{ig-id}/media`, `GET /{media-id}/comments?fields=...,replies{...}`, `POST /{comment-id}/replies`, `POST /{comment-id}` `hide=true`, `GET /{ig-id}/conversations?platform=instagram&fields=messages.limit(20){...}`, `POST /{ig-id}/messages` (text up to 1000 bytes) on `INSTAGRAM_GRAPH_API` (graph.instagram.com/v25.0) | [comment moderation](https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/comment-moderation), [messaging](https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/messaging-api), [conversations](https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/conversations-api) |
 | Instagram (Facebook) / Facebook | same comment calls, `GET /{page-id}/published_posts`, `GET /{post-id}/comments?filter=stream`, `POST /{comment-id}/comments`, `POST /{comment-id}` `is_hidden=true`, `GET /{page-id}/conversations?platform=instagram|messenger`, `POST /{page-id}/messages` (`messaging_type=RESPONSE`, Messenger text up to 2000) on graph.facebook.com/v25.0 | [comments](https://developers.facebook.com/docs/graph-api/reference/object/comments/), [conversations](https://developers.facebook.com/docs/messenger-platform/conversations) |
-| Zernio | `GET /v1/inbox/comments?accountId&sortBy=date&sortOrder=desc&since&minComments=1`, `GET /v1/inbox/comments/{postId}?accountId`, `POST /v1/inbox/comments/{postId}` (`commentId`, `Idempotency-Key`), `POST /v1/inbox/comments/{postId}/{commentId}/hide`, `GET /v1/inbox/conversations?accountId&sortOrder=desc`, `GET` / `POST /v1/inbox/conversations/{id}/messages` | [comments](https://docs.zernio.com/products/comments), [messaging](https://docs.zernio.com/products/messaging), [conversations](https://docs.zernio.com/messages/list-inbox-conversations), [comment.received](https://docs.zernio.com/webhooks/inbox/comment-received) |
+| Zernio | `GET /v1/inbox/comments?accountId&sortBy=date&sortOrder=desc&since&minComments=1`, `GET /v1/inbox/comments/{postId}?accountId`, `POST /v1/inbox/comments/{postId}` (`commentId`, `Idempotency-Key`), `POST /v1/inbox/comments/{postId}/{commentId}/hide`, `GET /v1/inbox/conversations?accountId&sortOrder=desc`, `GET` / `POST /v1/inbox/conversations/{id}/messages` | [comments](https://docs.zernio.com/products/comments), [messaging](https://docs.zernio.com/products/messaging), [conversations](https://docs.zernio.com/messages/list-inbox-conversations), [messages](https://docs.zernio.com/messages/get-inbox-conversation-messages), [comment.received](https://docs.zernio.com/webhooks/inbox/comment-received), [message.received](https://docs.zernio.com/webhooks/inbox/message-received), [reaction.received](https://docs.zernio.com/webhooks/inbox/reaction-received) |
 | X | `GET /2/users/{id}/mentions` (`since_id`, `pagination_token`), `POST /2/tweets` with `reply.in_reply_to_tweet_id`, `GET /2/dm_events`, `POST /2/dm_conversations/{id}/messages` | [X API](https://docs.x.com/x-api) |
 
 ### Sync, budget and back-off

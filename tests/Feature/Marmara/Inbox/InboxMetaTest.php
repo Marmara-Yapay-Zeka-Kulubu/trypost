@@ -307,3 +307,47 @@ test('meta providers stay off without their flags', function () {
 
     expect(app(InboxProviders::class)->for($this->instagram))->toBeNull();
 });
+
+test('instagram dms read story mentions, story replies, media and reactions as text', function () {
+    inboxMetaOverride('GET /v25.0/'.INBOX_IG_ID.'/conversations', ['data' => [[
+        'id' => 'aWdfZAG07',
+        'updated_time' => '2026-11-17T11:04:00+0000',
+        'messages' => ['data' => [
+            ['id' => 'm_ours', 'created_time' => '2026-11-17T11:03:30+0000', 'from' => ['id' => INBOX_IG_ID, 'username' => 'marmaraai'], 'message' => 'Teşekkürler 🙏',
+                'reactions' => ['data' => [['reaction' => '😍', 'users' => [['id' => '556', 'username' => 'zirve']]], ['reaction' => '👍', 'users' => [['id' => INBOX_IG_ID, 'username' => 'marmaraai']]]]]],
+            ['id' => 'm_mention', 'created_time' => '2026-11-17T11:03:00+0000', 'from' => ['id' => '556', 'username' => 'zirve'], 'message' => '',
+                'story' => ['mention' => ['link' => 'https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=2', 'id' => '17901']]],
+            ['id' => 'm_reply', 'created_time' => '2026-11-17T11:02:00+0000', 'from' => ['id' => '556', 'username' => 'zirve'], 'message' => '🔥🔥',
+                'story' => ['reply_to' => ['link' => 'https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=3', 'id' => '17902']]],
+            ['id' => 'm_photo', 'created_time' => '2026-11-17T11:01:00+0000', 'from' => ['id' => '556', 'username' => 'zirve'], 'message' => 'Afiş',
+                'attachments' => ['data' => [['id' => 'a1', 'image_data' => ['url' => 'https://cdn.example/a.jpg', 'width' => 1080, 'height' => 1080]]]]],
+            ['id' => 'm_odd', 'created_time' => '2026-11-17T11:00:00+0000', 'from' => ['id' => '556', 'username' => 'zirve'], 'is_unsupported' => true],
+        ]],
+    ]]]);
+
+    expect(inboxMetaSync($this->instagram, 'message'))->toBe(5);
+
+    expect(InboxItem::query()->pluck('text', 'external_id')->all())->toEqual([
+        'm_mention' => "📸 Hikâyende bizi etiketledi\nhttps://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=2",
+        'm_reply' => "↩️ Hikâyene cevap verdi: 🔥🔥\nhttps://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=3",
+        'm_photo' => "Afiş\n🖼️ Görsel gönderdi",
+        'm_odd' => 'Desteklenmeyen mesaj türü',
+        'reaction:m_ours:😍' => '😍 Mesaja tepki verdi',
+    ]);
+    expect(InboxItem::query()->where('external_id', 'm_mention')->sole()->meta['source']['story']['mention']['id'])->toBe('17901')
+        ->and(InboxItem::query()->where('external_id', 'reaction:m_ours:😍')->sole()->received_at->toIso8601String())->toBe('2026-11-17T11:04:00+00:00');
+
+    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), INBOX_IG_ID.'/conversations')
+        && str_contains((string) $request['fields'], 'story,shares,reactions,is_unsupported'));
+});
+
+test('messenger asks only for the fields the page message has', function () {
+    $this->facebook->forceFill(['scopes' => [...$this->facebook->scopes, 'pages_messaging']])->save();
+    inboxMetaOverride('GET /v25.0/'.INBOX_FB_PAGE.'/conversations', ['data' => []]);
+
+    inboxMetaSync($this->facebook, 'message');
+
+    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), INBOX_FB_PAGE.'/conversations')
+        && str_contains((string) $request['fields'], 'attachments,shares,sticker')
+        && ! str_contains((string) $request['fields'], 'story'));
+});

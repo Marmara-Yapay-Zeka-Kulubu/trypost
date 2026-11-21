@@ -148,6 +148,17 @@ class InstagramInboxProvider extends MetaInboxProvider
         return 'instagram';
     }
 
+    /**
+     * Instagram messages also carry `story` (mention / reply_to with the
+     * story's link), `reactions` and `is_unsupported`.
+     *
+     * @see https://developers.facebook.com/docs/graph-api/reference/message
+     */
+    protected function messageFields(): string
+    {
+        return 'id,created_time,from,to,message,attachments,story,shares,reactions,is_unsupported';
+    }
+
     protected function selfIds(SocialAccount $account): array
     {
         return array_values(array_filter(array_map(

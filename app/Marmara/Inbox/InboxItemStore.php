@@ -17,9 +17,9 @@ use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Stores what a provider read: one row per (channel, provider, external id),
- * so a comment read twice is stored once and `inbox.item_received` fires
- * once, after the row commits. The channel's own comments and messages
+ * Stores what a provider read: one row per (channel, external id), whichever
+ * provider read it, so a comment read twice is stored once and
+ * `inbox.item_received` fires once, after the row commits. The channel's own comments and messages
  * (our replies, read back from the network) are never stored.
  */
 class InboxItemStore
@@ -40,19 +40,23 @@ class InboxItemStore
             return null;
         }
 
+        // Any provider: the ids are the network's own (Zernio's list id is
+        // Meta's `mid` too), so a channel that moved from the native provider
+        // to Zernio (or back) does not get its messages a second time.
         $known = InboxItem::query()
             ->where('social_account_id', $account->id)
-            ->where('provider', $provider->key())
             ->whereIn('external_id', $ids)
             ->get();
 
         if ($known->isNotEmpty()) {
-            $canonical = $known->firstWhere('external_id', $data->externalId);
+            $canonical = $known->first(fn (InboxItem $item): bool => $item->provider === $provider->key() && $item->external_id === $data->externalId)
+                ?? $known->firstWhere('external_id', $data->externalId)
+                ?? $known->firstWhere('provider', $provider->key())
+                ?? $known->first();
 
             // A row stored under an alias only (an older id): move it to the
             // canonical id, so the other path finds it from now on.
-            if ($canonical === null) {
-                $canonical = $known->first();
+            if ($canonical->external_id !== $data->externalId && $canonical->provider === $provider->key()) {
                 $canonical->external_id = $data->externalId;
             }
 
@@ -156,10 +160,20 @@ class InboxItemStore
     }
 
     /**
-     * Keeps what can change on the network (hidden, can_reply) current.
+     * Keeps what can change on the network (hidden, can_reply) current, and
+     * fills the text of an item stored without it (polled while Zernio kept
+     * no content, then delivered by the webhook with it).
      */
     private function refresh(InboxItem $item, InboxItemData $data): void
     {
+        $storedWithoutContent = $item->text === null || (bool) data_get($item->meta, 'content_not_retained', false);
+        $hasContent = $data->text !== null && ! (bool) ($data->meta['content_not_retained'] ?? false);
+
+        if ($storedWithoutContent && $hasContent) {
+            $item->text = $data->text;
+            $item->meta = [...($item->meta ?? []), 'content_not_retained' => false];
+        }
+
         $item->fill([
             'meta' => $data->meta === [] ? $item->meta : [...($item->meta ?? []), ...$data->meta],
             'can_reply' => $data->canReply,

@@ -11,6 +11,7 @@ use App\Marmara\Inbox\Models\InboxItem;
 use App\Marmara\Inbox\Models\InboxSyncState;
 use App\Marmara\Inbox\Providers\InboxItemData;
 use App\Marmara\Inbox\Providers\ZernioInboxProvider;
+use App\Marmara\Inbox\Support\InboxMessageText;
 use App\Models\SocialAccount;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
@@ -18,7 +19,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 
 /**
- * Optional receiver for Zernio's `comment.received` and `message.received`
+ * Optional receiver for Zernio's `comment.received`, `message.received` and
+ * `reaction.received`
  * webhooks (real time on Instagram, Facebook, Threads and TikTok), next to
  * polling, which stays the fallback. Off until
  * MARMARA_INBOX_ZERNIO_WEBHOOK_SECRET is set.
@@ -51,7 +53,7 @@ class ZernioInboxWebhookController
         $eventId = (string) (data_get($payload, 'id') ?? $request->header('X-Zernio-Event-Id', ''));
         $event = (string) data_get($payload, 'event', '');
 
-        if (! in_array($event, ['comment.received', 'message.received'], true) || (bool) data_get($payload, 'test', false)) {
+        if (! in_array($event, ['comment.received', 'message.received', 'reaction.received'], true) || (bool) data_get($payload, 'test', false)) {
             return response()->json(['status' => 'ignored']);
         }
 
@@ -67,6 +69,17 @@ class ZernioInboxWebhookController
         );
 
         foreach ($accounts as $account) {
+            if ($event === 'reaction.received') {
+                $data = $this->reaction($payload, $zernioAccountId);
+
+                if ($data !== null) {
+                    $store->ingest($account, $zernio, $data);
+                }
+
+                // A removal or our own reaction is not an item; nothing to poll for.
+                continue;
+            }
+
             $data = $event === 'comment.received'
                 ? $this->comment($payload, $zernioAccountId)
                 : $this->message($payload, $zernioAccountId);
@@ -152,7 +165,7 @@ class ZernioInboxWebhookController
         $platform = (string) (data_get($payload, 'message.platform') ?? data_get($payload, 'account.platform', ''));
         $hours = ['instagram' => 24, 'facebook' => 24, 'tiktok' => 48, 'whatsapp' => 24][$platform] ?? null;
         $at = CarbonImmutable::parse($created)->utc();
-        $text = data_get($payload, 'message.text') ?? data_get($payload, 'message.message');
+        $rendered = InboxMessageText::zernio((array) data_get($payload, 'message', []));
         $name = data_get($payload, 'message.sender.name') ?? data_get($payload, 'conversation.participantName');
         $username = data_get($payload, 'message.sender.username');
 
@@ -160,7 +173,7 @@ class ZernioInboxWebhookController
             kind: InboxItem::KIND_MESSAGE,
             externalId: $id,
             receivedAt: $at,
-            text: is_string($text) ? $text : null,
+            text: $rendered['text'],
             threadId: $conversation,
             authorId: is_scalar(data_get($payload, 'message.sender.id')) ? (string) data_get($payload, 'message.sender.id') : null,
             authorName: is_string($name) ? $name : null,
@@ -171,8 +184,60 @@ class ZernioInboxWebhookController
                 'zernio_account_id' => $zernioAccountId,
                 'zernio_platform' => $platform,
                 'zernio_message_id' => is_string($internalId) ? $internalId : null,
+                ...$rendered['meta'],
             ]),
             aliases: is_string($internalId) && $internalId !== $id ? [$internalId] : [],
+        );
+    }
+
+    /**
+     * A `reaction.received` the person added: an item with the reaction's
+     * text, under the same id polling gives it (reacted message + emoji).
+     * Removals and the business's own reactions are not items.
+     *
+     * @see https://docs.zernio.com/webhooks/inbox/reaction-received
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function reaction(array $payload, string $zernioAccountId): ?InboxItemData
+    {
+        $messageId = data_get($payload, 'reaction.platformMessageId');
+        $conversation = data_get($payload, 'conversation.id') ?? data_get($payload, 'reaction.conversationId');
+        $created = data_get($payload, 'reaction.reactedAt') ?? data_get($payload, 'timestamp');
+        $senderId = data_get($payload, 'reaction.sender.id');
+        $participantId = data_get($payload, 'conversation.participantId');
+
+        if (data_get($payload, 'reaction.action', 'added') !== 'added'
+            || ! is_string($messageId) || ! is_string($conversation) || ! is_string($created)
+            || (is_scalar($participantId) && is_scalar($senderId) && (string) $participantId !== (string) $senderId)) {
+            return null;
+        }
+
+        $emoji = is_string(data_get($payload, 'reaction.emoji')) ? (string) data_get($payload, 'reaction.emoji') : null;
+        $platform = (string) (data_get($payload, 'account.platform') ?? data_get($payload, 'conversation.platform', ''));
+        $hours = ['instagram' => 24, 'facebook' => 24, 'tiktok' => 48, 'whatsapp' => 24][$platform] ?? null;
+        $at = CarbonImmutable::parse($created)->utc();
+        $name = data_get($payload, 'reaction.sender.name') ?? data_get($payload, 'conversation.participantName');
+        $username = data_get($payload, 'reaction.sender.username');
+
+        return new InboxItemData(
+            kind: InboxItem::KIND_MESSAGE,
+            externalId: InboxMessageText::reactionId($messageId, $emoji),
+            receivedAt: $at,
+            text: InboxMessageText::reaction($emoji),
+            threadId: $conversation,
+            authorId: is_scalar($senderId) ? (string) $senderId : null,
+            authorName: is_string($name) ? $name : (is_string($username) ? $username : null),
+            authorHandle: is_string($username) ? $username : null,
+            authorAvatarUrl: is_string(data_get($payload, 'reaction.sender.picture')) ? (string) data_get($payload, 'reaction.sender.picture') : null,
+            replyWindowEndsAt: $hours === null ? null : $at->addHours($hours),
+            meta: [
+                'zernio_account_id' => $zernioAccountId,
+                'zernio_platform' => $platform,
+                'message_parts' => ['reaction'],
+                'reacted_message_id' => $messageId,
+                'source' => ['reaction' => data_get($payload, 'reaction')],
+            ],
         );
     }
 }
