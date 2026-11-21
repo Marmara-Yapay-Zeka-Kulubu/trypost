@@ -15,8 +15,10 @@ through LinkedIn's own API) and
 [Portal](#portal-default-language-and-guest-branding) (Turkish by default,
 club frame on the auth screens) and
 [Inbox](#inbox-comments-and-dms-in-one-place) (comments and DMs of every
-channel, with replies, for the team and for Echo / Hermes). Each lists its own
-upstream touch points.
+channel, with replies, for the team and for Echo / Hermes) and
+[Designs](#designs-the-shared-drive-design-gallery) (the "Tasarımlar" gallery
+of the club's shared Google Drive folder). Each lists its own upstream touch
+points.
 
 ## Upstream merges
 
@@ -33,8 +35,8 @@ straight into upstream files (WhatsApp approval bridge, approval webhooks,
 | --- | --- |
 | `lang/*/notes.php` | `feedback_requested`, `feedback_requested_with_note` at the end of the file |
 | `lang/*/posts.php` | `approvals.errors.changed`, `approvals.errors.request_conflict`, the `feedback` block at the end |
-| `lang/*/webhooks.php` | `post_approval_requested`, `post_approved`, `post_rejected`, `post_feedback_requested` (and the inbox event) in `events` and `event_descriptions` |
-| `app/Enums/Webhook/EventType.php`, `resources/js/components/webhook/webhook-events.ts` | The approval, feedback and inbox events |
+| `lang/*/webhooks.php` | `post_approval_requested`, `post_approved`, `post_rejected`, `post_feedback_requested` (and the inbox and design events) in `events` and `event_descriptions` |
+| `app/Enums/Webhook/EventType.php`, `resources/js/components/webhook/webhook-events.ts` | The approval, feedback, inbox and design events |
 | `routes/app.php`, `routes/api.php` | `posts/{post}/feedback-requests` routes, after the post note routes |
 | `resources/js/components/publish/PostCardMenu.vue` | `feedback` prop and the "Ask for feedback" item (`request_feedback`) |
 | `resources/js/composables/publish/usePostCardMenuActions.ts` | `request_feedback` case, `feedbackOpen` / `feedbackPost` (the menu actions moved here from `PostTimelineCard.vue` in v2.1.0) |
@@ -127,7 +129,7 @@ that column.
 
 | File | Lines | Change |
 | --- | --- | --- |
-| `bootstrap/providers.php` | 8, 17-18 | `use App\Marmara\Zernio\ZernioServiceProvider;` and the provider in the list |
+| `bootstrap/providers.php` | 9, 18-19 | `use App\Marmara\Zernio\ZernioServiceProvider;` and the provider in the list |
 | `app/Jobs/PublishToSocialPlatform.php` | 18, 100-107, 109, 115, 124 | `use App\Marmara\Hooks\SocialAccountPublishGuard;`; in `handle()` a commented call `app(SocialAccountPublishGuard::class)->check($this->post)` that can fail the post, and `$guard->checksNativeConnection &&` in front of the three native checks (disconnected, token expired, missing scopes) |
 
 | `app/Models/SocialAccount.php` | 19, 624-638 | `use App\Marmara\Hooks\AnalyticsAccountGuard;` and a commented `scopeConnectedForAnalytics()`: `connected()`, or `orWhereIn(id, AnalyticsAccountGuard::alsoUsableAccountIds())`. The default guard returns `[]`, i.e. exactly `connected()` |
@@ -581,7 +583,7 @@ analytics. Publishing is unchanged: TryPost's native `LinkedInPagePublisher`
 
 | File | Lines | Change |
 | --- | --- | --- |
-| `bootstrap/providers.php` | 6, 21-22 | `use App\Marmara\LinkedIn\LinkedInServiceProvider;` and the provider in the list |
+| `bootstrap/providers.php` | 7, 22-23 | `use App\Marmara\LinkedIn\LinkedInServiceProvider;` and the provider in the list |
 
 Nothing else upstream is edited. It reuses the Zernio module's hooks
 (`AnalyticsPlatformGate` in `Platform::isIncludedInAnalytics()`,
@@ -879,7 +881,7 @@ The club website (marmaraai.com) is not used for colours or layout.
 
 | File | Lines | Change |
 | --- | --- | --- |
-| `bootstrap/providers.php` | 7, 19-20 | `use App\Marmara\Portal\PortalServiceProvider;` and the provider in the list |
+| `bootstrap/providers.php` | 8, 20-21 | `use App\Marmara\Portal\PortalServiceProvider;` and the provider in the list |
 | `resources/js/layouts/AuthLayout.vue` | 2 | `import AuthLayout from '@/marmara/AuthLayoutSwitch.vue'` instead of `'@/layouts/auth/AuthSplitLayout.vue'`. On a conflict take upstream's file and change this import back |
 | `resources/js/composables/useGuestLocale.ts` | 6, 35-41 | `import { portalDefaultLocale } ...`; `portalDefaultLocale(page.props) ??` before `browserLocale.value` in `signupLocale` |
 
@@ -935,11 +937,11 @@ its own flag; a missing permission shows as "needs permission X" (page,
 
 | File | Lines | Change |
 | --- | --- | --- |
-| `bootstrap/providers.php` | 5, 23-24 | `use App\Marmara\Inbox\InboxServiceProvider;` and the provider in the list |
+| `bootstrap/providers.php` | 6, 24-25 | `use App\Marmara\Inbox\InboxServiceProvider;` and the provider in the list |
 | `app/Enums/Webhook/EventType.php` | 24 | `case InboxItemReceived = 'inbox.item_received';` (webhook validation, the MCP webhook tools and the UI picker all read the enum) |
 | `resources/js/components/webhook/webhook-events.ts` | 19 | `'inbox.item_received'` in the event list, so the webhook dialogs offer it |
 | `lang/*/webhooks.php` (17 locales, `id` since v2.1.0) | 2 lines each | `events.inbox_item_received` and `event_descriptions.inbox_item_received`, after `post_feedback_requested` (WebhookTranslationsTest wants every event in every locale) |
-| `resources/js/components/AppSidebar.vue` | 48, 104 | `import { marmaraInboxNavItems } ...` and `...marmaraInboxNavItems(page.props),` in `mainNavItems` (empty while the module is off) |
+| `resources/js/components/AppSidebar.vue` | 49, 105 | `import { marmaraInboxNavItems } ...` and `...marmaraInboxNavItems(page.props),` in `mainNavItems` (empty while the module is off) |
 | `tests/fixtures/single-line-copy.php`, `tests/Unit/Enums/WebhookEventTypeTest.php` | 1 line each | The new description's length budget and the enum value |
 
 Not edited, relied on: Laravel resolves route controllers through the
@@ -949,7 +951,9 @@ subclasses whose constructor appends the inbox scopes to upstream's
 `$scopes` (only while the provider's flag is on; otherwise upstream's list).
 laravel/mcp builds the server with `Container::make(TryPostServer::class)`
 (web transport and `TryPostServer::actingAs()` alike), so `TryPostServer` is
-bound to `InboxTryPostServer`, whose `boot()` adds the three tools; each
+bound to `InboxTryPostServer` (which extends the fork's shared
+`App\Marmara\Hooks\MarmaraTryPostServer`, so other modules' tools from
+`MarmaraMcpTools` come along), whose `boot()` adds the three tools; each
 tool's `shouldRegister()` hides it while `MARMARA_INBOX_ENABLED` is off.
 The subclass inherits upstream's `$tools` list (new upstream tools need no
 change here), and the route middleware in `routes/ai.php` (since v2.1.0 also
@@ -1148,3 +1152,293 @@ unknown shape only makes the channel's next poll due) and the error `code`
 field placement; X's pay-per-use read limits. The LinkedIn and Instagram
 comment length limits are the networks' product limits, not stated on the
 API pages.
+
+## Designs: the shared Drive design gallery
+
+Club members put their designs into one Google Drive folder that lives in
+the club lead's personal Drive. The "Tasarımlar" page shows that folder as a
+gallery: classify (status, free tags), filter, sort, comment, vote, see the
+older and newer versions of a design side by side, and turn an approved one
+into a post draft at original quality. Echo / Hermes get the same through
+the REST API, three MCP tools and the `design.*` webhooks. Variables:
+`marmara/designs.env.example`.
+
+### Files
+
+| Path | What |
+| --- | --- |
+| `app/Marmara/Designs/DesignsServiceProvider.php` | Migrations, lang, routes, schedule (`marmara:designs:sync` every 5 min), commands, the policy and gates, the `marmaraDesigns` shared prop, the MCP tools |
+| `app/Marmara/Designs/DesignsConfig.php`, `config/marmara-designs.php` | Settings and limits |
+| `app/Marmara/Designs/Drive/ServiceAccountToken.php` | JWT bearer flow for the service account (RS256 with firebase/php-jwt, which signs with `openssl_sign`; already installed through google/apiclient, nothing added to composer.json), token cached until 2 min before it expires |
+| `app/Marmara/Designs/Drive/DriveClient.php` | Drive v3 REST with Laravel's HTTP client: files.list/get, changes.getStartPageToken/list, revisions.list/update, media download/stream/export, thumbnails, folders, move, resumable upload; one retry with a fresh token on 401 |
+| `app/Marmara/Designs/Sync/DesignSync.php`, `RevisionSync.php`, `Jobs/SyncDesignRevisions.php` | The folder mirror (below) and the revisions with keepForever |
+| `app/Marmara/Designs/Models/*`, `database/migrations/` | `marmara_designs`, `marmara_design_folders`, `marmara_design_revisions`, `marmara_design_sync_states`, `marmara_design_thumbnails`, `marmara_design_tags`, `marmara_design_comments`, `marmara_design_votes`, `marmara_design_activities`, `marmara_design_drive_connections` |
+| `app/Marmara/Designs/DesignPolicy.php` | Who may do what (below); `set-design-status`, `update-design-comment`, `delete-design-comment` gates |
+| `app/Marmara/Designs/Actions/DesignActions.php` | Status, tags, comments, votes, version links, one activity line each; shared by the page, the API and MCP |
+| `app/Marmara/Designs/Actions/CreatePostFromDesign.php` | "Gönderi oluştur" |
+| `app/Marmara/Designs/Thumbnails/*` | The thumbnail proxy's source and the bounded LRU cache |
+| `app/Marmara/Designs/Upload/*` | "Drive'a yükleme izni" (OAuth, drive.file) and `DesignUploader::upload()` |
+| `app/Marmara/Designs/DesignPayload.php`, `DesignQuery.php` | The one design shape (page, API, MCP, webhooks) and the filters / sorts |
+| `app/Marmara/Designs/DesignEvents.php` | `design.added`, `design.commented`, `design.status_changed` |
+| `app/Marmara/Designs/Http/*`, `routes.php` | Page, actions, thumbnail / original, Drive connect, upload, REST API, `EnsureDesignsEnabled` |
+| `app/Marmara/Designs/Mcp/*` | `list-designs-tool`, `get-design-tool`, `comment-on-design-tool` |
+| `app/Marmara/Hooks/MarmaraTryPostServer.php`, `MarmaraMcpTools.php` | The fork's shared MCP server: modules register tools in `MarmaraMcpTools`; `InboxTryPostServer` extends it |
+| `app/Marmara/Designs/lang/{en,tr}/designs.php` | The page's copy (namespace `marmara-designs`; other locales fall back to English) |
+| `app/Marmara/Designs/Console/*` | `marmara:designs:sync [--full]`, `marmara:designs:status [--check]` |
+| `resources/js/marmara/designs/*`, `resources/js/pages/marmara/Designs.vue` | The page (gallery, drawer, compare, upload, post dialog, Drive panel and Picker) and the sidebar entry |
+| `tests/Feature/Marmara/Designs/*` | Pest tests (`helpers.php` fakes Drive v3 answers) |
+| `marmara/designs.env.example` | The .env lines |
+
+### Upstream touch points
+
+| File | Lines | Change |
+| --- | --- | --- |
+| `bootstrap/providers.php` | 5, 26-27 | `use App\Marmara\Designs\DesignsServiceProvider;` and the provider in the list (after the inbox) |
+| `app/Enums/Webhook/EventType.php` | 25-27 | `DesignAdded`, `DesignCommented`, `DesignStatusChanged` |
+| `resources/js/components/webhook/webhook-events.ts` | 20-22 | The three events in the list |
+| `lang/*/webhooks.php` (17 locales) | 6 lines each | `events.design_*` and `event_descriptions.design_*`, after `inbox_item_received` |
+| `resources/js/components/AppSidebar.vue` | 48, 106 | `import { marmaraDesignsNavItems } ...` and `...marmaraDesignsNavItems(page.props),` after the inbox entry |
+| `tests/fixtures/single-line-copy.php`, `tests/Unit/Enums/WebhookEventTypeTest.php` | 3 lines each | The descriptions' length budgets (54) and the enum values |
+
+Fork file changed: `app/Marmara/Inbox/Mcp/InboxTryPostServer.php` extends
+`MarmaraTryPostServer` instead of `TryPostServer`. Without the inbox
+provider, `DesignsServiceProvider` binds `TryPostServer` to
+`MarmaraTryPostServer` itself.
+
+Relied on, not edited: `WebhookService::dispatch()` / `DispatchWebhook`
+(signed like every event); `Workspace::addMediaFromStoredPath()` /
+`addMediaFromPath()`, `Media::issueUploadToken()`, `HostInlineMedia::forPost()`
+and `CreatePosts::execute()` (the same path as the Echo media bridge's
+`POST /api/uploads` + `upload_token`); `WorkspacePolicy::view`, `createPost`,
+`approvePosts`, `update`; `AuthorizesMcpTool`; Inertia's shared props.
+
+**Servers bind-mount their own `bootstrap/providers.php`.** Add this line to
+the server's copy, after `App\Marmara\Inbox\InboxServiceProvider::class,`
+(a fully qualified name needs no `use` line), then recreate the container:
+
+    App\Marmara\Designs\DesignsServiceProvider::class,
+
+### How the sync works
+
+- Reading is the service account's job (`MARMARA_DESIGNS_SA_KEY`, Editor on
+  the folder). It sees only what is shared with it.
+- First run (or `--full`, or a page token Drive refuses): `changes.getStartPageToken`
+  first, then a breadth-first walk with `files.list` (`'{id}' in parents and
+  trashed = false`, 1000 per page). Every subfolder becomes a collection,
+  nested folders a path ("Bahar Şenliği/Afişler"). Rows not seen are marked
+  removed (`missing`). The first full sync never fires `design.added`.
+- Every 5 minutes: `changes.list` from the stored token, up to
+  `MARMARA_DESIGNS_MAX_CHANGE_PAGES` pages, the token saved after each page.
+  Trashed → `trashed`; removed / unshared → `removed`; moved out of the tree →
+  `moved_out`; moved between folders → the new path; a folder renamed or
+  moved → new paths below it; a folder trashed → everything below removed; a
+  folder that appears (new or moved in) is walked, since its content never
+  comes through changes. A removed design that comes back is restored with
+  its comments and votes.
+- Stored per file: Drive id, name and title (name without extension), mime
+  type, kind, size, md5, folder id and path, createdTime, modifiedTime,
+  owners[0] and lastModifyingUser (name and email), webViewLink, width and
+  height (image or video metadata), headRevisionId, and the TryPost uploader
+  (`appProperties.trypost_uploader`) for files uploaded through TryPost.
+- Supported: JPEG, PNG, WebP, HEIC/HEIF, PDF, every `video/*` (thumbnail only),
+  Google Drawings (exported as PNG). Canva's Drive exports are plain PNG / PDF /
+  MP4 files and need nothing special. The rest is skipped.
+
+### Versions
+
+- Drive revisions: a new or changed file queues `SyncDesignRevisions`
+  (`revisions.list`), which stores every revision and sends
+  `PATCH revisions/{id}` `{"keepForever": true}` for each one not kept yet
+  (needs Editor). A refusal is stored in `keep_error`, shown by
+  `marmara:designs:status`. Drive keeps at most 200 revisions forever per
+  file; the module stops asking at 200.
+- By hand: "Bu tasarım, X'in yeni sürümü" puts separate files into one
+  family (`family_id`). The gallery shows only the newest member (by
+  createdTime), with "N sürüm".
+- The drawer lists every version oldest first, v1, v2, … (family members by
+  time, each with its revisions), each with its own thumbnail; "Karşılaştır"
+  shows two side by side.
+
+### Thumbnails and originals
+
+- `GET /designs/{id}/thumbnail/{400|1600}[?revision=]`: session and
+  workspace membership required. The current content comes from Drive's
+  `thumbnailLink` (read fresh, fetched with the service account token, sized
+  with `=s{size}`); an older revision, or an image Drive made no thumbnail
+  for, is downloaded (up to `MARMARA_DESIGNS_THUMBNAIL_SOURCE_MAX_MB`) and
+  scaled with GD. Always re-encoded as JPEG (quality 70, about 30-60 KB at
+  400 px). PDF / video / HEIC revisions have no thumbnail of their own.
+- Cache: files under `MARMARA_DESIGNS_THUMBNAIL_PATH` (default
+  `storage/app/marmara-designs/thumbnails`, in the `storage` volume), indexed
+  in `marmara_design_thumbnails`; the key includes the content version, so an
+  edit never shows a stale picture. Every write evicts the least recently
+  used files until the cache is under 90 % of
+  `MARMARA_DESIGNS_THUMBNAIL_CACHE_MB` (500). A full disk only skips the cache.
+- Webhook, API and MCP readers have no session: they get
+  `/marmara/designs/{id}/thumbnail/{size}?…&signature=` (temporary signed
+  URL, `MARMARA_DESIGNS_SIGNED_URL_DAYS`, 7).
+- `GET /designs/{id}/original`: streamed from Drive, never stored.
+
+### Roles
+
+| Action | Who |
+| --- | --- |
+| See, filter, comment, vote, tag, link versions, set Taslak / Değerlendirmede / Arşiv | Every member of the workspace |
+| Set Onaylandı / Kullanıldı, or move a design away from them | Members who may approve posts (`WorkspacePolicy::approvePosts`: admins and members who publish directly); the `set-design-status` gate, on the page, the API and MCP alike |
+| Edit / delete a comment | Its author only |
+| "Gönderi oluştur", "Yükle" | `createPost` on the workspace |
+| "Drive'a yükleme izni" | Workspace admins (`update`) |
+
+### "Gönderi oluştur"
+
+`POST /designs/{id}/posts` `{social_account_ids[], content}` downloads the
+original on the server and makes it a temporary upload of the workspace,
+then `HostInlineMedia` + `CreatePosts` create one draft per channel, exactly
+like the Echo bridge's `/api/uploads` + `upload_token`. JPEG, PNG and WebP are
+stored byte for byte (not `addMedia()`, which re-encodes PNG/WebP as JPEG);
+video and PDF are streamed unchanged; HEIC is converted to JPEG (no network
+takes HEIC); a Drawing is exported as PNG. Each channel's media rules still
+apply (e.g. a PDF on Instagram is refused with TryPost's own message). The
+composer of the first draft opens.
+
+### Drive uploads ("Drive'a yükleme izni")
+
+A service account has no storage quota, so it cannot create files in a
+personal Drive. Uploads use the lead's own Google token instead:
+
+1. An admin clicks "Drive'a yükleme izni ver" (OAuth web flow, PKCE, scope
+   `https://www.googleapis.com/auth/drive.file` only, `access_type=offline`,
+   `prompt=consent`). The token is stored encrypted
+   (`marmara_design_drive_connections`) and refreshed before it expires;
+   `invalid_grant` disconnects and asks to reconnect.
+2. With drive.file the app may only write into folders it created or that
+   the user picked in the Google Picker, so the admin clicks "Klasöre erişim
+   ver" once and picks the shared folder. The server checks it is
+   `MARMARA_DESIGNS_FOLDER_ID` and that the token can add children.
+3. `DesignUploader::upload($file, 'Bahar Şenliği/Afişler', 'Ana afiş', 'Elif')`
+   (page now; API, MCP and Echo later): finds each folder of the path with the
+   service account and creates the missing ones with the lead's token, uploads
+   with a resumable upload (`appProperties.trypost_uploader`, so "Ekleyen" is
+   the member, not the lead), and when the target is a folder a member made in
+   Drive, uploads into the shared folder and lets the service account move it
+   there (the lead stays the owner). Not connected / no folder permission /
+   reconnect / quota full answer a Turkish message (`DesignUploadUnavailable`).
+
+### Contract for Echo / Hermes
+
+- Design (`data.design` of the webhooks, API items, MCP): `{id, title, name,
+  kind, mime_type, status, status_label, folder, uploader: {name}, tags,
+  votes, comments, last_commented_at, width, height, size, created_at,
+  modified_at, family_id, removed, drive_url, url, thumbnail_url,
+  preview_url}`. Names only, never emails.
+- Webhooks (Settings > Webhooks): `design.added` (new file after the first
+  sync, at most `MARMARA_DESIGNS_NOTIFY_MAX_AGE_HOURS` old, or an upload),
+  `design.commented` (+ `comment: {id, body, author: {id, name},
+  created_at}`), `design.status_changed` (+ `status: {from, from_label, to,
+  to_label, changed_by: {id, name}}`). Fired after commit, signed with
+  `X-Webhook-Signature`.
+- REST (API key): `GET /api/designs?q=&folder=&uploader=&status=&tag=&kind=&from=&to=&sort=&limit=&page=`
+  → `{data, has_more}`; `GET /api/designs/{id}` → design + `comments_list`,
+  `versions`, `activity`; `POST /api/designs/{id}/comments {body}` → 201;
+  `PATCH /api/designs/{id}/status {status}` → 403 `{code: status_forbidden}`
+  without the right.
+- MCP: `list-designs-tool`, `get-design-tool` (read only),
+  `comment-on-design-tool` (writes a TryPost comment, not open world).
+
+### Kurulum (bir kerelik, Google Cloud)
+
+1. **Drive API'yi açın.** https://console.cloud.google.com adresinde bir
+   proje seçin ya da oluşturun (ör. "marmara-trypost"). "API'ler ve
+   Hizmetler > Kitaplık" bölümünde **Google Drive API**'yi bulun ve
+   **Etkinleştir**'e basın. Yükleme izni de kullanılacaksa aynı yerden
+   **Google Picker API**'yi de etkinleştirin.
+2. **Hizmet hesabını oluşturun.** "IAM ve Yönetici > Hizmet Hesapları >
+   Hizmet hesabı oluştur": ad "trypost-designs", rol vermeyin (gerekmez).
+   Hesabı açın, "Anahtarlar > Anahtar ekle > Yeni anahtar oluştur > JSON".
+   İnen JSON dosyası bir paroladır: kimseyle paylaşmayın, repoya koymayın.
+   Kuruluş politikası anahtar oluşturmayı engelliyorsa
+   (`iam.disableServiceAccountKeyCreation`) proje yöneticisinin bu proje için
+   izin vermesi gerekir.
+3. **Klasörü paylaşın.** Kulüp liderinin Drive'ında ortak klasöre sağ tık >
+   Paylaş: hizmet hesabının e-postasını
+   (`trypost-designs@<proje>.iam.gserviceaccount.com`, JSON'daki
+   `client_email`) **Düzenleyen** olarak ekleyin, "Bildirim gönder"i
+   kapatın. Düzenleyen yetkisi şart: sürümleri "sonsuza kadar sakla"
+   (keepForever) işaretlemek ve yüklenen dosyaları alt klasörlere taşımak
+   için gerekir. Klasör kimliği, klasörün adresindeki
+   `drive.google.com/drive/folders/<KİMLİK>` kısmıdır.
+4. **(İsteğe bağlı) Yükleme için OAuth istemcisi.** "API'ler ve Hizmetler >
+   OAuth izin ekranı": kullanıcı türü "Harici", uygulama adı "Marmara AI
+   TryPost", kapsam olarak yalnızca `.../auth/drive.file`. Yayın durumunu
+   **"Üretimde"** yapın: "Test" durumunda Google yenileme anahtarlarını 7
+   günde iptal eder ve bağlantı her hafta kopar. drive.file hassas olmayan
+   bir kapsam olduğu için Google doğrulaması gerekmez. Sonra "Kimlik Bilgileri >
+   Kimlik bilgisi oluştur > OAuth istemci kimliği > Web uygulaması":
+   yetkili yönlendirme URI'si `https://sosyal.marmaraai.com/designs/drive/callback`
+   (stage için `https://sosyal-stage.marmaraai.com/designs/drive/callback`).
+   İstemci kimliği ve gizli anahtarı `MARMARA_DESIGNS_OAUTH_CLIENT_ID` /
+   `_SECRET` olur. Picker için "Kimlik bilgisi oluştur > API anahtarı":
+   anahtarı "Google Picker API" ve web sitesi (`https://sosyal.marmaraai.com/*`)
+   ile kısıtlayın → `MARMARA_DESIGNS_PICKER_API_KEY`; proje **numarası**
+   (Proje ayarları sayfasında) → `MARMARA_DESIGNS_PICKER_APP_ID`.
+5. **Anahtarı sunucuya koyun.** JSON dosyasını VM'e kopyalayın ve yalnızca
+   okunur bağlayın (üretim; stage için `/opt/trypost-marmara`):
+
+       sudo mkdir -p /opt/trypost-marmara-prod/secrets
+       sudo mv ~/trypost-designs-*.json /opt/trypost-marmara-prod/secrets/marmara-designs-sa.json
+       sudo chown root:82 /opt/trypost-marmara-prod/secrets/marmara-designs-sa.json   # 82 = www-data (Alpine imajı)
+       sudo chmod 640 /opt/trypost-marmara-prod/secrets/marmara-designs-sa.json
+
+   Sunucunun compose dosyasında `app` servisinin `volumes:` listesine ekleyin:
+
+       - ./secrets/marmara-designs-sa.json:/run/secrets/marmara-designs-sa.json:ro
+
+   ve `.env` dosyasına `marmara/designs.env.example` bloğunu ekleyip
+   `MARMARA_DESIGNS_SA_KEY=/run/secrets/marmara-designs-sa.json`,
+   `MARMARA_DESIGNS_FOLDER_ID`, `MARMARA_DESIGNS_WORKSPACE_ID` değerlerini
+   doldurun. Compose dosyası değişkenleri `env_file: .env` yerine tek tek
+   `environment:` altında veriyorsa `MARMARA_DESIGNS_*` satırlarını oraya da
+   ekleyin.
+6. **Sağlayıcıyı kaydedin.** Sunucunun bağladığı `providers.php` kopyasına,
+   `App\Marmara\Inbox\InboxServiceProvider::class,` satırının altına şunu
+   ekleyin:
+
+       App\Marmara\Designs\DesignsServiceProvider::class,
+
+### Deploy
+
+1. Push / deploy the branch as usual; the migrations
+   (`2026_11_22_120000_create_marmara_design_drive_tables`,
+   `2026_11_22_120100_create_marmara_design_app_tables`) run with the others.
+   With `MARMARA_DESIGNS_ENABLED=false` nothing changes.
+2. Do the setup above, add the provider line to the server's
+   `providers.php`, then `docker compose up -d --force-recreate app` (the
+   entrypoint rebuilds the config cache).
+3. `docker compose exec app php artisan marmara:designs:status --check`: the
+   service account email, a token, "Folder … readable; can edit: yes".
+4. `docker compose exec app php artisan marmara:designs:sync --full` once (it
+   reads the whole folder; the scheduler takes over every 5 minutes), then
+   open "Tasarımlar". Revisions are read by queued jobs (Horizon, `default`
+   queue) in the minutes after.
+5. Uploads (optional): as an admin, "Drive'a yükleme izni ver" with the lead's
+   Google account, then "Klasöre erişim ver" and pick the shared folder.
+6. Echo: add `design.added`, `design.commented`, `design.status_changed` to
+   Echo's webhook in Settings > Webhooks.
+
+Disk: the thumbnail cache is capped at `MARMARA_DESIGNS_THUMBNAIL_CACHE_MB`
+(500 MB) in the `storage` volume; lower it if the disk (78 % full) needs
+room. Drafts made with "Gönderi oluştur" store the original as TryPost media,
+like any upload.
+
+### Not verified against the live API
+
+Written from the Drive v3 reference (November 2026) and tested with
+`Http::fake` only: that `thumbnailLink` accepts any `=s{size}` and answers
+the service account's bearer token; that a folder picked in the Picker lets
+a drive.file token create files directly inside it (if not, uploads land
+nowhere and the page says "klasör izni eksik"); that a service account
+(Editor) may move a file owned by the lead between folders of the lead's
+Drive and may create a folder there when the lead's token cannot (Google can
+refuse a service account even zero-byte files: then only folders the lead's
+token can create work); the exact 400/410 Drive sends for an expired changes
+token (any 400, 404 or 410 restarts with a full sync).
