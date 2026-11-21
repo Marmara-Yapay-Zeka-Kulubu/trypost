@@ -1,0 +1,426 @@
+<script setup lang="ts">
+/**
+ * Marmara AI fork: one design in a drawer — large preview, metadata, "Drive'da
+ * aç", versions strip with side-by-side compare, status and tags, votes,
+ * comments and activity (app/Marmara/README.md, Designs).
+ */
+import { router, useForm } from '@inertiajs/vue3';
+import {
+    IconColumns,
+    IconDownload,
+    IconExternalLink,
+    IconFileTypePdf,
+    IconLink,
+    IconPhoto,
+    IconPhotoOff,
+    IconSend,
+    IconThumbUp,
+    IconUnlink,
+    IconVideo,
+    IconX,
+} from '@tabler/icons-vue';
+import { computed, ref, watch, type Component } from 'vue';
+
+import InputError from '@/components/InputError.vue';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Textarea } from '@/components/ui/textarea';
+
+import {
+    fill,
+    formatBytes,
+    formatDateTime,
+    type DesignVersion,
+    type LinkCandidate,
+    type SelectedDesign,
+    type Translate,
+} from './types';
+
+const props = defineProps<{
+    t: Translate;
+    design: SelectedDesign;
+    linkCandidates: LinkCandidate[];
+    canApprove: boolean;
+    urls: Record<string, string>;
+}>();
+
+const emit = defineEmits<{ close: []; createPost: [] }>();
+
+const url = (name: string, extra: Record<string, string> = {}): string => fill(props.urls[name] ?? '', props.design.id, extra);
+
+const current = computed<DesignVersion | undefined>(() => props.design.versions.find((version) => version.is_current));
+const shown = ref<DesignVersion | undefined>(current.value);
+const comparing = ref(false);
+const compared = ref<DesignVersion[]>([]);
+
+watch(
+    () => props.design.id,
+    () => {
+        shown.value = current.value;
+        comparing.value = false;
+        compared.value = [];
+    },
+);
+
+const pickVersion = (version: DesignVersion): void => {
+    if (!comparing.value) {
+        shown.value = version;
+
+        return;
+    }
+
+    const already = compared.value.findIndex((item) => item.key === version.key);
+
+    if (already >= 0) {
+        compared.value.splice(already, 1);
+    } else {
+        compared.value = [...compared.value.slice(-1), version];
+    }
+};
+
+const toggleCompare = (): void => {
+    comparing.value = !comparing.value;
+    compared.value = comparing.value
+        ? props.design.versions.length >= 2
+            ? props.design.versions.slice(-2)
+            : [...props.design.versions]
+        : [];
+};
+
+const previewUrl = computed(() => shown.value?.preview_url ?? props.design.preview_url);
+
+const visit = (method: 'post' | 'put' | 'patch' | 'delete', target: string, data: Record<string, unknown> = {}): void => {
+    router.visit(target, { method, data, preserveScroll: true, preserveState: true });
+};
+
+const statusOptions = computed(() => {
+    const allowed = new Set([...props.design.can.statuses, props.design.status]);
+
+    return ['draft', 'in_review', 'approved', 'used', 'archived'].filter((status) => allowed.has(status as SelectedDesign['status']));
+});
+
+const setStatus = (status: string): void => {
+    if (status !== props.design.status) {
+        visit('patch', url('status'), { status });
+    }
+};
+
+const tags = ref<string[]>([...props.design.tags]);
+const tagDraft = ref('');
+
+watch(
+    () => props.design.tags,
+    (value) => {
+        tags.value = [...value];
+    },
+);
+
+const addTag = (): void => {
+    const tag = tagDraft.value.trim().replace(/^#/, '').toLocaleLowerCase();
+
+    if (tag !== '' && !tags.value.includes(tag)) {
+        tags.value = [...tags.value, tag];
+    }
+
+    tagDraft.value = '';
+};
+
+const tagsChanged = computed(() => [...tags.value].sort().join('|') !== [...props.design.tags].sort().join('|'));
+
+const saveTags = (): void => visit('put', url('tags'), { tags: tags.value });
+
+const toggleVote = (): void => visit(props.design.voted ? 'delete' : 'post', url('vote'));
+
+const commentForm = useForm({ body: '' });
+
+const sendComment = (): void => {
+    commentForm.post(url('comments'), {
+        preserveScroll: true,
+        preserveState: true,
+        onSuccess: () => commentForm.reset(),
+    });
+};
+
+const editing = ref<string | null>(null);
+const editBody = ref('');
+
+const startEdit = (id: string, body: string): void => {
+    editing.value = id;
+    editBody.value = body;
+};
+
+const saveEdit = (id: string): void => {
+    router.patch(url('comment', { __COMMENT__: id }), { body: editBody.value }, {
+        preserveScroll: true,
+        preserveState: true,
+        onSuccess: () => {
+            editing.value = null;
+        },
+    });
+};
+
+const deleteComment = (id: string): void => {
+    if (window.confirm(props.t('comments.delete_confirm'))) {
+        visit('delete', url('comment', { __COMMENT__: id }));
+    }
+};
+
+const linkTarget = ref('');
+
+const linkVersion = (): void => {
+    if (linkTarget.value !== '') {
+        visit('post', url('versions'), { previous_id: linkTarget.value });
+        linkTarget.value = '';
+    }
+};
+
+const kindIcons: Record<string, Component> = { pdf: IconFileTypePdf, video: IconVideo };
+const kindIcon = computed<Component>(() => kindIcons[props.design.kind] ?? IconPhoto);
+
+const activityText = (type: string, data: Record<string, unknown>): string => {
+    if (type === 'status_changed') {
+        return props.t('activity.status_changed', {
+            from: props.t(`statuses.${String(data.from ?? '')}`),
+            to: props.t(`statuses.${String(data.to ?? '')}`),
+        });
+    }
+
+    return props.t(`activity.${type}`, { name: String(data.name ?? '') });
+};
+</script>
+
+<template>
+    <Sheet :open="true" @update:open="(open) => !open && emit('close')">
+        <SheetContent
+            side="right"
+            class="w-full gap-0 overflow-y-auto p-0 sm:max-w-3xl"
+            :show-close-button="false"
+            data-testid="marmara-designs-drawer"
+        >
+            <SheetHeader class="sticky top-0 z-10 flex flex-row items-start gap-2 border-b border-border bg-background p-4">
+                <div class="flex min-w-0 flex-1 flex-col gap-1">
+                    <SheetTitle class="truncate" data-testid="marmara-designs-drawer-title">{{ design.title }}</SheetTitle>
+                    <SheetDescription class="flex flex-wrap items-center gap-2 text-xs">
+                        <Badge variant="secondary">{{ t(`statuses.${design.status}`) }}</Badge>
+                        <span v-if="design.folder">{{ design.folder }}</span>
+                        <span v-else>{{ t('filters.root_folder') }}</span>
+                    </SheetDescription>
+                </div>
+                <Button variant="ghost" size="icon" :aria-label="t('detail.close')" @click="emit('close')">
+                    <IconX class="size-4" />
+                </Button>
+            </SheetHeader>
+
+            <div class="flex flex-col gap-5 p-4">
+                <p v-if="design.removed" class="rounded-md border border-border-strong p-3 text-sm text-muted-foreground">
+                    {{ t('detail.removed') }}
+                </p>
+
+                <!-- Preview, or two versions side by side -->
+                <div v-if="comparing && compared.length > 0" class="grid grid-cols-2 gap-2" data-testid="marmara-designs-compare">
+                    <figure v-for="version in compared" :key="version.key" class="flex flex-col gap-1">
+                        <div class="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-muted">
+                            <img v-if="version.preview_url" :src="version.preview_url" :alt="`${version.label} ${version.title}`" class="max-h-full max-w-full object-contain" />
+                            <IconPhotoOff v-else class="size-8 text-muted-foreground" />
+                        </div>
+                        <figcaption class="text-xs text-muted-foreground">
+                            <span class="font-medium text-foreground">{{ version.label }}</span>
+                            · {{ formatDateTime(version.modified_at) }}<template v-if="version.author.name"> · {{ version.author.name }}</template>
+                        </figcaption>
+                    </figure>
+                </div>
+                <div v-else class="flex min-h-64 items-center justify-center overflow-hidden rounded-lg bg-muted">
+                    <img v-if="previewUrl" :src="previewUrl" :alt="design.title" class="max-h-[70vh] max-w-full object-contain" data-testid="marmara-designs-preview" />
+                    <component :is="kindIcon" v-else class="size-10 text-muted-foreground" />
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2">
+                    <Button
+                        :variant="design.voted ? 'default' : 'outline'"
+                        :aria-pressed="design.voted"
+                        :aria-label="design.voted ? t('votes.unvote') : t('votes.vote')"
+                        data-testid="marmara-designs-vote"
+                        @click="toggleVote"
+                    >
+                        <IconThumbUp class="size-4" />
+                        {{ design.votes }}
+                    </Button>
+                    <Button v-if="design.drive_url" as="a" :href="design.drive_url" target="_blank" rel="noopener noreferrer" variant="outline">
+                        <IconExternalLink class="size-4" />
+                        {{ t('detail.open_in_drive') }}
+                    </Button>
+                    <Button v-if="!design.removed" as="a" :href="url('original')" variant="outline">
+                        <IconDownload class="size-4" />
+                        {{ t('detail.download') }}
+                    </Button>
+                    <slot name="actions" />
+                </div>
+
+                <!-- Versions strip -->
+                <section v-if="design.versions.length > 1" class="flex flex-col gap-2" data-testid="marmara-designs-versions">
+                    <div class="flex items-center gap-2">
+                        <h3 class="text-sm font-medium">{{ t('versions.title') }}</h3>
+                        <Button variant="outline" class="ml-auto" :aria-pressed="comparing" data-testid="marmara-designs-compare-toggle" @click="toggleCompare">
+                            <IconColumns class="size-4" />
+                            {{ comparing ? t('versions.close_compare') : t('versions.compare') }}
+                        </Button>
+                    </div>
+                    <p v-if="comparing" class="text-xs text-muted-foreground">{{ t('versions.compare_hint') }}</p>
+                    <div class="flex gap-2 overflow-x-auto pb-1">
+                        <button
+                            v-for="version in design.versions"
+                            :key="version.key"
+                            type="button"
+                            class="flex w-24 shrink-0 flex-col gap-1 rounded-md border p-1 text-left text-xs"
+                            :class="(comparing ? compared.some((item) => item.key === version.key) : shown?.key === version.key) ? 'border-primary' : 'border-border'"
+                            :data-testid="`marmara-designs-version-${version.label}`"
+                            @click="pickVersion(version)"
+                        >
+                            <span class="flex aspect-square items-center justify-center overflow-hidden rounded bg-muted">
+                                <img v-if="version.thumbnail_url" :src="version.thumbnail_url" :alt="version.label" loading="lazy" class="h-full w-full object-cover" />
+                                <IconPhotoOff v-else class="size-5 text-muted-foreground" :aria-label="t('versions.no_preview')" />
+                            </span>
+                            <span class="font-medium">{{ version.label }}<template v-if="version.is_current"> · {{ t('versions.current') }}</template></span>
+                            <span class="truncate text-muted-foreground">{{ formatDateTime(version.modified_at) }}</span>
+                        </button>
+                    </div>
+                </section>
+
+                <!-- Status and tags -->
+                <section class="grid gap-4 sm:grid-cols-2">
+                    <div class="flex flex-col gap-1.5">
+                        <label class="text-sm font-medium" for="marmara-designs-status">{{ t('detail.status') }}</label>
+                        <NativeSelect
+                            id="marmara-designs-status"
+                            :model-value="design.status"
+                            class="h-8 py-1"
+                            data-testid="marmara-designs-status"
+                            @update:model-value="setStatus(String($event))"
+                        >
+                            <NativeSelectOption v-for="status in statusOptions" :key="status" :value="status">
+                                {{ t(`statuses.${status}`) }}
+                            </NativeSelectOption>
+                        </NativeSelect>
+                        <p v-if="!canApprove" class="text-xs text-muted-foreground">{{ t('detail.status_needs_approver') }}</p>
+                    </div>
+                    <div class="flex flex-col gap-1.5">
+                        <label class="text-sm font-medium" for="marmara-designs-tag-input">{{ t('detail.tags') }}</label>
+                        <div class="flex flex-wrap gap-1">
+                            <Badge v-for="tag in tags" :key="tag" variant="secondary" class="gap-1">
+                                #{{ tag }}
+                                <button type="button" class="cursor-pointer" :aria-label="`${tag} ×`" @click="tags = tags.filter((item) => item !== tag)">
+                                    <IconX class="size-3" />
+                                </button>
+                            </Badge>
+                        </div>
+                        <div class="flex gap-2">
+                            <Input
+                                id="marmara-designs-tag-input"
+                                v-model="tagDraft"
+                                maxlength="50"
+                                :placeholder="t('detail.tags_placeholder')"
+                                data-testid="marmara-designs-tag-input"
+                                @keydown.enter.prevent="addTag"
+                            />
+                            <Button v-if="tagsChanged" variant="outline" data-testid="marmara-designs-tags-save" @click="saveTags">
+                                {{ t('detail.save_tags') }}
+                            </Button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Metadata -->
+                <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-sm">
+                    <dt class="text-muted-foreground">{{ t('detail.uploader') }}</dt>
+                    <dd class="truncate">{{ design.uploader.name ?? '—' }}<span v-if="design.owner_email" class="text-muted-foreground"> · {{ design.owner_email }}</span></dd>
+                    <template v-if="design.modifier.name">
+                        <dt class="text-muted-foreground">{{ t('detail.last_editor') }}</dt>
+                        <dd class="truncate">{{ design.modifier.name }}</dd>
+                    </template>
+                    <dt class="text-muted-foreground">{{ t('detail.created') }}</dt>
+                    <dd>{{ formatDateTime(design.created_at) }}</dd>
+                    <dt class="text-muted-foreground">{{ t('detail.modified') }}</dt>
+                    <dd>{{ formatDateTime(design.modified_at) }}</dd>
+                    <dt class="text-muted-foreground">{{ t('detail.type') }}</dt>
+                    <dd>{{ t(`kinds.${design.kind}`) }} · {{ design.mime_type }}</dd>
+                    <template v-if="design.width && design.height">
+                        <dt class="text-muted-foreground">{{ t('detail.dimensions') }}</dt>
+                        <dd>{{ design.width }} × {{ design.height }}</dd>
+                    </template>
+                    <template v-if="design.size">
+                        <dt class="text-muted-foreground">{{ t('detail.size') }}</dt>
+                        <dd>{{ formatBytes(design.size) }}</dd>
+                    </template>
+                </dl>
+
+                <!-- "Bu tasarım, X'in yeni sürümü" -->
+                <section class="flex flex-col gap-1.5">
+                    <label class="text-sm font-medium" for="marmara-designs-link">{{ t('versions.link_label') }}</label>
+                    <div class="flex flex-wrap gap-2">
+                        <NativeSelect id="marmara-designs-link" v-model="linkTarget" class="h-8 min-w-48 flex-1 py-1" data-testid="marmara-designs-link-select">
+                            <NativeSelectOption value="">{{ t('versions.link_placeholder') }}</NativeSelectOption>
+                            <NativeSelectOption v-for="candidate in linkCandidates" :key="candidate.id" :value="candidate.id">
+                                {{ candidate.title }}<template v-if="candidate.folder"> — {{ candidate.folder }}</template>
+                            </NativeSelectOption>
+                        </NativeSelect>
+                        <Button variant="outline" :disabled="linkTarget === ''" data-testid="marmara-designs-link-save" @click="linkVersion">
+                            <IconLink class="size-4" />
+                            {{ t('versions.link_save') }}
+                        </Button>
+                        <Button v-if="design.family_id" variant="ghost" @click="visit('delete', url('versions'))">
+                            <IconUnlink class="size-4" />
+                            {{ t('versions.unlink') }}
+                        </Button>
+                    </div>
+                </section>
+
+                <!-- Comments -->
+                <section class="flex flex-col gap-2" data-testid="marmara-designs-comments">
+                    <h3 class="text-sm font-medium">{{ t('comments.title') }}</h3>
+                    <p v-if="design.comments_list.length === 0" class="text-sm text-muted-foreground">{{ t('comments.empty') }}</p>
+                    <div v-for="comment in design.comments_list" :key="comment.id" class="rounded-md border border-border p-2 text-sm">
+                        <p class="mb-1 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+                            <span class="font-medium text-foreground">{{ comment.author?.name ?? t('comments.unknown_author') }}</span>
+                            <span>{{ formatDateTime(comment.created_at) }}</span>
+                            <span v-if="comment.edited_at">({{ t('comments.edited') }})</span>
+                            <span v-if="comment.mine && editing !== comment.id" class="ml-auto flex gap-1">
+                                <Button size="sm" variant="ghost" @click="startEdit(comment.id, comment.body)">{{ t('comments.edit') }}</Button>
+                                <Button size="sm" variant="ghost" @click="deleteComment(comment.id)">{{ t('comments.delete') }}</Button>
+                            </span>
+                        </p>
+                        <div v-if="editing === comment.id" class="flex flex-col gap-2">
+                            <Textarea v-model="editBody" rows="2" />
+                            <div class="flex justify-end gap-2">
+                                <Button size="sm" variant="ghost" @click="editing = null">{{ t('comments.cancel') }}</Button>
+                                <Button size="sm" :disabled="editBody.trim() === ''" @click="saveEdit(comment.id)">{{ t('comments.save') }}</Button>
+                            </div>
+                        </div>
+                        <p v-else class="whitespace-pre-line">{{ comment.body }}</p>
+                    </div>
+                    <form class="flex flex-col gap-2" @submit.prevent="sendComment">
+                        <Textarea v-model="commentForm.body" rows="2" :placeholder="t('comments.placeholder')" data-testid="marmara-designs-comment-text" />
+                        <InputError :message="commentForm.errors.body" />
+                        <Button type="submit" class="self-end" :disabled="commentForm.processing || commentForm.body.trim() === ''" data-testid="marmara-designs-comment-send">
+                            <IconSend class="size-4" />
+                            {{ t('comments.send') }}
+                        </Button>
+                    </form>
+                </section>
+
+                <!-- Activity -->
+                <section v-if="design.activity.length > 0" class="flex flex-col gap-1">
+                    <h3 class="text-sm font-medium">{{ t('detail.activity') }}</h3>
+                    <ul class="flex flex-col gap-1 text-xs text-muted-foreground">
+                        <li v-for="entry in design.activity" :key="entry.id">
+                            <span class="font-medium text-foreground">{{ entry.user?.name ?? t('activity.someone') }}</span>
+                            · {{ activityText(entry.type, entry.data) }} · {{ formatDateTime(entry.created_at) }}
+                        </li>
+                    </ul>
+                </section>
+            </div>
+        </SheetContent>
+    </Sheet>
+</template>

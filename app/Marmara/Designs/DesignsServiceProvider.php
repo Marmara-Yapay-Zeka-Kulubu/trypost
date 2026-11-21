@@ -15,8 +15,10 @@ use App\Marmara\Designs\Sync\DesignSync;
 use App\Marmara\Designs\Thumbnails\ThumbnailCache;
 use App\Models\User;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
+use Inertia\Inertia;
 
 /**
  * Marmara AI fork module: the "Tasarımlar" gallery of the club's shared
@@ -60,6 +62,20 @@ class DesignsServiceProvider extends ServiceProvider
                 ->withoutOverlapping()
                 ->onOneServer()
                 ->when(fn (): bool => $this->app->make(DesignsConfig::class)->enabled());
+        });
+
+        // The sidebar entry (resources/js/marmara/designs/nav.ts) reads this.
+        Inertia::share('marmaraDesigns', function (): ?array {
+            $user = Auth::user();
+
+            if (! $this->app->make(DesignsConfig::class)->enabled() || ! $user instanceof User || $user->currentWorkspace === null) {
+                return null;
+            }
+
+            return [
+                'href' => route('marmara.designs.index'),
+                'label' => DesignsTranslations::forLocale($this->app->getLocale())['title'] ?? 'Designs',
+            ];
         });
 
         if ($this->app->runningInConsole()) {
