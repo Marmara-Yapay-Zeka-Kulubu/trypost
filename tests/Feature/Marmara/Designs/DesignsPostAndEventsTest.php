@@ -144,7 +144,7 @@ test('the mcp tools list, read and comment on designs, and hide while the module
 
     TryPostServer::actingAs($this->owner)->tool(ListDesignsTool::class, ['folder' => 'Bahar Şenliği'])
         ->assertOk()
-        ->assertSee('Bahar afişi');
+        ->assertSee($this->design->id);
 
     TryPostServer::actingAs($this->owner)->tool(GetDesignTool::class, ['design_id' => $this->design->id])
         ->assertOk()
