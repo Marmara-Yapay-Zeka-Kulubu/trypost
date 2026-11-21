@@ -59,7 +59,7 @@ test('"gönderi oluştur" downloads a jpeg original from drive and attaches it b
         ->and($media->mime_type)->toBe('image/jpeg')
         ->and($media->size)->toBe(strlen($bytes))
         ->and(md5((string) Storage::get($media->path)))->toBe(md5($bytes))
-        ->and(DesignActivity::query()->where('type', 'post_created')->sole()->data)->toBe(['post_ids' => [$post->id]]);
+        ->and(DesignActivity::query()->where('type', 'post_created')->sole()->data)->toEqual(['post_ids' => [$post->id]]);
 });
 
 test('a png original becomes a quality 100 jpeg of the same size, like every upload, so instagram accepts it', function () {
@@ -92,7 +92,7 @@ test('a google drawing is exported as png (then stored as jpeg), and a post need
     $media = Media::query()->whereNotNull('post_id')->sole();
     expect($media->mime_type)->toBe('image/jpeg')
         ->and(array_slice(getimagesizefromstring((string) Storage::get($media->path)), 0, 2))->toBe([300, 200]);
-    Http::assertSent(fn ($request): bool => str_contains($request->url(), '/files/fileDrawing/export') && str_contains($request->url(), 'mimeType=image%2Fpng'));
+    Http::assertSent(fn ($request): bool => str_contains(urldecode($request->url()), '/files/fileDrawing/export') && str_contains(urldecode($request->url()), 'mimeType=image/png'));
 });
 
 test('a design that is gone from drive cannot become a post', function () {

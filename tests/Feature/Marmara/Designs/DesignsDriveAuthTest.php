@@ -28,12 +28,16 @@ test('the service account signs an RS256 jwt bearer assertion and caches the tok
 
     Http::assertSentCount(1);
     Http::assertSent(function (Request $request) use ($key): bool {
-        $assertion = (string) $request['assertion'];
+        if ($request->url() !== 'https://oauth2.googleapis.com/token') {
+            return false;
+        }
+
+        $assertion = (string) data_get($request->data(), 'assertion');
         [$header] = explode('.', $assertion);
         $claims = (array) JWT::decode($assertion, new Key($key['public_key'], 'RS256'));
 
         return $request->url() === 'https://oauth2.googleapis.com/token'
-            && $request['grant_type'] === 'urn:ietf:params:oauth:grant-type:jwt-bearer'
+            && data_get($request->data(), 'grant_type') === 'urn:ietf:params:oauth:grant-type:jwt-bearer'
             && json_decode(base64_decode(strtr($header, '-_', '+/')), true) == ['typ' => 'JWT', 'alg' => 'RS256', 'kid' => 'kid-123']
             && $claims['iss'] === $key['client_email']
             && $claims['scope'] === 'https://www.googleapis.com/auth/drive'

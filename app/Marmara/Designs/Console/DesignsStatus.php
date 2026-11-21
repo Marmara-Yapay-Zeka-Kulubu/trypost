@@ -94,7 +94,7 @@ class DesignsStatus extends Command
 
             if ($folderId !== null) {
                 $folder = $drive->file($folderId, 'id,name,mimeType,capabilities(canEdit,canAddChildren)');
-                $this->info("Folder: \"{$folder['name']}\" readable; can edit: ".(data_get($folder, 'capabilities.canEdit') ? 'yes' : 'no (share it as Editor: keepForever needs it)'));
+                $this->info('Folder: "'.data_get($folder, 'name', $folderId).'" readable; can edit: '.(data_get($folder, 'capabilities.canEdit') ? 'yes' : 'no (share it as Editor: keepForever needs it)'));
             }
         } catch (DriveException $exception) {
             $this->error($exception->getMessage());

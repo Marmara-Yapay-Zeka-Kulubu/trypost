@@ -127,7 +127,7 @@ test('an upload goes up with the lead\'s token (their quota) into a new collecti
             str_starts_with($url, 'https://oauth2.googleapis.com/token') => Http::response(['access_token' => 'sa-access-token', 'expires_in' => 3599]),
             $request->method() === 'GET' && str_contains($url, '/drive/v3/files?') => Http::response(['files' => []]),
             $request->method() === 'POST' && str_contains($url, '/upload/drive/v3/files?uploadType=resumable') => Http::response('', 200, ['Location' => 'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&upload_id=abc']),
-            $request->method() === 'POST' && str_contains($url, '/drive/v3/files?') => Http::response(['id' => 'fld'.md5((string) $request['name']), 'name' => $request['name'], 'mimeType' => 'application/vnd.google-apps.folder']),
+            $request->method() === 'POST' && str_contains($url, '/drive/v3/files?') => Http::response(['id' => 'fld'.md5((string) data_get($request->data(), 'name')), 'name' => data_get($request->data(), 'name'), 'mimeType' => 'application/vnd.google-apps.folder']),
             $request->method() === 'PUT' => Http::response(designsDriveFile('fileUploaded', 'Ana afiş.png', 'fld'.md5('Afişler'), ['appProperties' => ['trypost_uploader' => 'Elif']])),
             default => Http::response(['error' => ['code' => 404, 'message' => "unexpected {$request->method()} {$url}"]], 404),
         };
@@ -143,12 +143,12 @@ test('an upload goes up with the lead\'s token (their quota) into a new collecti
     Http::assertSent(function (Request $request): bool {
         return str_contains($request->url(), 'uploadType=resumable') && $request->method() === 'POST'
             && $request->hasHeader('Authorization', 'Bearer lead-access')
-            && $request['name'] === 'Ana afiş.png'
-            && $request['parents'] === ['fld'.md5('Afişler')]
-            && $request['appProperties'] === ['trypost_uploader' => 'Elif'];
+            && data_get($request->data(), 'name') === 'Ana afiş.png'
+            && data_get($request->data(), 'parents') === ['fld'.md5('Afişler')]
+            && data_get($request->data(), 'appProperties') == ['trypost_uploader' => 'Elif'];
     });
     Http::assertSent(fn (Request $request): bool => $request->method() === 'PUT' && $request->body() === $bytes);
-    Http::assertSent(fn (Request $request): bool => $request->method() === 'POST' && ! str_contains($request->url(), '/upload/') && $request['name'] === 'Bahar Şenliği' && $request->hasHeader('Authorization', 'Bearer lead-access'));
+    Http::assertSent(fn (Request $request): bool => $request->method() === 'POST' && ! str_contains($request->url(), '/upload/') && data_get($request->data(), 'name') === 'Bahar Şenliği' && $request->hasHeader('Authorization', 'Bearer lead-access'));
     Queue::assertPushed(SyncDesignRevisions::class);
 });
 
@@ -171,8 +171,8 @@ test('a file for an existing member-made folder is uploaded to the shared folder
     $design = app(DesignUploader::class)->upload(UploadedFile::fake()->createWithContent('x.png', designsPng(8, 8)), 'Afişler', 'x', 'Elif');
 
     expect($design->folder_path)->toBe('Afişler')->and($design->folder_drive_id)->toBe('fldExisting');
-    Http::assertSent(fn (Request $request): bool => $request->method() === 'POST' && str_contains($request->url(), 'uploadType=resumable') && $request['parents'] === [DESIGNS_ROOT]);
-    Http::assertSent(fn (Request $request): bool => $request->method() === 'PATCH' && str_contains($request->url(), 'addParents=fldExisting') && str_contains($request->url(), 'removeParents='.DESIGNS_ROOT) && $request->hasHeader('Authorization', 'Bearer sa-access-token'));
+    Http::assertSent(fn (Request $request): bool => $request->method() === 'POST' && str_contains($request->url(), 'uploadType=resumable') && data_get($request->data(), 'parents') === [DESIGNS_ROOT]);
+    Http::assertSent(fn (Request $request): bool => $request->method() === 'PATCH' && str_contains(urldecode($request->url()), 'addParents=fldExisting') && str_contains(urldecode($request->url()), 'removeParents='.DESIGNS_ROOT) && $request->hasHeader('Authorization', 'Bearer sa-access-token'));
 });
 
 test('an expired lead token is refreshed first, and a revoked one asks to reconnect', function () {

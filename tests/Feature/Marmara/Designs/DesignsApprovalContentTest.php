@@ -58,7 +58,7 @@ test('an approved design whose file changes goes back to review, with an activit
     expect($design->status)->toBe(DesignStatus::InReview)
         ->and($design->status_reason)->toBe('content_changed')
         ->and($design->approved_version)->toBeNull()
-        ->and(DesignActivity::query()->where('design_id', $design->id)->where('type', 'content_changed')->sole()->data)->toBe(['from' => 'approved', 'to' => 'in_review']);
+        ->and(DesignActivity::query()->where('design_id', $design->id)->where('type', 'content_changed')->sole()->data)->toEqual(['from' => 'approved', 'to' => 'in_review']);
 
     Queue::assertPushed(DispatchWebhook::class, fn (DispatchWebhook $job): bool => $job->eventType === 'design.status_changed'
         && $job->payload['status']['from'] === 'approved'

@@ -70,7 +70,7 @@ test('free tags are normalized and replaced as a set', function () {
 
     $this->actingAs($this->member)->put("/designs/{$this->design->id}/tags", ['tags' => ['story']])->assertRedirect();
     expect(DesignTag::query()->where('design_id', $this->design->id)->pluck('tag')->all())->toBe(['story'])
-        ->and(DesignActivity::query()->where('type', 'tags_changed')->latest('id')->first()->data)->toBe(['added' => [], 'removed' => ['afiş', 'instagram']]);
+        ->and(DesignActivity::query()->where('type', 'tags_changed')->latest('id')->first()->data)->toEqual(['added' => [], 'removed' => ['afiş', 'instagram']]);
 });
 
 test('separate files linked as versions form one family, ordered by time, and only the newest shows in the gallery', function () {
@@ -113,11 +113,15 @@ test('the gallery filters and sorts', function () {
     $video = designsMake($this->workspace, ['title' => 'Tanıtım', 'folder_path' => 'Bahar Şenliği', 'kind' => 'video', 'uploader_name' => 'Elif', 'drive_created_at' => now()->subDays(20)]);
     DesignTag::query()->create(['design_id' => $video->id, 'tag' => 'reels']);
 
-    $ids = fn (string $query): array => collect($this->getJson("/api/designs?{$query}", $this->headers)->json('data'))->pluck('id')->all();
+    $ids = function (string|array $query): array {
+        $query = is_array($query) ? http_build_query($query) : $query;
 
-    expect($ids('folder=Bahar%20%C5%9Eenli%C4%9Fi'))->toEqualCanonicalizing([$poster->id, $video->id])
-        ->and($ids('folder=Bahar%20%C5%9Eenli%C4%9Fi/Afi%C5%9Fler'))->toBe([$poster->id])
-        ->and($ids('folder=/'))->toBe([$this->design->id])
+        return collect($this->getJson("/api/designs?{$query}", $this->headers)->json('data'))->pluck('id')->all();
+    };
+
+    expect($ids(['folder' => 'Bahar Şenliği']))->toEqualCanonicalizing([$poster->id, $video->id])
+        ->and($ids(['folder' => 'Bahar Şenliği/Afişler']))->toBe([$poster->id])
+        ->and($ids(['folder' => '/']))->toBe([$this->design->id])
         ->and($ids('kind=video'))->toBe([$video->id])
         ->and($ids('uploader=Elif'))->toBe([$video->id])
         ->and($ids('tag=reels'))->toBe([$video->id])

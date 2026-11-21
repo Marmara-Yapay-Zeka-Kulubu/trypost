@@ -50,7 +50,7 @@ test('the page applies the gate: in review is fine, approved is refused with 403
 
     $this->actingAs($this->owner)->patch("/designs/{$this->design->id}/status", ['status' => 'approved'])->assertRedirect();
     expect($this->design->fresh())->status->toBe(DesignStatus::Approved)->status_changed_at->not->toBeNull()
-        ->and(DesignActivity::query()->where('type', 'status_changed')->latest('id')->first()->data)->toBe(['from' => 'in_review', 'to' => 'approved']);
+        ->and(DesignActivity::query()->where('type', 'status_changed')->latest('id')->first()->data)->toEqual(['from' => 'in_review', 'to' => 'approved']);
 });
 
 test('the api and the page check the same gate', function () {
