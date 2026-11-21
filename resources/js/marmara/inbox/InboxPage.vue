@@ -267,7 +267,6 @@ const act = (name: string): void => {
                 <Button
                     v-for="tab in statusTabs"
                     :key="tab"
-                    size="sm"
                     :variant="filters.status === tab ? 'default' : 'outline'"
                     :data-testid="`marmara-inbox-status-${tab}`"
                     @click="visit({ status: tab, item: null })"
@@ -279,6 +278,7 @@ const act = (name: string): void => {
                     :model-value="filters.platform ?? ''"
                     :aria-label="t('filters.platform')"
                     data-testid="marmara-inbox-platform"
+                    class="h-8 py-1"
                     @update:model-value="
                         visit({ platform: String($event || '') || null })
                     "
@@ -299,6 +299,7 @@ const act = (name: string): void => {
                     :model-value="filters.kind ?? ''"
                     :aria-label="t('filters.kind')"
                     data-testid="marmara-inbox-kind"
+                    class="h-8 py-1"
                     @update:model-value="
                         visit({ kind: String($event || '') || null })
                     "
