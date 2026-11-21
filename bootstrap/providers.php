@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Marmara\Designs\DesignsServiceProvider;
 use App\Marmara\Inbox\InboxServiceProvider;
 use App\Marmara\LinkedIn\LinkedInServiceProvider;
 use App\Marmara\Portal\PortalServiceProvider;
@@ -22,4 +23,6 @@ return [
     LinkedInServiceProvider::class,
     // Marmara AI fork: comments and DMs inbox (app/Marmara/README.md).
     InboxServiceProvider::class,
+    // Marmara AI fork: shared Drive design gallery (app/Marmara/README.md).
+    DesignsServiceProvider::class,
 ];
