@@ -109,7 +109,7 @@ return [
     'post' => [
         'create' => 'Gönderi oluştur',
         'title' => 'Bu tasarımdan gönderi taslağı',
-        'description' => "Orijinal dosya Drive'dan indirilir ve olduğu gibi (aynı kalite, aynı baytlar) yeni bir taslağa eklenir.",
+        'description' => "Orijinal dosya Drive'dan indirilip yeni bir taslağa eklenir. JPEG olduğu gibi kalır; PNG, WebP ve HEIC her yüklemede olduğu gibi %100 kaliteli JPEG'e çevrilir. Orijinal her zaman \"Orijinali indir\" ile ve Drive'da durur.",
         'channels' => 'Kanallar',
         'content' => 'Metin (isteğe bağlı)',
         'submit' => 'Taslağı oluştur',

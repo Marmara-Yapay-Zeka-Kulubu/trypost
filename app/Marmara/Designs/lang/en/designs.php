@@ -109,7 +109,7 @@ return [
     'post' => [
         'create' => 'Create post',
         'title' => 'Post draft from this design',
-        'description' => 'The original file is downloaded from Drive and added to a new draft as it is (same quality, same bytes).',
+        'description' => 'The original is downloaded from Drive and added to a new draft. A JPEG stays as it is; PNG, WebP and HEIC become quality 100 JPEG, like every upload. The original stays available through "Download original" and in Drive.',
         'channels' => 'Channels',
         'content' => 'Text (optional)',
         'submit' => 'Create draft',

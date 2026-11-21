@@ -19,9 +19,7 @@ use App\Models\Post;
 use App\Models\SocialAccount;
 use App\Models\User;
 use App\Support\HeicConverter;
-use App\Support\Media\ImageDimensions;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -31,11 +29,14 @@ use Illuminate\Validation\ValidationException;
  * `POST /api/uploads` + upload_token (a temporary upload of the workspace,
  * then HostInlineMedia + CreatePosts, which validate it for each channel).
  *
- * JPEG, PNG and WebP are stored byte for byte (Workspace::addMediaFromStoredPath,
- * not addMedia(), which would re-encode PNG/WebP as JPEG); videos and PDFs
- * are streamed to storage unchanged (addMediaFromPath, which also reads the
- * video length). HEIC is converted to JPEG like every HEIC upload, since no
- * network takes HEIC. A Google Drawing is exported as PNG.
+ * The file goes through TryPost's normal upload normalization
+ * (Workspace::addMediaFromPath, the same as addMedia()): a JPEG is stored
+ * byte for byte, PNG, WebP and HEIC become JPEG at quality 100 (visually
+ * lossless; the Instagram Graph API takes only JPEG images, and the
+ * publishers' resizing is tested on that path), videos and PDFs are streamed
+ * unchanged (with the video length read). A Google Drawing is exported as
+ * PNG and so becomes a JPEG too. The untouched original stays available
+ * through "Orijinali indir" and Drive.
  */
 class CreatePostFromDesign
 {
@@ -103,13 +104,6 @@ class CreatePostFromDesign
 
         $extension = DesignTypes::extensionFor($mime);
         $filename = Str::limit($design->title, 180, '').".{$extension}";
-
-        if ($type === MediaType::Image && ! HeicConverter::isHeicMime($mime)) {
-            $path = 'medias/'.Str::uuid().".{$extension}";
-            Storage::put($path, $bytes);
-
-            return $workspace->addMediaFromStoredPath($path, $filename, $mime, strlen($bytes), Media::COLLECTION_UPLOADS, ImageDimensions::fromBytes($bytes) ?? []);
-        }
 
         $base = (string) tempnam(sys_get_temp_dir(), 'marmara-design-');
         $temporary = "{$base}.{$extension}";

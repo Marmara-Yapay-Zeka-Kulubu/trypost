@@ -21,6 +21,7 @@ use App\Models\Media;
 use App\Models\Post;
 use App\Models\SocialAccount;
 use App\Models\Webhook;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 
@@ -38,8 +39,9 @@ beforeEach(function () {
     ]);
 });
 
-test('"gönderi oluştur" downloads the original from drive and attaches it byte for byte to a new draft', function () {
-    $bytes = designsPng(1080, 1350);
+test('"gönderi oluştur" downloads a jpeg original from drive and attaches it byte for byte to a new draft', function () {
+    $bytes = designsJpeg(1080, 1350);
+    $this->design->forceFill(['mime_type' => 'image/jpeg', 'name' => 'Bahar afişi.jpg'])->save();
     designsFakeDrive(content: ['filePoster' => $bytes]);
 
     $response = $this->actingAs($this->owner)->post("/designs/{$this->design->id}/posts", [
@@ -54,14 +56,32 @@ test('"gönderi oluştur" downloads the original from drive and attaches it byte
     expect($post->status)->toBe(PostStatus::Draft)
         ->and($post->social_account_id)->toBe($this->channel->id)
         ->and($post->content)->toBe('Bahar şenliğine bekleriz!')
-        ->and($media->mime_type)->toBe('image/png')
+        ->and($media->mime_type)->toBe('image/jpeg')
         ->and($media->size)->toBe(strlen($bytes))
-        ->and(Storage::get($media->path))->toBe($bytes)
         ->and(md5((string) Storage::get($media->path)))->toBe(md5($bytes))
         ->and(DesignActivity::query()->where('type', 'post_created')->sole()->data)->toBe(['post_ids' => [$post->id]]);
 });
 
-test('a google drawing becomes a png export, and a post needs at least one channel', function () {
+test('a png original becomes a quality 100 jpeg of the same size, like every upload, so instagram accepts it', function () {
+    $png = designsPng(1080, 1350);
+    designsFakeDrive(content: ['filePoster' => $png]);
+
+    $this->actingAs($this->owner)->post("/designs/{$this->design->id}/posts", ['social_account_ids' => [$this->channel->id]])->assertRedirect();
+
+    $media = Media::query()->whereNotNull('post_id')->sole();
+    $stored = (string) Storage::get($media->path);
+    $size = getimagesizefromstring($stored);
+
+    expect($media->mime_type)->toBe('image/jpeg')
+        ->and($size['mime'])->toBe('image/jpeg')
+        ->and([$size[0], $size[1]])->toBe([1080, 1350])
+        ->and($stored)->not->toBe($png);
+
+    // The untouched original is still what "Orijinali indir" streams from Drive.
+    expect($this->actingAs($this->owner)->get("/designs/{$this->design->id}/original")->streamedContent())->toBe($png);
+});
+
+test('a google drawing is exported as png (then stored as jpeg), and a post needs at least one channel', function () {
     $drawing = designsMake($this->workspace, ['drive_file_id' => 'fileDrawing', 'mime_type' => 'application/vnd.google-apps.drawing', 'kind' => 'drawing', 'size' => null]);
     $png = designsPng(300, 200);
     designsFakeDrive(content: ['fileDrawing@export' => $png]);
@@ -69,7 +89,10 @@ test('a google drawing becomes a png export, and a post needs at least one chann
     $this->actingAs($this->owner)->post("/designs/{$drawing->id}/posts", ['social_account_ids' => []])->assertSessionHasErrors('social_account_ids');
 
     $this->actingAs($this->owner)->post("/designs/{$drawing->id}/posts", ['social_account_ids' => [$this->channel->id]])->assertRedirect();
-    expect(Storage::get(Media::query()->whereNotNull('post_id')->sole()->path))->toBe($png);
+    $media = Media::query()->whereNotNull('post_id')->sole();
+    expect($media->mime_type)->toBe('image/jpeg')
+        ->and(array_slice(getimagesizefromstring((string) Storage::get($media->path)), 0, 2))->toBe([300, 200]);
+    Http::assertSent(fn ($request): bool => str_contains($request->url(), '/files/fileDrawing/export') && str_contains($request->url(), 'mimeType=image%2Fpng'));
 });
 
 test('a design that is gone from drive cannot become a post', function () {

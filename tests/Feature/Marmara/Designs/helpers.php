@@ -235,3 +235,16 @@ function designsPng(int $width = 1200, int $height = 900): string
 
     return (string) ob_get_clean();
 }
+
+/**
+ * A real JPEG of the given size (GD).
+ */
+function designsJpeg(int $width = 1080, int $height = 1350): string
+{
+    $image = imagecreatetruecolor($width, $height);
+    imagefilledrectangle($image, 0, 0, intdiv($width, 3), $height, (int) imagecolorallocate($image, 20, 120, 200));
+    ob_start();
+    imagejpeg($image, null, 90);
+
+    return (string) ob_get_clean();
+}

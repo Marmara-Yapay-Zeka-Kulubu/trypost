@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * Marmara AI fork: "Gönderi oluştur" — a draft with the design's original
- * attached byte for byte, for the channels picked here (app/Marmara/README.md,
+ * attached (JPEG as is, PNG/WebP/HEIC as q100 JPEG) for the channels picked here (app/Marmara/README.md,
  * Designs). The server downloads the original from Drive.
  */
 import { useForm } from '@inertiajs/vue3';

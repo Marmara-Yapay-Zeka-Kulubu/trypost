@@ -1159,7 +1159,7 @@ Club members put their designs into one Google Drive folder that lives in
 the club lead's personal Drive. The "Tasarımlar" page shows that folder as a
 gallery: classify (status, free tags), filter, sort, comment, vote, see the
 older and newer versions of a design side by side, and turn an approved one
-into a post draft at original quality. Echo / Hermes get the same through
+into a post draft (JPEG as is, other images as quality 100 JPEG). Echo / Hermes get the same through
 the REST API, three MCP tools and the `design.*` webhooks. Variables:
 `marmara/designs.env.example`.
 
@@ -1175,7 +1175,7 @@ the REST API, three MCP tools and the `design.*` webhooks. Variables:
 | `app/Marmara/Designs/Models/*`, `database/migrations/` | `marmara_designs`, `marmara_design_folders`, `marmara_design_revisions`, `marmara_design_sync_states`, `marmara_design_thumbnails`, `marmara_design_tags`, `marmara_design_comments`, `marmara_design_votes`, `marmara_design_activities`, `marmara_design_drive_connections` |
 | `app/Marmara/Designs/DesignPolicy.php` | Who may do what (below); `set-design-status`, `update-design-comment`, `delete-design-comment` gates |
 | `app/Marmara/Designs/Actions/DesignActions.php` | Status, tags, comments, votes, version links, one activity line each; shared by the page, the API and MCP |
-| `app/Marmara/Designs/Actions/CreatePostFromDesign.php` | "Gönderi oluştur" |
+| `app/Marmara/Designs/Actions/CreatePostFromDesign.php` | "Gönderi oluştur" (TryPost's upload normalization: PNG/WebP/HEIC to JPEG q100) |
 | `app/Marmara/Designs/Thumbnails/*` | The thumbnail proxy's source and the bounded LRU cache |
 | `app/Marmara/Designs/Upload/*` | "Drive'a yükleme izni" (OAuth, drive.file) and `DesignUploader::upload()` |
 | `app/Marmara/Designs/DesignPayload.php`, `DesignQuery.php` | The one design shape (page, API, MCP, webhooks) and the filters / sorts |
@@ -1294,10 +1294,14 @@ the server's copy, after `App\Marmara\Inbox\InboxServiceProvider::class,`
 `POST /designs/{id}/posts` `{social_account_ids[], content}` downloads the
 original on the server and makes it a temporary upload of the workspace,
 then `HostInlineMedia` + `CreatePosts` create one draft per channel, exactly
-like the Echo bridge's `/api/uploads` + `upload_token`. JPEG, PNG and WebP are
-stored byte for byte (not `addMedia()`, which re-encodes PNG/WebP as JPEG);
-video and PDF are streamed unchanged; HEIC is converted to JPEG (no network
-takes HEIC); a Drawing is exported as PNG. Each channel's media rules still
+like the Echo bridge's `/api/uploads` + `upload_token`. The file takes
+TryPost's normal upload normalization (`addMediaFromPath`, the same as
+`addMedia()`): a JPEG is stored byte for byte; PNG, WebP and HEIC become JPEG
+at quality 100 (visually lossless; the Instagram Graph API takes only JPEG
+images, and the publishers' resizing for Instagram, X and LinkedIn is tested
+on that path); video and PDF are streamed unchanged; a Drawing is exported as
+PNG and so becomes a JPEG too. The untouched original stays available through
+"Orijinali indir" (`/designs/{id}/original`, streamed from Drive) and in Drive. Each channel's media rules still
 apply (e.g. a PDF on Instagram is refused with TryPost's own message). The
 composer of the first draft opens.
 
