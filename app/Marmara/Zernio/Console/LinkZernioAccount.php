@@ -9,6 +9,7 @@ use App\Enums\SocialAccount\Platform;
 use App\Enums\SocialAccount\Status;
 use App\Marmara\Zernio\Exceptions\ZernioPublishException;
 use App\Marmara\Zernio\ZernioAccountHealth;
+use App\Marmara\Zernio\ZernioChannelAvatar;
 use App\Marmara\Zernio\ZernioClient;
 use App\Marmara\Zernio\ZernioConfig;
 use App\Models\SocialAccount;
@@ -104,13 +105,19 @@ class LinkZernioAccount extends Command
             return self::FAILURE;
         }
 
-        $picture = data_get($zernio, 'profilePicture');
+        // Copied to TryPost's storage like a native connect does: the column
+        // holds a storage path. A failed download leaves it as is, and the
+        // connection checks try again while it is missing.
+        $avatar = ZernioChannelAvatar::download($zernio);
+
+        if ($avatar === null && filled(data_get($zernio, 'profilePicture'))) {
+            $this->warn('Could not download the Zernio profile picture; the avatar is left as it was (see the uploadFromUrl warning in the log).');
+        }
+
         $values = array_filter([
             'username' => $username !== '' ? $username : null,
             'display_name' => data_get($zernio, 'displayName') ?: null,
-            // Copied to TryPost's storage like a native connect does: the
-            // column holds a storage path. A failed download leaves it as is.
-            'avatar_url' => is_string($picture) && $picture !== '' ? uploadFromUrl($picture) : null,
+            'avatar_url' => $avatar,
         ], fn (mixed $value): bool => is_string($value) && $value !== '');
         $meta = array_filter([
             'zernio_account_id' => $zernioAccountId,

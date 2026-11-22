@@ -395,7 +395,10 @@ publish guard) nor for analytics or the connection checks:
 the TryPost channel of an account connected only to Zernio (TikTok or a
 LinkedIn page): platform from Zernio, `username`, `display_name`,
 `avatar_url` (Zernio `profilePicture`, downloaded to TryPost's storage with
-`uploadFromUrl()` like a native connect; left empty if the download fails),
+`uploadFromUrl()` like a native connect; left as it was, with a warning, if
+the download fails; while a mapped channel's avatar is missing, a remote URL
+or a file that is gone, the daily connection check downloads Zernio's
+`profilePicture` again, at most once a day, in `ZernioChannelAvatar`),
 `platform_user_id` (Zernio
 `platformUserId`, else `zernio:{id}`), `meta.organization_id` for a LinkedIn
 page when Zernio reports `urn:li:organization:{id}`, status `connected`, a

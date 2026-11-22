@@ -252,9 +252,67 @@ test('marmara:zernio:link leaves the avatar empty when it cannot be downloaded',
     ]);
 
     $this->artisan('marmara:zernio:link', ['zernioAccountId' => ZERNIO_EL_LINKEDIN, '--workspace' => $this->account->workspace_id])
+        ->expectsOutputToContain('Could not download the Zernio profile picture')
         ->assertSuccessful();
 
     expect(SocialAccount::query()->where('platform', Platform::LinkedInPage)->sole()->getRawOriginal('avatar_url'))->toBeNull();
+});
+
+test('the connection check downloads the Zernio profile picture of a mapped channel without a working avatar', function (?string $stored) {
+    Storage::fake();
+    fakePublicDns();
+    $this->account->forceFill(['avatar_url' => $stored])->save();
+    Http::fake([
+        ZERNIO_EL_API.'/accounts*' => Http::response(zernioEligibilityAccounts(['profilePicture' => 'https://media.zernio.test/tt.jpg'])),
+        'media.zernio.test/*' => Http::response('jpg-bytes', 200, ['Content-Type' => 'image/jpeg']),
+        '*' => Http::response([], 500),
+    ]);
+
+    expect(app(ConnectionVerifier::class)->verify($this->account))->toBeTrue();
+
+    $path = $this->account->fresh()->getRawOriginal('avatar_url');
+
+    expect($path)->toStartWith('social-accounts/')->toEndWith('.jpg');
+    Storage::assertExists($path);
+
+    // Tried at most once a day: a second check in the same day downloads nothing.
+    $this->account->forceFill(['avatar_url' => null])->save();
+    app(ConnectionVerifier::class)->verify($this->account->fresh());
+
+    expect($this->account->fresh()->getRawOriginal('avatar_url'))->toBeNull();
+    Http::assertSentCount(2);
+})->with([
+    'none stored' => [null],
+    'a remote url stored by an earlier link' => ['https://p16-sign.tiktokcdn.test/expired.jpeg?x-expires=1'],
+    'a stored file that is gone' => ['social-accounts/gone.jpg'],
+]);
+
+test('the connection check keeps the avatar a mapped channel already has', function () {
+    Storage::fake();
+    Storage::put('social-accounts/current.jpg', 'jpg-bytes');
+    $this->account->forceFill(['avatar_url' => 'social-accounts/current.jpg'])->save();
+    Http::fake([
+        ZERNIO_EL_API.'/accounts*' => Http::response(zernioEligibilityAccounts(['profilePicture' => 'https://media.zernio.test/tt.jpg'])),
+        '*' => Http::response([], 500),
+    ]);
+
+    expect(app(ConnectionVerifier::class)->verify($this->account))->toBeTrue()
+        ->and($this->account->fresh()->getRawOriginal('avatar_url'))->toBe('social-accounts/current.jpg');
+    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), 'media.zernio.test'));
+});
+
+test('a profile picture that cannot be downloaded leaves the mapped channel connected and as it was', function () {
+    Storage::fake();
+    fakePublicDns();
+    $this->account->forceFill(['avatar_url' => null])->save();
+    Http::fake([
+        ZERNIO_EL_API.'/accounts*' => Http::response(zernioEligibilityAccounts(['profilePicture' => 'https://media.zernio.test/expired.jpg'])),
+        'media.zernio.test/*' => Http::response('', 403),
+        '*' => Http::response([], 500),
+    ]);
+
+    expect(app(ConnectionVerifier::class)->verify($this->account))->toBeTrue()
+        ->and($this->account->fresh()->getRawOriginal('avatar_url'))->toBeNull();
 });
 
 test('a post whose Zernio analytics are pending is neither cached nor written as zeros', function () {

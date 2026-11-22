@@ -76,13 +76,25 @@ class ZernioConnectionVerifier extends ConnectionVerifier
     private function verifyThroughZernio(SocialAccount $account): bool
     {
         $zernioAccountId = (string) $this->zernioAccount($account);
+        $zernioPlatform = ZernioConfig::zernioPlatform($account->platform);
 
-        return match ($this->health->status($zernioAccountId, ZernioConfig::zernioPlatform($account->platform))) {
-            ZernioAccountHealth::HEALTHY => true,
+        return match ($this->health->status($zernioAccountId, $zernioPlatform)) {
+            ZernioAccountHealth::HEALTHY => $this->healthy($account, $zernioAccountId, $zernioPlatform),
             ZernioAccountHealth::UNHEALTHY => throw new TokenExpiredException("The Zernio account {$zernioAccountId} needs to be reconnected in Zernio."),
             ZernioAccountHealth::MISSING => throw new TokenExpiredException("The Zernio account {$zernioAccountId} is not connected to Zernio."),
             default => throw new PlatformUnavailableException('Zernio could not be asked about the account.'),
         };
+    }
+
+    /**
+     * A healthy Zernio account is also the one place a missing avatar comes
+     * back from: the same (cached) listing carries its `profilePicture`.
+     */
+    private function healthy(SocialAccount $account, string $zernioAccountId, string $zernioPlatform): bool
+    {
+        ZernioChannelAvatar::refreshIfMissing($account, $this->health->account($zernioAccountId, $zernioPlatform));
+
+        return true;
     }
 
     private function zernioAccount(SocialAccount $account): ?string
