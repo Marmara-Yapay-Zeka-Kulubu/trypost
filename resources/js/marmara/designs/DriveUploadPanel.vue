@@ -1,11 +1,14 @@
 <script setup lang="ts">
 /**
- * Marmara AI fork: "Drive'a yükleme izni" for workspace admins (the club
- * lead): connect the lead's Google account (drive.file), then pick the shared
- * folder once in the Google Picker. See app/Marmara/README.md, Designs.
+ * Marmara AI fork: the short notice admins (the club lead) see while uploads
+ * from the site still need a step: connect the lead's Google account
+ * (drive.file), then pick the shared folder once in the Google Picker. Shown
+ * only for `needs_connection` and `needs_folder` (see
+ * DesignsPageController::driveUpload); the notice is styled like TryPost's
+ * own info notices (ImportCoverage). See app/Marmara/README.md, Designs.
  */
 import { router, usePage } from '@inertiajs/vue3';
-import { IconBrandGoogleDrive, IconCheck, IconFolderPlus, IconUnlink } from '@tabler/icons-vue';
+import { IconBrandGoogleDrive, IconFolderPlus, IconPlugConnected } from '@tabler/icons-vue';
 import { ref } from 'vue';
 import { toast } from 'vue-sonner';
 
@@ -58,49 +61,42 @@ const grantFolder = async (): Promise<void> => {
         picking.value = false;
     }
 };
-
-const disconnect = (): void => {
-    router.delete(props.urls.drive_disconnect, { preserveScroll: true });
-};
 </script>
 
 <template>
     <div
-        class="flex flex-wrap items-center gap-2 rounded-lg border border-border-strong bg-card p-3 text-sm"
+        class="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg bg-info-subtle px-4 py-3 text-sm text-foreground"
+        role="status"
         data-testid="marmara-designs-drive-panel"
     >
-        <IconBrandGoogleDrive class="size-4 shrink-0 text-muted-foreground" />
-        <span class="font-medium">{{ t('drive.section') }}</span>
+        <IconBrandGoogleDrive class="size-4 shrink-0 text-info-text" aria-hidden="true" />
+        <span class="min-w-0 flex-1">
+            {{ drive.state === 'needs_folder' ? t('drive.notice_folder') : t('drive.notice_connect') }}
+        </span>
 
-        <span v-if="!drive.configured" class="text-muted-foreground">{{ t('drive.not_configured') }}</span>
-
-        <template v-else-if="!drive.connected">
-            <Button as="a" :href="urls.drive_connect" variant="outline" class="ml-auto" data-testid="marmara-designs-drive-connect">
-                {{ t('drive.connect') }}
-            </Button>
-        </template>
-
-        <template v-else>
-            <span class="text-muted-foreground">{{ t('drive.connected_as', { email: drive.email ?? '' }) }}</span>
-            <span v-if="drive.folder_granted" class="inline-flex items-center gap-1 text-muted-foreground">
-                <IconCheck class="size-4" />{{ t('drive.folder_granted') }}
-            </span>
-            <div class="ml-auto flex flex-wrap gap-2">
-                <Button
-                    v-if="!drive.folder_granted"
-                    :variant="highlightPick ? 'default' : 'outline'"
-                    :disabled="picking"
-                    data-testid="marmara-designs-drive-grant"
-                    @click="grantFolder"
-                >
-                    <IconFolderPlus class="size-4" />
-                    {{ t('drive.grant_folder') }}
-                </Button>
-                <Button variant="ghost" data-testid="marmara-designs-drive-disconnect" @click="disconnect">
-                    <IconUnlink class="size-4" />
-                    {{ t('drive.disconnect') }}
-                </Button>
-            </div>
-        </template>
+        <Button
+            v-if="drive.state === 'needs_connection'"
+            as="a"
+            :href="urls.drive_connect"
+            variant="outline"
+            size="sm"
+            class="bg-card"
+            data-testid="marmara-designs-drive-connect"
+        >
+            <IconPlugConnected class="size-4" />
+            {{ t('drive.connect') }}
+        </Button>
+        <Button
+            v-else-if="drive.state === 'needs_folder'"
+            :variant="highlightPick ? 'default' : 'outline'"
+            size="sm"
+            :class="highlightPick ? '' : 'bg-card'"
+            :disabled="picking"
+            data-testid="marmara-designs-drive-grant"
+            @click="grantFolder"
+        >
+            <IconFolderPlus class="size-4" />
+            {{ t('drive.grant_folder') }}
+        </Button>
     </div>
 </template>

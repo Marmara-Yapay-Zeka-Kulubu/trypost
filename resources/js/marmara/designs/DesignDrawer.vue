@@ -23,12 +23,16 @@ import {
 import { computed, ref, watch, type Component } from 'vue';
 
 import InputError from '@/components/InputError.vue';
+import SearchableSelect from '@/components/SearchableSelect.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
+
+import DesignStatusBadge from './DesignStatusBadge.vue';
 
 import {
     fill,
@@ -103,8 +107,8 @@ const statusOptions = computed(() => {
     return ['draft', 'in_review', 'approved', 'used', 'archived'].filter((status) => allowed.has(status as SelectedDesign['status']));
 });
 
-const setStatus = (status: string): void => {
-    if (status !== props.design.status) {
+const setStatus = (status: unknown): void => {
+    if (typeof status === 'string' && status !== props.design.status) {
         visit('patch', url('status'), { status });
     }
 };
@@ -171,6 +175,13 @@ const deleteComment = (id: string): void => {
 
 const linkTarget = ref('');
 
+const linkOptions = computed(() =>
+    props.linkCandidates.map((candidate) => ({
+        value: candidate.id,
+        label: candidate.folder ? `${candidate.title} — ${candidate.folder}` : candidate.title,
+    })),
+);
+
 const linkVersion = (): void => {
     if (linkTarget.value !== '') {
         visit('post', url('versions'), { previous_id: linkTarget.value });
@@ -201,13 +212,12 @@ const activityText = (type: string, data: Record<string, unknown>): string => {
             :show-close-button="false"
             data-testid="marmara-designs-drawer"
         >
-            <SheetHeader class="sticky top-0 z-10 flex flex-row items-start gap-2 border-b border-border bg-background p-4">
+            <SheetHeader class="sticky top-0 z-10 flex flex-row items-start gap-2 border-b border-border-strong bg-background p-4 md:px-6">
                 <div class="flex min-w-0 flex-1 flex-col gap-1">
-                    <SheetTitle class="truncate" data-testid="marmara-designs-drawer-title">{{ design.title }}</SheetTitle>
+                    <SheetTitle class="truncate font-heading text-lg font-medium" data-testid="marmara-designs-drawer-title">{{ design.title }}</SheetTitle>
                     <SheetDescription class="flex flex-wrap items-center gap-2 text-xs">
-                        <Badge variant="secondary">{{ t(`statuses.${design.status}`) }}</Badge>
-                        <span v-if="design.folder">{{ design.folder }}</span>
-                        <span v-else>{{ t('filters.root_folder') }}</span>
+                        <DesignStatusBadge :status="design.status" :label="t(`statuses.${design.status}`)" compact />
+                        <span class="truncate">{{ design.folder || t('filters.root_folder') }}</span>
                     </SheetDescription>
                 </div>
                 <Button variant="ghost" size="icon" :aria-label="t('detail.close')" @click="emit('close')">
@@ -215,31 +225,34 @@ const activityText = (type: string, data: Record<string, unknown>): string => {
                 </Button>
             </SheetHeader>
 
-            <div class="flex flex-col gap-5 p-4">
-                <p v-if="design.removed" class="rounded-md border border-border-strong p-3 text-sm text-muted-foreground">
+            <div class="flex flex-col gap-6 p-4 md:px-6">
+                <p v-if="design.removed" class="flex items-start gap-2 rounded-lg bg-muted px-4 py-3 text-sm text-muted-foreground" role="status">
+                    <IconPhotoOff class="mt-0.5 size-4 shrink-0" aria-hidden="true" />
                     {{ t('detail.removed') }}
                 </p>
                 <p
                     v-if="design.status === 'in_review' && design.status_reason === 'content_changed'"
-                    class="flex items-start gap-2 rounded-md border border-border-strong p-3 text-sm"
+                    class="flex items-start gap-2 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:bg-amber-950 dark:text-amber-400"
+                    role="status"
                     data-testid="marmara-designs-content-changed"
                 >
-                    <IconAlertTriangle class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                    <IconAlertTriangle class="mt-0.5 size-4 shrink-0" aria-hidden="true" />
                     {{ t('detail.content_changed') }}
                 </p>
                 <p
                     v-if="design.status === 'used' && design.changed_after_use_at"
-                    class="flex items-start gap-2 rounded-md border border-border-strong p-3 text-sm"
+                    class="flex items-start gap-2 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:bg-amber-950 dark:text-amber-400"
+                    role="status"
                     data-testid="marmara-designs-changed-after-use"
                 >
-                    <IconAlertTriangle class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                    <IconAlertTriangle class="mt-0.5 size-4 shrink-0" aria-hidden="true" />
                     {{ t('detail.changed_after_use') }} ({{ formatDateTime(design.changed_after_use_at) }})
                 </p>
 
                 <!-- Preview, or two versions side by side -->
                 <div v-if="comparing && compared.length > 0" class="grid grid-cols-2 gap-2" data-testid="marmara-designs-compare">
                     <figure v-for="version in compared" :key="version.key" class="flex flex-col gap-1">
-                        <div class="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-muted">
+                        <div class="flex aspect-square items-center justify-center overflow-hidden rounded-xl border border-border bg-muted">
                             <img v-if="version.preview_url" :src="version.preview_url" :alt="`${version.label} ${version.title}`" class="max-h-full max-w-full object-contain" />
                             <IconPhotoOff v-else class="size-8 text-muted-foreground" />
                         </div>
@@ -249,7 +262,7 @@ const activityText = (type: string, data: Record<string, unknown>): string => {
                         </figcaption>
                     </figure>
                 </div>
-                <div v-else class="flex min-h-64 items-center justify-center overflow-hidden rounded-lg bg-muted">
+                <div v-else class="flex min-h-64 items-center justify-center overflow-hidden rounded-xl border border-border bg-muted">
                     <img v-if="previewUrl" :src="previewUrl" :alt="design.title" class="max-h-[70vh] max-w-full object-contain" data-testid="marmara-designs-preview" />
                     <component :is="kindIcon" v-else class="size-10 text-muted-foreground" />
                 </div>
@@ -279,8 +292,9 @@ const activityText = (type: string, data: Record<string, unknown>): string => {
                 <!-- Versions strip -->
                 <section v-if="design.versions.length > 1" class="flex flex-col gap-2" data-testid="marmara-designs-versions">
                     <div class="flex items-center gap-2">
-                        <h3 class="text-sm font-medium">{{ t('versions.title') }}</h3>
-                        <Button variant="outline" class="ml-auto" :aria-pressed="comparing" data-testid="marmara-designs-compare-toggle" @click="toggleCompare">
+                        <h3 class="font-heading text-base font-medium">{{ t('versions.title') }}</h3>
+                        <Badge variant="secondary" class="h-5 px-1.5">{{ design.versions.length }}</Badge>
+                        <Button variant="outline" size="sm" class="ms-auto" :aria-pressed="comparing" data-testid="marmara-designs-compare-toggle" @click="toggleCompare">
                             <IconColumns class="size-4" />
                             {{ comparing ? t('versions.close_compare') : t('versions.compare') }}
                         </Button>
@@ -291,12 +305,13 @@ const activityText = (type: string, data: Record<string, unknown>): string => {
                             v-for="version in design.versions"
                             :key="version.key"
                             type="button"
-                            class="flex w-24 shrink-0 flex-col gap-1 rounded-md border p-1 text-left text-xs"
+                            class="flex w-24 shrink-0 cursor-pointer flex-col gap-1 rounded-lg border bg-card p-1 text-start text-xs transition-colors hover:border-border-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
                             :class="(comparing ? compared.some((item) => item.key === version.key) : shown?.key === version.key) ? 'border-primary' : 'border-border'"
+                            :aria-pressed="comparing ? compared.some((item) => item.key === version.key) : shown?.key === version.key"
                             :data-testid="`marmara-designs-version-${version.label}`"
                             @click="pickVersion(version)"
                         >
-                            <span class="flex aspect-square items-center justify-center overflow-hidden rounded bg-muted">
+                            <span class="flex aspect-square items-center justify-center overflow-hidden rounded-md bg-muted">
                                 <img v-if="version.thumbnail_url" :src="version.thumbnail_url" :alt="version.label" loading="lazy" class="h-full w-full object-cover" />
                                 <IconPhotoOff v-else class="size-5 text-muted-foreground" :aria-label="t('versions.no_preview')" />
                             </span>
@@ -309,26 +324,30 @@ const activityText = (type: string, data: Record<string, unknown>): string => {
                 <!-- Status and tags -->
                 <section class="grid gap-4 sm:grid-cols-2">
                     <div class="flex flex-col gap-1.5">
-                        <label class="text-sm font-medium" for="marmara-designs-status">{{ t('detail.status') }}</label>
-                        <NativeSelect
-                            id="marmara-designs-status"
-                            :model-value="design.status"
-                            class="h-8 py-1"
-                            data-testid="marmara-designs-status"
-                            @update:model-value="setStatus(String($event))"
-                        >
-                            <NativeSelectOption v-for="status in statusOptions" :key="status" :value="status">
-                                {{ t(`statuses.${status}`) }}
-                            </NativeSelectOption>
-                        </NativeSelect>
+                        <Label for="marmara-designs-status">{{ t('detail.status') }}</Label>
+                        <Select :model-value="design.status" @update:model-value="setStatus">
+                            <SelectTrigger id="marmara-designs-status" class="w-full" data-testid="marmara-designs-status">
+                                <SelectValue>{{ t(`statuses.${design.status}`) }}</SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem
+                                    v-for="status in statusOptions"
+                                    :key="status"
+                                    :value="status"
+                                    :data-testid="`marmara-designs-status-option-${status}`"
+                                >
+                                    {{ t(`statuses.${status}`) }}
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
                         <p v-if="!canApprove" class="text-xs text-muted-foreground">{{ t('detail.status_needs_approver') }}</p>
                     </div>
                     <div class="flex flex-col gap-1.5">
-                        <label class="text-sm font-medium" for="marmara-designs-tag-input">{{ t('detail.tags') }}</label>
+                        <Label for="marmara-designs-tag-input">{{ t('detail.tags') }}</Label>
                         <div class="flex flex-wrap gap-1">
-                            <Badge v-for="tag in tags" :key="tag" variant="secondary" class="gap-1">
+                            <Badge v-for="tag in tags" :key="tag" variant="secondary" class="h-6 gap-1 px-2">
                                 #{{ tag }}
-                                <button type="button" class="cursor-pointer" :aria-label="`${tag} ×`" @click="tags = tags.filter((item) => item !== tag)">
+                                <button type="button" class="cursor-pointer rounded-sm text-muted-foreground hover:text-foreground" :aria-label="`${tag} ×`" @click="tags = tags.filter((item) => item !== tag)">
                                     <IconX class="size-3" />
                                 </button>
                             </Badge>
@@ -350,7 +369,7 @@ const activityText = (type: string, data: Record<string, unknown>): string => {
                 </section>
 
                 <!-- Metadata -->
-                <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-sm">
+                <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 rounded-xl border border-border p-4 text-sm">
                     <dt class="text-muted-foreground">{{ t('detail.uploader') }}</dt>
                     <dd class="truncate">{{ design.uploader.name ?? '—' }}<span v-if="design.owner_email" class="text-muted-foreground"> · {{ design.owner_email }}</span></dd>
                     <template v-if="design.modifier.name">
@@ -375,14 +394,17 @@ const activityText = (type: string, data: Record<string, unknown>): string => {
 
                 <!-- "Bu tasarım, X'in yeni sürümü" -->
                 <section class="flex flex-col gap-1.5">
-                    <label class="text-sm font-medium" for="marmara-designs-link">{{ t('versions.link_label') }}</label>
+                    <Label>{{ t('versions.link_label') }}</Label>
                     <div class="flex flex-wrap gap-2">
-                        <NativeSelect id="marmara-designs-link" v-model="linkTarget" class="h-8 min-w-48 flex-1 py-1" data-testid="marmara-designs-link-select">
-                            <NativeSelectOption value="">{{ t('versions.link_placeholder') }}</NativeSelectOption>
-                            <NativeSelectOption v-for="candidate in linkCandidates" :key="candidate.id" :value="candidate.id">
-                                {{ candidate.title }}<template v-if="candidate.folder"> — {{ candidate.folder }}</template>
-                            </NativeSelectOption>
-                        </NativeSelect>
+                        <div class="min-w-48 flex-1" data-testid="marmara-designs-link-select">
+                            <SearchableSelect
+                                v-model="linkTarget"
+                                :options="linkOptions"
+                                :placeholder="t('versions.link_placeholder')"
+                                :search-placeholder="t('filters.search_options')"
+                                :empty-text="t('filters.no_options')"
+                            />
+                        </div>
                         <Button variant="outline" :disabled="linkTarget === ''" data-testid="marmara-designs-link-save" @click="linkVersion">
                             <IconLink class="size-4" />
                             {{ t('versions.link_save') }}
@@ -396,9 +418,12 @@ const activityText = (type: string, data: Record<string, unknown>): string => {
 
                 <!-- Comments -->
                 <section class="flex flex-col gap-2" data-testid="marmara-designs-comments">
-                    <h3 class="text-sm font-medium">{{ t('comments.title') }}</h3>
+                    <h3 class="flex items-center gap-2 font-heading text-base font-medium">
+                        {{ t('comments.title') }}
+                        <Badge v-if="design.comments_list.length > 0" variant="secondary" class="h-5 px-1.5">{{ design.comments_list.length }}</Badge>
+                    </h3>
                     <p v-if="design.comments_list.length === 0" class="text-sm text-muted-foreground">{{ t('comments.empty') }}</p>
-                    <div v-for="comment in design.comments_list" :key="comment.id" class="rounded-md border border-border p-2 text-sm">
+                    <div v-for="comment in design.comments_list" :key="comment.id" class="rounded-xl border border-border bg-card p-3 text-sm">
                         <p class="mb-1 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
                             <span class="font-medium text-foreground">{{ comment.author?.name ?? t('comments.unknown_author') }}</span>
                             <span>{{ formatDateTime(comment.created_at) }}</span>
@@ -429,7 +454,7 @@ const activityText = (type: string, data: Record<string, unknown>): string => {
 
                 <!-- Activity -->
                 <section v-if="design.activity.length > 0" class="flex flex-col gap-1">
-                    <h3 class="text-sm font-medium">{{ t('detail.activity') }}</h3>
+                    <h3 class="font-heading text-base font-medium">{{ t('detail.activity') }}</h3>
                     <ul class="flex flex-col gap-1 text-xs text-muted-foreground">
                         <li v-for="entry in design.activity" :key="entry.id">
                             <span class="font-medium text-foreground">{{ entry.user?.name ?? (['added', 'content_changed', 'changed_after_use'].includes(entry.type) ? t('activity.drive') : t('activity.someone')) }}</span>

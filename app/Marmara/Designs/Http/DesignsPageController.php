@@ -16,8 +16,6 @@ use App\Marmara\Designs\Models\DesignSyncState;
 use App\Marmara\Designs\Models\DesignVote;
 use App\Marmara\Designs\Support\DesignStatus;
 use App\Marmara\Designs\Support\DesignTypes;
-use App\Marmara\Designs\Upload\DesignUploader;
-use App\Marmara\Designs\Upload\DesignUploadUnavailable;
 use App\Models\SocialAccount;
 use App\Models\User;
 use App\Models\Workspace;
@@ -57,7 +55,7 @@ class DesignsPageController extends Controller
         'urls',
     ];
 
-    public function index(Request $request, DesignsConfig $config, DesignUploader $uploader): Response
+    public function index(Request $request, DesignsConfig $config): Response
     {
         $workspace = $this->workspace($request);
         /** @var User $user */
@@ -107,7 +105,7 @@ class DesignsPageController extends Controller
                 'canCreatePost' => $user->can('createPost', $workspace),
                 'canManageDrive' => $user->can('update', $workspace),
             ],
-            'driveUpload' => $this->driveUpload($workspace, $config, $uploader),
+            'driveUpload' => $this->driveUpload($workspace, $user, $config),
             'syncInfo' => $this->syncInfo($workspace, $config),
             'postChannels' => $selected === null ? [] : SocialAccount::query()->where('workspace_id', $workspace->id)->orderBy('platform')->get()
                 ->map(fn (SocialAccount $account): array => ['id' => $account->id, 'name' => $account->display_name ?? $account->username, 'platform' => $account->platform->value, 'connected' => $account->status?->value === 'connected'])
@@ -121,29 +119,36 @@ class DesignsPageController extends Controller
     }
 
     /**
+     * What the page needs to decide the upload UI, without any setup detail:
+     *
+     * - `off`: uploads are not set up here (no OAuth client, no shared folder,
+     *   or another workspace). Nobody sees "Yükle" or a notice.
+     * - `needs_connection`: set up but the lead's Drive is not connected (or
+     *   the grant was revoked). Admins see "Bağla".
+     * - `needs_folder`: connected, the shared folder is not picked yet.
+     *   Admins see "Klasörü seç".
+     * - `ready`: members who may create posts see "Yükle".
+     *
      * @return array<string, mixed>
      */
-    private function driveUpload(Workspace $workspace, DesignsConfig $config, DesignUploader $uploader): array
+    private function driveUpload(Workspace $workspace, User $user, DesignsConfig $config): array
     {
         $connection = DesignDriveConnection::query()->where('workspace_id', $workspace->id)->first();
-        $message = null;
+        $manager = $user->can('update', $workspace);
 
-        try {
-            $uploader->connection();
-        } catch (DesignUploadUnavailable $unavailable) {
-            $message = $unavailable->getMessage();
-        }
-
-        $picker = $config->picker();
+        $state = match (true) {
+            ! $config->oauthConfigured() || $config->folderId() === null || $config->workspace()?->id !== $workspace->id => 'off',
+            $connection?->refresh_token === null => 'needs_connection',
+            $connection?->folder_granted_at === null => 'needs_folder',
+            default => 'ready',
+        };
 
         return [
-            'configured' => $config->oauthConfigured(),
-            'picker_configured' => $picker['api_key'] !== null,
-            'connected' => $connection?->refresh_token !== null,
-            'email' => $connection?->google_email,
-            'folder_granted' => $connection?->folder_granted_at !== null,
-            'available' => $message === null,
-            'message' => $message,
+            'state' => $state,
+            'can_upload' => $state === 'ready' && $user->can('createPost', $workspace),
+            'can_manage' => $state !== 'off' && $manager,
+            'email' => $state !== 'off' && $manager ? $connection?->google_email : null,
+            'picker_configured' => $config->picker()['api_key'] !== null,
             'max_mb' => intdiv($config->uploadMaxBytes(), 1048576),
         ];
     }

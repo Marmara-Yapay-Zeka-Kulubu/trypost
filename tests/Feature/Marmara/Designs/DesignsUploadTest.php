@@ -15,6 +15,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Inertia\Testing\AssertableInertia;
 
 beforeEach(function () {
     Queue::fake([SyncDesignRevisions::class]);
@@ -109,11 +110,11 @@ test('without the upload permission uploading is refused with a clear turkish me
     app()->setLocale('tr');
 
     expect(fn () => app(DesignUploader::class)->upload(UploadedFile::fake()->createWithContent('a.png', designsPng(10, 10)), '', 'Afiş', 'Elif'))
-        ->toThrow(DesignUploadUnavailable::class, "Drive'a yükleme izni verilmedi");
+        ->toThrow(DesignUploadUnavailable::class, 'Siteden yükleme için Drive bağlantısı gerekiyor');
 
     designsConnection($this->workspace, ['folder_granted_at' => null]);
     expect(fn () => app(DesignUploader::class)->upload(UploadedFile::fake()->createWithContent('a.png', designsPng(10, 10)), '', 'Afiş', 'Elif'))
-        ->toThrow(DesignUploadUnavailable::class, 'klasör izni eksik');
+        ->toThrow(DesignUploadUnavailable::class, 'ortak klasör henüz seçilmedi');
 });
 
 test('an upload goes up with the lead\'s token (their quota) into a new collection folder and is in the gallery at once', function () {
@@ -206,4 +207,78 @@ test('the page upload refuses unsupported files and shows the uploader message',
     $this->actingAs($this->owner)
         ->post('/designs/upload', ['file' => UploadedFile::fake()->createWithContent('notes.txt', 'hello')])
         ->assertSessionHasErrors('file');
+});
+
+test('without an oauth client the page shows no upload ui to anyone and names no setting', function () {
+    config()->set('marmara-designs.oauth.client_id', null);
+    designsConnection($this->workspace);
+
+    foreach ([$this->owner, workspaceMember($this->workspace, 'member')] as $user) {
+        $response = $this->actingAs($user)->get('/designs')->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('driveUpload.state', 'off')
+                ->where('driveUpload.can_upload', false)
+                ->where('driveUpload.can_manage', false)
+                ->where('driveUpload.email', null)
+                ->missing('driveUpload.message'));
+
+        expect(json_encode($response->viewData('page')['props']['copy'], JSON_UNESCAPED_UNICODE))->not->toContain('MARMARA_')
+            ->not->toContain('OAUTH');
+    }
+});
+
+test('a configured but unconnected drive asks only admins to connect', function () {
+    $this->actingAs($this->owner)->get('/designs')
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('driveUpload.state', 'needs_connection')
+            ->where('driveUpload.can_manage', true)
+            ->where('driveUpload.can_upload', false)
+            ->where('urls.drive_connect', route('marmara.designs.drive.connect')));
+
+    $this->actingAs(workspaceMember($this->workspace, 'member'))->get('/designs')
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('driveUpload.state', 'needs_connection')
+            ->where('driveUpload.can_manage', false)
+            ->where('driveUpload.can_upload', false));
+});
+
+test('a revoked connection counts as not connected', function () {
+    designsConnection($this->workspace, ['refresh_token' => null]);
+
+    $this->actingAs($this->owner)->get('/designs')
+        ->assertInertia(fn (AssertableInertia $page) => $page->where('driveUpload.state', 'needs_connection'));
+});
+
+test('a connection without the folder asks admins to choose it and keeps upload hidden', function () {
+    designsConnection($this->workspace, ['folder_granted_at' => null]);
+
+    $this->actingAs($this->owner)->get('/designs')
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('driveUpload.state', 'needs_folder')
+            ->where('driveUpload.can_manage', true)
+            ->where('driveUpload.can_upload', false)
+            ->where('driveUpload.email', 'lead@example.com'));
+
+    $this->actingAs(workspaceMember($this->workspace, 'member'))->get('/designs')
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('driveUpload.can_upload', false)
+            ->where('driveUpload.can_manage', false));
+});
+
+test('once connected members who may create posts see upload, and only admins see the connected account', function () {
+    designsConnection($this->workspace);
+
+    $this->actingAs(workspaceMember($this->workspace, 'member'))->get('/designs')
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('driveUpload.state', 'ready')
+            ->where('driveUpload.can_upload', true)
+            ->where('driveUpload.can_manage', false)
+            ->where('driveUpload.email', null));
+
+    $this->actingAs($this->owner)->get('/designs')
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('driveUpload.state', 'ready')
+            ->where('driveUpload.can_upload', true)
+            ->where('driveUpload.can_manage', true)
+            ->where('driveUpload.email', 'lead@example.com'));
 });

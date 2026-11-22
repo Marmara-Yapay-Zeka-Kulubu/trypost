@@ -92,15 +92,23 @@ export interface LinkCandidate {
     folder: string;
 }
 
+/**
+ * The upload UI's state (DesignsPageController::driveUpload): `off` shows
+ * nothing, `needs_connection` and `needs_folder` show admins a notice, and
+ * `ready` shows "Yükle" to members who may create posts (`can_upload`).
+ */
 export interface DriveUpload {
-    configured: boolean;
-    picker_configured: boolean;
-    connected: boolean;
+    state: 'off' | 'needs_connection' | 'needs_folder' | 'ready';
+    can_upload: boolean;
+    can_manage: boolean;
     email: string | null;
-    folder_granted: boolean;
-    available: boolean;
-    message: string | null;
+    picker_configured: boolean;
     max_mb: number;
+}
+
+export interface FilterOption {
+    value: string;
+    label: string;
 }
 
 export type Copy = Record<string, unknown>;

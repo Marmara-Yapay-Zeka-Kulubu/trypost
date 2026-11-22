@@ -63,10 +63,10 @@ const submit = (): void => {
         <DialogContent class="sm:max-w-md" data-testid="marmara-designs-upload-dialog">
             <DialogHeader>
                 <DialogTitle>{{ t('upload.title') }}</DialogTitle>
-                <DialogDescription v-if="!drive.available">{{ drive.message }}</DialogDescription>
+                <DialogDescription>{{ t('upload.too_large', { size: drive.max_mb }) }}</DialogDescription>
             </DialogHeader>
 
-            <form v-if="drive.available" class="flex flex-col gap-3" @submit.prevent="submit">
+            <form class="flex flex-col gap-3" @submit.prevent="submit">
                 <div class="flex flex-col gap-1.5">
                     <Label for="marmara-designs-upload-file">{{ t('upload.file') }}</Label>
                     <input

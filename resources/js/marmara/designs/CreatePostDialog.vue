@@ -10,6 +10,7 @@ import { IconSend } from '@tabler/icons-vue';
 import InputError from '@/components/InputError.vue';
 import PlatformLogo from '@/components/PlatformLogo.vue';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
     Dialog,
     DialogContent,
@@ -64,15 +65,13 @@ const submit = (): void => {
                     <label
                         v-for="channel in channels"
                         :key="channel.id"
-                        class="flex h-8 cursor-pointer items-center gap-2 rounded-md px-1 text-sm hover:bg-accent"
+                        class="flex min-h-8 cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 text-sm transition-control hover:bg-accent"
                         :class="{ 'opacity-60': !channel.connected }"
                     >
-                        <input
-                            type="checkbox"
-                            class="size-4"
-                            :checked="form.social_account_ids.includes(channel.id)"
+                        <Checkbox
+                            :model-value="form.social_account_ids.includes(channel.id)"
                             :data-testid="`marmara-designs-post-channel-${channel.id}`"
-                            @change="toggle(channel.id, ($event.target as HTMLInputElement).checked)"
+                            @update:model-value="(checked) => toggle(channel.id, checked === true)"
                         />
                         <PlatformLogo :platform="channel.platform" size="xs" />
                         <span class="truncate">{{ channel.name ?? getPlatformLabel(channel.platform) }}</span>

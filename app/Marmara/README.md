@@ -1316,7 +1316,7 @@ shows only for its members.
 | Set Onaylandı / Kullanıldı, or move a design away from them | Members who may approve posts (`WorkspacePolicy::approvePosts`: admins and members who publish directly); the `set-design-status` gate, on the page, the API and MCP alike |
 | Edit / delete a comment | Its author only |
 | "Gönderi oluştur", "Yükle" | `createPost` on the workspace |
-| "Drive'a yükleme izni" | Workspace admins (`update`) |
+| Drive connection ("Bağla", "Klasörü seç", "Bağlantıyı kaldır") | Workspace admins (`update`) |
 
 ### "Gönderi oluştur"
 
@@ -1339,14 +1339,21 @@ composer of the first draft opens.
 A service account has no storage quota, so it cannot create files in a
 personal Drive. Uploads use the lead's own Google token instead:
 
-1. An admin clicks "Drive'a yükleme izni ver" (OAuth web flow, PKCE, scope
+The page decides the upload UI from `driveUpload.state`
+(`DesignsPageController::driveUpload`): `off` (no OAuth client, no shared
+folder or another workspace) shows nothing to anyone; `needs_connection` and
+`needs_folder` show admins a short notice with "Bağla" / "Klasörü seç";
+`ready` shows "Yükle" to members who may create posts (`can_upload`). No
+setting or env var name is ever shown in the UI.
+
+1. An admin clicks "Bağla" (OAuth web flow, PKCE, scope
    `https://www.googleapis.com/auth/drive.file` only, `access_type=offline`,
    `prompt=consent`). The token is stored encrypted
    (`marmara_design_drive_connections`) and refreshed before it expires;
    `invalid_grant` disconnects and asks to reconnect.
 2. With drive.file the app may only write into folders it created or that
-   the user picked in the Google Picker, so the admin clicks "Klasöre erişim
-   ver" once and picks the shared folder. The server checks it is
+   the user picked in the Google Picker, so the admin clicks "Klasörü seç"
+   once and picks the shared folder. The server checks it is
    `MARMARA_DESIGNS_FOLDER_ID` and that the token can add children.
 3. `DesignUploader::upload($file, 'Bahar Şenliği/Afişler', 'Ana afiş', 'Elif')`
    (page now; API, MCP and Echo later): finds each folder of the path with the
@@ -1455,8 +1462,8 @@ personal Drive. Uploads use the lead's own Google token instead:
    reads the whole folder; the scheduler takes over every 5 minutes), then
    open "Tasarımlar". Revisions are read by queued jobs (Horizon, `default`
    queue) in the minutes after.
-5. Uploads (optional): as an admin, "Drive'a yükleme izni ver" with the lead's
-   Google account, then "Klasöre erişim ver" and pick the shared folder.
+5. Uploads (optional): as an admin, "Bağla" on the Tasarımlar notice with the
+   lead's Google account, then "Klasörü seç" and pick the shared folder.
 6. Echo: add `design.added`, `design.commented`, `design.status_changed` to
    Echo's webhook in Settings > Webhooks.
 
