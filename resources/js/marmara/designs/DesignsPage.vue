@@ -327,7 +327,7 @@ const syncNotice = computed((): string | null => {
                     :search-placeholder="t('filters.search_options')"
                     :empty-text="t('filters.no_options')"
                     test-id="marmara-designs-folder"
-                    @update:model-value="select(\'folder\')($event)"
+                    @update:model-value="select('folder')($event)"
                 />
                 <DesignsFilterSelect
                     :model-value="filters.uploader ?? ''"
@@ -339,7 +339,7 @@ const syncNotice = computed((): string | null => {
                     :search-placeholder="t('filters.search_options')"
                     :empty-text="t('filters.no_options')"
                     test-id="marmara-designs-uploader"
-                    @update:model-value="select(\'uploader\')($event)"
+                    @update:model-value="select('uploader')($event)"
                 />
                 <DesignsFilterSelect
                     :model-value="filters.status ?? ''"
@@ -348,7 +348,7 @@ const syncNotice = computed((): string | null => {
                     :all-label="t('filters.all_statuses')"
                     :icon="IconLayersSubtract"
                     test-id="marmara-designs-status-filter"
-                    @update:model-value="select(\'status\')($event)"
+                    @update:model-value="select('status')($event)"
                 />
                 <DesignsFilterSelect
                     v-if="filterOptions.tags.length > 0"
@@ -361,7 +361,7 @@ const syncNotice = computed((): string | null => {
                     :search-placeholder="t('filters.search_options')"
                     :empty-text="t('filters.no_options')"
                     test-id="marmara-designs-tag"
-                    @update:model-value="select(\'tag\')($event)"
+                    @update:model-value="select('tag')($event)"
                 />
                 <DesignsFilterSelect
                     :model-value="filters.kind ?? ''"
@@ -370,7 +370,7 @@ const syncNotice = computed((): string | null => {
                     :all-label="t('filters.all_kinds')"
                     :icon="IconFileText"
                     test-id="marmara-designs-kind"
-                    @update:model-value="select(\'kind\')($event)"
+                    @update:model-value="select('kind')($event)"
                 />
 
                 <div class="flex shrink-0 items-center">
@@ -417,7 +417,7 @@ const syncNotice = computed((): string | null => {
                     :label="t('filters.sort')"
                     :icon="IconArrowsSort"
                     test-id="marmara-designs-sort"
-                    @update:model-value="select(\'sort\')($event)"
+                    @update:model-value="select('sort')($event)"
                 />
 
                 <Button v-if="hasFilters" variant="ghost" class="text-muted-foreground" data-testid="marmara-designs-clear" @click="clearFilters">
