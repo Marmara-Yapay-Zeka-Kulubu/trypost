@@ -72,6 +72,7 @@ class DesignsServiceProvider extends ServiceProvider
 
         $this->loadMigrationsFrom(__DIR__.'/database/migrations');
         $this->loadTranslationsFrom(__DIR__.'/lang', 'marmara-designs');
+        $this->loadViewsFrom(__DIR__.'/resources/views', 'marmara-designs');
         $this->loadRoutesFrom(__DIR__.'/routes.php');
 
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {

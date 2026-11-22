@@ -12,6 +12,7 @@ use App\Marmara\Designs\Http\DesignsPageController;
 use App\Marmara\Designs\Http\DesignUploadController;
 use App\Marmara\Designs\Http\DriveConnectController;
 use App\Marmara\Designs\Http\EnsureDesignsEnabled;
+use App\Marmara\Designs\Http\PrivacyPolicyController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -62,3 +63,6 @@ Route::middleware(['api', 'auth:api', 'workspace.token', 'throttle:api', EnsureD
         Route::post('{design}/comments', [DesignsApiController::class, 'comment'])->middleware('throttle:30,1')->name('comments.store');
         Route::patch('{design}/status', [DesignsApiController::class, 'status'])->name('status');
     });
+
+// The public privacy policy for the Google OAuth consent screen: no auth, and on even while the module is off.
+Route::middleware('web')->get('gizlilik', PrivacyPolicyController::class)->name('marmara.privacy');
