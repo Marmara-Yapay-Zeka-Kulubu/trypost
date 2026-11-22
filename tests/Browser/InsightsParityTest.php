@@ -130,6 +130,22 @@ test('the header offers CSV and Markdown exports of the filtered page and explai
         ->assertNoJavaScriptErrors();
 });
 
+test('a channel avatar that cannot be loaded falls back to the initial and keeps the network badge', function () {
+    ['user' => $user, 'instagram' => $instagram] = insightsParitySetup();
+    // A frozen avatar URL that no longer answers, like an expired TikTok CDN link.
+    AnalyticsPublication::query()->where('social_account_id', $instagram->id)->update(['account_avatar_url' => 'http://127.0.0.1:9/expired-avatar.jpg']);
+    AnalyticsAccountDailySnapshot::query()->where('social_account_id', $instagram->id)->update(['account_avatar_url' => 'http://127.0.0.1:9/expired-avatar.jpg']);
+    $this->actingAs($user);
+
+    $page = visit(route('app.insights'));
+    waitFor($page, '@accounts-unovis-bar-chart');
+    waitForCount($page, '@analytics-axis-channel', 4, '>=');
+    waitForCount($page, '@analytics-axis-channel [data-slot=avatar] > div', 4);
+
+    $page->assertScript('document.querySelectorAll("[data-testid=analytics-axis-channel] [data-slot=avatar] img").length', 0)
+        ->assertScript('[...document.querySelectorAll("[data-testid=analytics-axis-channel]")].every((channel) => channel.querySelectorAll("img").length >= 1)', true);
+});
+
 test('followers and posts charts show network logos and say how many channels are shown', function () {
     ['user' => $user, 'instagram' => $instagram] = insightsParitySetup();
     $this->actingAs($user);

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { HTMLAttributes } from "vue"
-import { computed } from "vue"
+import { computed, onMounted, ref, useTemplateRef } from "vue"
 import { AvatarRoot } from "reka-ui"
 import { cn } from "@/lib/utils"
 import { getInitials } from "@/composables/useInitials"
@@ -13,6 +13,22 @@ const props = defineProps<{
 }>()
 
 const hasProps = computed(() => props.src !== undefined || props.name !== undefined)
+
+/** The src that failed to load, so a broken image shows the initials and a new src is tried again. */
+const failedSrc = ref<string | null>(null)
+const showImage = computed(() => !!props.src && failedSrc.value !== props.src)
+const image = useTemplateRef<HTMLImageElement>("image")
+
+const markFailed = () => {
+  failedSrc.value = props.src ?? null
+}
+
+// An image that already failed before hydration fired its error before the listener existed.
+onMounted(() => {
+  if (image.value?.complete && image.value.naturalWidth === 0) {
+    markFailed()
+  }
+})
 </script>
 
 <template>
@@ -22,10 +38,12 @@ const hasProps = computed(() => props.src !== undefined || props.name !== undefi
   >
     <template v-if="hasProps">
       <img
-        v-if="src"
+        v-if="showImage"
+        ref="image"
         :src="src"
         :alt="name"
         class="aspect-square size-full object-cover"
+        @error="markFailed"
       />
       <div
         v-else
