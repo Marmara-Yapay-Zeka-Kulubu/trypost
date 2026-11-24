@@ -17,6 +17,13 @@ return [
         'video' => 'Video',
         'drawing' => 'Çizim',
     ],
+    'sources' => [
+        'site' => 'Site',
+        'whatsapp' => 'WhatsApp',
+        'drive' => 'Drive',
+        'agent' => 'Asistan',
+        'label' => 'Kaynak',
+    ],
     'filters' => [
         'search' => 'Başlıkta ara',
         'folder' => 'Koleksiyon',

@@ -81,7 +81,8 @@ const props = defineProps<{
     filters: Filters;
     filterOptions: {
         folders: string[];
-        uploaders: string[];
+        /** One per person: a member (value: user id) or a recorded name. */
+        uploaders: FilterOption[];
         tags: string[];
         statuses: string[];
         kinds: string[];
@@ -142,7 +143,15 @@ const folderOptions = computed<FilterOption[]>(() => [
     { value: '/', label: t('filters.root_folder') },
     ...props.filterOptions.folders.map((folder) => ({ value: folder, label: folder })),
 ]);
-const uploaderOptions = computed<FilterOption[]>(() => props.filterOptions.uploaders.map((name) => ({ value: name, label: name })));
+// A name from an older link (before the filter went per person) still shows as picked.
+const uploaderOptions = computed<FilterOption[]>(() => {
+    const current = props.filters.uploader ?? '';
+    const options = props.filterOptions.uploaders;
+
+    return current === '' || options.some((option) => option.value === current) || /^[0-9a-f-]{36}$/i.test(current)
+        ? options
+        : [...options, { value: current, label: current }];
+});
 const tagOptions = computed<FilterOption[]>(() => props.filterOptions.tags.map((tag) => ({ value: tag, label: `#${tag}` })));
 const statusOptions = computed<FilterOption[]>(() => props.filterOptions.statuses.map((status) => ({ value: status, label: t(`statuses.${status}`) })));
 const kindOptions = computed<FilterOption[]>(() => props.filterOptions.kinds.map((kind) => ({ value: kind, label: t(`kinds.${kind}`) })));
@@ -533,6 +542,13 @@ const syncNotice = computed((): string | null => {
                             <span class="truncate text-xs text-muted-foreground">{{ design.folder || t('filters.root_folder') }}</span>
                             <span class="flex items-center gap-2 text-xs text-muted-foreground">
                                 <span class="truncate">{{ design.uploader.name }}</span>
+                                <Badge
+                                    variant="outline"
+                                    class="h-4.5 shrink-0 px-1.5 font-normal text-muted-foreground"
+                                    :data-testid="`marmara-designs-source-${design.id}`"
+                                >
+                                    {{ t(`sources.${design.source}`) }}
+                                </Badge>
                                 <span
                                     class="ms-auto inline-flex shrink-0 items-center gap-0.5"
                                     :class="design.voted ? 'text-primary-text' : ''"

@@ -435,7 +435,19 @@ const activityText = (type: string, data: Record<string, unknown>): string => {
                 <!-- Metadata -->
                 <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 rounded-xl border border-border p-4 text-sm">
                     <dt class="text-muted-foreground">{{ t('detail.uploader') }}</dt>
-                    <dd class="truncate">{{ design.uploader.name ?? '—' }}<span v-if="design.owner_email" class="text-muted-foreground"> · {{ design.owner_email }}</span></dd>
+                    <dd class="flex min-w-0 items-center gap-1.5">
+                        <span class="truncate">{{ design.uploader.name ?? '—' }}</span>
+                        <span class="text-muted-foreground" aria-hidden="true">·</span>
+                        <Badge
+                            variant="outline"
+                            class="h-5 shrink-0 px-1.5 font-normal text-muted-foreground"
+                            :aria-label="t('sources.label') + ': ' + t('sources.' + design.source)"
+                            data-testid="marmara-designs-drawer-source"
+                        >
+                            {{ t(`sources.${design.source}`) }}
+                        </Badge>
+                        <span v-if="design.source === 'drive' && design.owner_email" class="truncate text-muted-foreground">{{ design.owner_email }}</span>
+                    </dd>
                     <template v-if="design.modifier.name">
                         <dt class="text-muted-foreground">{{ t('detail.last_editor') }}</dt>
                         <dd class="truncate">{{ design.modifier.name }}</dd>

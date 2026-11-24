@@ -17,6 +17,13 @@ return [
         'video' => 'Video',
         'drawing' => 'Drawing',
     ],
+    'sources' => [
+        'site' => 'Site',
+        'whatsapp' => 'WhatsApp',
+        'drive' => 'Drive',
+        'agent' => 'Assistant',
+        'label' => 'Source',
+    ],
     'filters' => [
         'search' => 'Search titles',
         'folder' => 'Collection',

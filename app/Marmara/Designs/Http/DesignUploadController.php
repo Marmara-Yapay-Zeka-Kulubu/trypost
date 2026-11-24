@@ -6,6 +6,7 @@ namespace App\Marmara\Designs\Http;
 
 use App\Http\Controllers\Controller;
 use App\Marmara\Designs\DesignsConfig;
+use App\Marmara\Designs\Support\DesignSource;
 use App\Marmara\Designs\Upload\DesignUploader;
 use App\Marmara\Designs\Upload\DesignUploadUnavailable;
 use Illuminate\Http\RedirectResponse;
@@ -13,7 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 
 /**
- * The gallery's "Yükle": DesignUploader with the member's name as uploader.
+ * The gallery's "Yükle": DesignUploader with the member as uploader (source site).
  */
 class DesignUploadController extends Controller
 {
@@ -31,7 +32,15 @@ class DesignUploadController extends Controller
         ]);
 
         try {
-            $design = $uploader->upload($validated['file'], (string) ($validated['folder'] ?? ''), (string) ($validated['title'] ?? ''), (string) $request->user()->name, $request->user());
+            $design = $uploader->upload(
+                $validated['file'],
+                (string) ($validated['folder'] ?? ''),
+                (string) ($validated['title'] ?? ''),
+                (string) $request->user()->name,
+                $request->user(),
+                source: DesignSource::Site,
+                uploader: $request->user(),
+            );
         } catch (DesignUploadUnavailable $unavailable) {
             throw ValidationException::withMessages(['file' => $unavailable->getMessage()]);
         }

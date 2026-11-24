@@ -146,7 +146,9 @@ test('an upload goes up with the lead\'s token (their quota) into a new collecti
             && $request->hasHeader('Authorization', 'Bearer lead-access')
             && data_get($request->data(), 'name') === 'Ana afiş.png'
             && data_get($request->data(), 'parents') === ['fld'.md5('Afişler')]
-            && data_get($request->data(), 'appProperties') == ['trypost_uploader' => 'Elif'];
+            && data_get($request->data(), 'appProperties.trypost_uploader') === 'Elif'
+            && data_get($request->data(), 'appProperties.trypost_source') === 'site'
+            && data_get($request->data(), 'appProperties.trypost_uploader_id') === null;
     });
     Http::assertSent(fn (Request $request): bool => $request->method() === 'PUT' && $request->body() === $bytes);
     Http::assertSent(fn (Request $request): bool => $request->method() === 'POST' && ! str_contains($request->url(), '/upload/') && data_get($request->data(), 'name') === 'Bahar Şenliği' && $request->hasHeader('Authorization', 'Bearer lead-access'));

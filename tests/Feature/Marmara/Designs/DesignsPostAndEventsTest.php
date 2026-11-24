@@ -109,7 +109,8 @@ test('a comment fires design.commented with the design, the comment and its auth
         return $job->eventType === 'design.commented'
             && $job->payload['design']['id'] === $this->design->id
             && $job->payload['design']['title'] === 'Bahar afişi'
-            && $job->payload['design']['uploader'] === ['name' => 'Yusuf Kulüp']
+            && $job->payload['design']['uploader'] === ['id' => null, 'name' => 'Yusuf Kulüp']
+            && $job->payload['design']['source'] === 'drive'
             && $job->payload['design']['folder'] === 'Bahar Şenliği'
             && str_contains((string) $job->payload['design']['thumbnail_url'], 'signature=')
             && $job->payload['design']['url'] === route('marmara.designs.index', ['design' => $this->design->id])

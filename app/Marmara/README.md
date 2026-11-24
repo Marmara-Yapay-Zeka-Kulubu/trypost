@@ -1243,6 +1243,16 @@ the server's copy, after `App\Marmara\Inbox\InboxServiceProvider::class,`
   owners[0] and lastModifyingUser (name and email), webViewLink, width and
   height (image or video metadata), headRevisionId, and the TryPost uploader
   (`appProperties.trypost_uploader`) for files uploaded through TryPost.
+- "Ekleyen" is a person: `uploader_user_id` (a member of the designs
+  workspace, null when only a name is known) and `source` (`DesignSource`:
+  site, whatsapp, drive, agent), shown as a badge on the card and in the
+  drawer. TryPost uploads also write `trypost_uploader_id` and
+  `trypost_source` into appProperties, so the sync keeps them; a file
+  dropped into Drive is `drive`, credited to the member whose email is the
+  Drive owner's (case-insensitive). The uploader filter has one option per
+  member (value: user id) plus the recorded name of designs without a member
+  (value: the name; an old name link still filters by name). Existing rows
+  were backfilled by `2026_11_24_120000_add_marmara_design_uploader_source`.
 - Supported: JPEG, PNG, WebP, HEIC/HEIF, PDF, every `video/*` (thumbnail only),
   Google Drawings (exported as PNG). Canva's Drive exports are plain PNG / PDF /
   MP4 files and need nothing special. The rest is skipped.
@@ -1370,7 +1380,8 @@ setting or env var name is ever shown in the UI.
 ### Contract for Echo / Hermes
 
 - Design (`data.design` of the webhooks, API items, MCP): `{id, title, name,
-  kind, mime_type, status, status_label, folder, uploader: {name}, tags,
+  kind, mime_type, status, status_label, folder, uploader: {id, name},
+  source, tags,
   votes, comments, last_commented_at, width, height, size, created_at,
   modified_at, family_id, removed, drive_url, url, thumbnail_url,
   preview_url}`. Names only, never emails.
@@ -1391,7 +1402,7 @@ setting or env var name is ever shown in the UI.
 - MCP `add-design-tool` (write, open world: it writes to Drive) puts a file
   TryPost already holds into the shared folder, for Hermes' "bu videoyu
   depoya yükle": `{media: {upload_token}|{id}, title?, tags?, folder?,
-  on_behalf_of?}`. `upload_token` is the temporary upload Echo makes for a
+  on_behalf_of_user_id?, on_behalf_of?}`. `upload_token` is the temporary upload Echo makes for a
   WhatsApp image, video or PDF (or request-media-upload-tool); it is spent
   only by a successful upload (taken with a conditional update, given back
   when Drive fails), and the file itself stays a temporary upload (pruned
@@ -1401,12 +1412,14 @@ setting or env var name is ever shown in the UI.
   `DesignUploader` with the lead's Drive token, images (JPEG, PNG, WebP,
   HEIC), PDF and video up to `MARMARA_DESIGNS_UPLOAD_MAX_MB` (100); a GIF is
   refused. The type is the one TryPost measured at upload. Then
-  `DesignActions::syncTags` as the tags endpoint. "Ekleyen" is
-  `"<on_behalf_of> (WhatsApp)"`, else the token user, who is also the
-  activity's user. Not connected / no folder / reconnect / quota / too large
+  `DesignActions::syncTags` as the tags endpoint. "Ekleyen" is the member
+  `on_behalf_of_user_id` (must be a member of the workspace, else a
+  validation error; source whatsapp), else `"<on_behalf_of> (WhatsApp)"`
+  without a member (source whatsapp), else the token user (source agent).
+  The token user is always the activity's user. Not connected / no folder / reconnect / quota / too large
   / unsupported answer an English tool error, like the other designs tools.
-  Answers `{id, title, kind, tags, folder, uploader: {name}, url, drive_url,
-  media_id}`.
+  Answers `{id, title, kind, tags, folder, uploader: {id, name}, source, url,
+  drive_url, media_id}`.
 
 ### Kurulum (bir kerelik, Google Cloud)
 

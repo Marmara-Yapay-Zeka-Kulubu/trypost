@@ -24,7 +24,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 #[IsReadOnly(true)]
 #[IsDestructive(false)]
 #[IsOpenWorld(false)]
-#[Description('List the club\'s designs (the "Tasarımlar" gallery of the shared Google Drive folder), newest first. Filters: q (title search), folder (collection path, e.g. "Bahar Şenliği"; "/" for the main folder; includes subfolders), uploader (name), status (draft = Taslak, in_review = Değerlendirmede, approved = Onaylandı, used = Kullanıldı, archived = Arşiv), tag, kind (image, pdf, video, drawing), from / to (dates, by when the file was added). sort: newest (default), oldest, title, votes, last_comment. limit 1-50 (default 20), page from 1. Only the newest version of linked versions is listed. thumbnail_url is a temporary signed image URL; url opens the design in TryPost.')]
+#[Description('List the club\'s designs (the "Tasarımlar" gallery of the shared Google Drive folder), newest first. Filters: q (title search), folder (collection path, e.g. "Bahar Şenliği"; "/" for the main folder; includes subfolders), uploader (a member\'s user id, or a name), status (draft = Taslak, in_review = Değerlendirmede, approved = Onaylandı, used = Kullanıldı, archived = Arşiv), tag, kind (image, pdf, video, drawing), from / to (dates, by when the file was added). sort: newest (default), oldest, title, votes, last_comment. limit 1-50 (default 20), page from 1. Only the newest version of linked versions is listed. Each design has uploader {id, name} (id null when only a name is known) and source (site, whatsapp, drive, agent). thumbnail_url is a temporary signed image URL; url opens the design in TryPost.')]
 class ListDesignsTool extends Tool
 {
     use AuthorizesMcpTool;
@@ -75,7 +75,7 @@ class ListDesignsTool extends Tool
         return [
             'q' => $schema->string()->description('Words of the title.'),
             'folder' => $schema->string()->description('Collection (folder path inside the shared folder), e.g. "Bahar Şenliği/Afişler"; "/" for the main folder.'),
-            'uploader' => $schema->string()->description('Name of who added it.'),
+            'uploader' => $schema->string()->description('Who added it: a member\'s user id (uploader.id of a design), or a name for designs without a member (uploader.name).'),
             'status' => $schema->string()->enum(['draft', 'in_review', 'approved', 'used', 'archived'])->description('draft (Taslak), in_review (Değerlendirmede), approved (Onaylandı), used (Kullanıldı), archived (Arşiv).'),
             'tag' => $schema->string()->description('A tag, without #.'),
             'kind' => $schema->string()->enum(['image', 'pdf', 'video', 'drawing'])->description('File type.'),

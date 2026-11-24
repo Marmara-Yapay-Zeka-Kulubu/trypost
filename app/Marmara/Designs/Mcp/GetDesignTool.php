@@ -22,7 +22,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 #[IsReadOnly(true)]
 #[IsDestructive(false)]
 #[IsOpenWorld(false)]
-#[Description('Get one design of the gallery with its comments (comments_list: author, body, time), its versions oldest first (versions: v1, v2, … with their own thumbnail_url; is_current marks this file\'s current content), tags, votes, status and the recent activity. drive_url opens it in Google Drive.')]
+#[Description('Get one design of the gallery with its comments (comments_list: author, body, time), its versions oldest first (versions: v1, v2, … with their own thumbnail_url; is_current marks this file\'s current content), tags, votes, status, uploader {id, name} with source (site, whatsapp, drive, agent) and the recent activity. drive_url opens it in Google Drive.')]
 class GetDesignTool extends Tool
 {
     use AuthorizesMcpTool;

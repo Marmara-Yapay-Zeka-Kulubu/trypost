@@ -8,9 +8,11 @@ use App\Marmara\Designs\Models\Design;
 use App\Marmara\Designs\Models\DesignTag;
 use App\Marmara\Designs\Support\DesignStatus;
 use App\Marmara\Designs\Support\DesignTypes;
+use App\Models\User;
 use App\Models\Workspace;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 /**
@@ -49,7 +51,7 @@ class DesignQuery
      */
     public static function for(Workspace $workspace, array $filters): Builder
     {
-        $query = Design::query()->with('tags')->where('workspace_id', $workspace->id)->active();
+        $query = Design::query()->with(['tags', 'uploader'])->where('workspace_id', $workspace->id)->active();
 
         if (! filter_var($filters['all_versions'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
             $query->where('family_latest', true);
@@ -73,8 +75,17 @@ class DesignQuery
 
         if (filled($filters['uploader'] ?? null)) {
             $uploader = (string) $filters['uploader'];
-            $query->where(fn (Builder $inner) => $inner->where('uploader_name', $uploader)
-                ->orWhere(fn (Builder $owner) => $owner->whereNull('uploader_name')->where('owner_name', $uploader)));
+
+            if (Str::isUuid($uploader)) {
+                // A member: every design credited to them, whatever its source.
+                $query->where('uploader_user_id', $uploader);
+            } else {
+                // A name: the group of designs without a member, and links
+                // made when the filter still went by the recorded name.
+                $query->where(fn (Builder $inner) => $inner->where('uploader_name', $uploader)
+                    ->orWhere(fn (Builder $owner) => $owner->whereNull('uploader_name')->where('owner_name', $uploader))
+                    ->orWhereIn('uploader_user_id', User::query()->where('name', $uploader)->select('id')));
+            }
         }
 
         if (filled($filters['status'] ?? null)) {
@@ -109,7 +120,7 @@ class DesignQuery
     /**
      * The values the page offers in its filter selects.
      *
-     * @return array{folders: list<string>, uploaders: list<string>, tags: list<string>}
+     * @return array{folders: list<string>, uploaders: list<array{value: string, label: string}>, tags: list<string>}
      */
     public static function options(Workspace $workspace): array
     {
@@ -117,8 +128,34 @@ class DesignQuery
 
         return [
             'folders' => (clone $active)->where('folder_path', '!=', '')->distinct()->orderBy('folder_path')->pluck('folder_path')->values()->all(),
-            'uploaders' => (clone $active)->selectRaw('coalesce(uploader_name, owner_name) as uploader')->distinct()->pluck('uploader')->filter()->sort()->values()->all(),
+            'uploaders' => self::uploaderOptions($active),
             'tags' => DesignTag::query()->whereIn('design_id', (clone $active)->select('id'))->distinct()->orderBy('tag')->pluck('tag')->values()->all(),
         ];
+    }
+
+    /**
+     * One option per person: the members credited with a design (value: the
+     * user id), then, for designs without a member, the recorded name
+     * (value: the name), by label.
+     *
+     * @param  Builder<Design>  $active
+     * @return list<array{value: string, label: string}>
+     */
+    private static function uploaderOptions(Builder $active): array
+    {
+        $members = User::query()
+            ->whereIn('id', (clone $active)->whereNotNull('uploader_user_id')->select('uploader_user_id'))
+            ->get(['id', 'name'])
+            ->map(fn (User $user): array => ['value' => (string) $user->id, 'label' => (string) $user->name]);
+
+        $names = (clone $active)->whereNull('uploader_user_id')
+            ->selectRaw('coalesce(uploader_name, owner_name) as uploader')->distinct()->pluck('uploader')
+            ->filter()
+            ->map(fn (string $name): array => ['value' => $name, 'label' => $name]);
+
+        return $members->concat($names)
+            ->sortBy(fn (array $option): string => mb_strtolower($option['label']).'|'.$option['value'])
+            ->values()
+            ->all();
     }
 }

@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Marmara\Designs\Models;
 
+use App\Marmara\Designs\Support\DesignSource;
 use App\Marmara\Designs\Support\DesignStatus;
 use App\Marmara\Designs\Support\DesignTypes;
+use App\Models\User;
 use App\Models\Workspace;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
@@ -39,6 +41,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $modifier_name
  * @property string|null $modifier_email
  * @property string|null $uploader_name
+ * @property string|null $uploader_user_id
+ * @property DesignSource $source
  * @property string|null $web_view_link
  * @property int|null $width
  * @property int|null $height
@@ -81,6 +85,8 @@ class Design extends Model
         'modifier_name',
         'modifier_email',
         'uploader_name',
+        'uploader_user_id',
+        'source',
         'web_view_link',
         'width',
         'height',
@@ -102,6 +108,7 @@ class Design extends Model
 
     protected $attributes = [
         'status' => 'draft',
+        'source' => DesignSource::DEFAULT->value,
         'folder_path' => '',
         'family_latest' => true,
         'votes_count' => 0,
@@ -117,6 +124,7 @@ class Design extends Model
             'drive_created_at' => 'immutable_datetime',
             'drive_modified_at' => 'immutable_datetime',
             'status' => DesignStatus::class,
+            'source' => DesignSource::class,
             'status_changed_at' => 'immutable_datetime',
             'changed_after_use_at' => 'immutable_datetime',
             'family_latest' => 'boolean',
@@ -134,6 +142,16 @@ class Design extends Model
     public function workspace(): BelongsTo
     {
         return $this->belongsTo(Workspace::class);
+    }
+
+    /**
+     * The member credited with the design (whoever its source).
+     *
+     * @return BelongsTo<User, $this>
+     */
+    public function uploader(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'uploader_user_id');
     }
 
     /**
@@ -206,11 +224,16 @@ class Design extends Model
     }
 
     /**
-     * What the uploader shows: the TryPost member who uploaded it through
-     * TryPost, else the file's Drive owner, else its last editor.
+     * What the uploader shows: the member credited with it, else the name
+     * TryPost recorded at upload ("Elif (WhatsApp)"), else the file's Drive
+     * owner, else its last editor.
      */
     public function uploaderLabel(): ?string
     {
+        if ($this->uploader_user_id !== null && $this->uploader !== null) {
+            return $this->uploader->name;
+        }
+
         return $this->uploader_name ?? $this->owner_name ?? $this->modifier_name;
     }
 

@@ -26,6 +26,8 @@ class DesignPayload
      */
     public static function item(Design $design, bool $signedThumbnails = false): array
     {
+        $design->loadMissing('uploader');
+
         return [
             'id' => $design->id,
             'title' => $design->title,
@@ -38,7 +40,10 @@ class DesignPayload
             'status_reason' => $design->status_reason,
             'changed_after_use_at' => $design->changed_after_use_at?->toIso8601String(),
             'folder' => $design->folder_path,
-            'uploader' => ['name' => $design->uploaderLabel()],
+            // The member credited with it (id null when it is only a name, e.g. "Elif (WhatsApp)").
+            'uploader' => ['id' => $design->uploader?->id, 'name' => $design->uploaderLabel()],
+            // site, whatsapp, drive or agent: how it got into the folder.
+            'source' => $design->source->value,
             'tags' => $design->relationLoaded('tags') ? $design->tags->pluck('tag')->values()->all() : $design->tags()->pluck('tag')->all(),
             'votes' => $design->votes_count,
             'comments' => $design->comments_count,
@@ -107,7 +112,7 @@ class DesignPayload
     public static function versions(Design $design, bool $signed = false): array
     {
         $members = $design->family();
-        $members->loadMissing('revisions');
+        $members->loadMissing(['revisions', 'uploader']);
         $versions = [];
 
         foreach ($members as $member) {

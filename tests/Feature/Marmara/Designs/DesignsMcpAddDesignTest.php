@@ -10,9 +10,11 @@ use App\Marmara\Designs\Mcp\AddDesignTool;
 use App\Marmara\Designs\Models\Design;
 use App\Marmara\Designs\Models\DesignActivity;
 use App\Marmara\Designs\Models\DesignDriveConnection;
+use App\Marmara\Designs\Support\DesignSource;
 use App\Marmara\Designs\Upload\DriveUploadAuth;
 use App\Mcp\Servers\TryPostServer;
 use App\Models\Media;
+use App\Models\User;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
@@ -57,7 +59,7 @@ function designsMcpConnect($workspace, array $attributes = []): DesignDriveConne
  */
 function designsMcpFakeUpload(): void
 {
-    $sent = ['name' => 'x.mp4', 'parent' => DESIGNS_ROOT, 'uploader' => null];
+    $sent = ['name' => 'x.mp4', 'parent' => DESIGNS_ROOT, 'properties' => []];
 
     Http::fake(function (Request $request) use (&$sent) {
         $url = $request->url();
@@ -74,7 +76,7 @@ function designsMcpFakeUpload(): void
             $sent = [
                 'name' => (string) data_get($request->data(), 'name'),
                 'parent' => (string) data_get($request->data(), 'parents.0'),
-                'uploader' => data_get($request->data(), 'appProperties.trypost_uploader'),
+                'properties' => (array) data_get($request->data(), 'appProperties', []),
             ];
 
             return Http::response('', 200, ['Location' => 'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&upload_id=abc']);
@@ -90,7 +92,7 @@ function designsMcpFakeUpload(): void
                 'size' => '12163482',
                 'imageMediaMetadata' => null,
                 'videoMediaMetadata' => ['width' => 1080, 'height' => 1920, 'durationMillis' => '15000'],
-                'appProperties' => ['trypost_uploader' => $sent['uploader']],
+                'appProperties' => $sent['properties'],
             ]));
         }
 
@@ -140,6 +142,8 @@ test('a whatsapp video goes up to drive with the lead\'s token, lands in the gal
         ->and($design->drive_file_id)->toBe('fileVideo')
         ->and($design->kind)->toBe('video')
         ->and($design->uploader_name)->toBe('Behice (WhatsApp)')
+        ->and($design->uploader_user_id)->toBeNull()
+        ->and($design->source)->toBe(DesignSource::WhatsApp)
         ->and($design->folder_path)->toBe('Etkinlikler')
         ->and($design->tags()->pluck('tag')->sort()->values()->all())->toBe(['aranan aslan', 'video'])
         ->and(DesignActivity::query()->where('design_id', $design->id)->where('type', 'uploaded')->value('user_id'))->toBe($this->owner->id)
@@ -163,8 +167,58 @@ test('without a title the file name is used and the token user is the uploader',
     $design = Design::query()->sole();
     expect($design->title)->toBe('whatsapp-video')
         ->and($design->uploader_name)->toBe($this->owner->name)
+        ->and($design->uploader_user_id)->toBe($this->owner->id)
+        ->and($design->source)->toBe(DesignSource::Agent)
         ->and($design->folder_path)->toBe('')
         ->and($design->tags()->count())->toBe(0);
+});
+
+test('a whatsapp sender known by their tryPost user id is credited as that member', function () {
+    designsMcpConnect($this->workspace);
+    designsMcpFakeUpload();
+    $sender = workspaceMember($this->workspace, 'member', ['name' => 'Behice Kaya']);
+
+    TryPostServer::actingAs($this->owner)->tool(AddDesignTool::class, [
+        'media' => ['upload_token' => $this->token],
+        'on_behalf_of_user_id' => $sender->id,
+        'on_behalf_of' => 'Behice',
+    ])->assertOk()->assertStructuredContent(function (AssertableJson $json) use ($sender) {
+        $json->where('uploader', ['id' => $sender->id, 'name' => 'Behice Kaya'])
+            ->where('source', 'whatsapp')
+            ->etc();
+    });
+
+    $design = Design::query()->sole();
+    expect($design->uploader_user_id)->toBe($sender->id)
+        ->and($design->uploader_name)->toBe('Behice Kaya')
+        ->and($design->source)->toBe(DesignSource::WhatsApp)
+        ->and(DesignActivity::query()->where('design_id', $design->id)->where('type', 'uploaded')->value('user_id'))->toBe($this->owner->id);
+
+    Http::assertSent(fn (Request $request): bool => $request->method() === 'POST'
+        && str_contains($request->url(), 'uploadType=resumable')
+        && data_get($request->data(), 'appProperties.trypost_uploader') === 'Behice Kaya'
+        && data_get($request->data(), 'appProperties.trypost_uploader_id') === $sender->id
+        && data_get($request->data(), 'appProperties.trypost_source') === 'whatsapp');
+});
+
+test('an on_behalf_of_user_id that is not a member of the workspace is refused before the token is spent', function () {
+    designsMcpConnect($this->workspace);
+    designsMcpFakeUpload();
+    $outsider = workspaceOutsider($this->workspace);
+    $stranger = User::factory()->create();
+
+    foreach ([$outsider->id, $stranger->id, '0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b'] as $userId) {
+        TryPostServer::actingAs($this->owner)->tool(AddDesignTool::class, [
+            'media' => ['upload_token' => $this->token],
+            'on_behalf_of_user_id' => $userId,
+        ])->assertHasErrors(['not a member of this workspace']);
+    }
+
+    TryPostServer::actingAs($this->owner)->tool(AddDesignTool::class, ['media' => ['upload_token' => $this->token], 'on_behalf_of_user_id' => 'yasir'])
+        ->assertHasErrors();
+
+    expect(Design::query()->count())->toBe(0)
+        ->and($this->upload->fresh()->upload_token)->toBe($this->token);
 });
 
 test('an upload token is spent by the first call', function () {

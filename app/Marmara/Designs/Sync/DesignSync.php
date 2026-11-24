@@ -13,12 +13,16 @@ use App\Marmara\Designs\Models\Design;
 use App\Marmara\Designs\Models\DesignActivity;
 use App\Marmara\Designs\Models\DesignFolder;
 use App\Marmara\Designs\Models\DesignSyncState;
+use App\Marmara\Designs\Support\DesignMembers;
+use App\Marmara\Designs\Support\DesignSource;
 use App\Marmara\Designs\Support\DesignStatus;
 use App\Marmara\Designs\Support\DesignTypes;
+use App\Models\User;
 use App\Models\Workspace;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Str;
 use RuntimeException;
 
 /**
@@ -49,6 +53,9 @@ class DesignSync
         private readonly DesignEvents $events,
     ) {}
 
+    /** Member ids by lowercased email, for one run (null: not read yet). */
+    private ?array $memberEmails = null;
+
     public function run(bool $full = false): SyncResult
     {
         $workspace = $this->config->workspace();
@@ -61,6 +68,8 @@ class DesignSync
         if ($folderId === null || ! DriveClient::validId($folderId)) {
             throw new RuntimeException('MARMARA_DESIGNS_FOLDER_ID is not set or not a Drive id.');
         }
+
+        $this->memberEmails = null;
 
         try {
             return Cache::lock("marmara-designs:sync:{$workspace->id}", 900)->block(5, fn (): SyncResult => $this->locked($workspace, $folderId, $full));
@@ -300,6 +309,7 @@ class DesignSync
 
         $design->fill([
             ...self::attributes($file),
+            ...$this->credit($workspace, $file, $isNew),
             'folder_drive_id' => $folder->drive_id,
             'folder_path' => $folder->path,
             'removed_at' => null,
@@ -327,6 +337,48 @@ class DesignSync
         }
 
         return $design;
+    }
+
+    /**
+     * Who the design is credited to, and how it came in.
+     *
+     * - Uploaded by TryPost (appProperties.trypost_uploader): the member and
+     *   source DesignUploader recorded in appProperties; for a file uploaded
+     *   before those were recorded, the row keeps what it has (a new row: site,
+     *   or whatsapp for "Name (WhatsApp)", without a member).
+     * - Dropped into Drive: drive, credited to the member whose email is the
+     *   Drive owner's (case-insensitive), else to nobody.
+     *
+     * @param  array<string, mixed>  $file
+     * @return array<string, mixed>
+     */
+    private function credit(Workspace $workspace, array $file, bool $isNew): array
+    {
+        $uploaderName = data_get($file, 'appProperties.trypost_uploader');
+
+        if (is_string($uploaderName) && trim($uploaderName) !== '') {
+            $source = DesignSource::tryFrom((string) data_get($file, 'appProperties.trypost_source', ''));
+
+            if ($source !== null) {
+                $userId = (string) data_get($file, 'appProperties.trypost_uploader_id', '');
+
+                return [
+                    'source' => $source,
+                    'uploader_user_id' => Str::isUuid($userId) && User::query()->whereKey($userId)->exists() ? $userId : null,
+                ];
+            }
+
+            if (! $isNew) {
+                return [];
+            }
+
+            return ['source' => str_ends_with(trim($uploaderName), '(WhatsApp)') ? DesignSource::WhatsApp : DesignSource::Site, 'uploader_user_id' => null];
+        }
+
+        $this->memberEmails ??= DesignMembers::idsByEmail($workspace);
+        $email = mb_strtolower(trim((string) data_get($file, 'owners.0.emailAddress', '')));
+
+        return ['source' => DesignSource::Drive, 'uploader_user_id' => $email === '' ? null : ($this->memberEmails[$email] ?? null)];
     }
 
     /**

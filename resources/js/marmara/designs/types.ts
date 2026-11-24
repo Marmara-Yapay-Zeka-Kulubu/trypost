@@ -4,6 +4,9 @@
  */
 export type DesignStatus = 'draft' | 'in_review' | 'approved' | 'used' | 'archived';
 
+/** How a design came in (DesignSource): shown as a badge next to "Ekleyen". */
+export type DesignSource = 'site' | 'whatsapp' | 'drive' | 'agent';
+
 export interface DesignItem {
     id: string;
     title: string;
@@ -16,7 +19,9 @@ export interface DesignItem {
     status_reason: string | null;
     changed_after_use_at: string | null;
     folder: string;
-    uploader: { name: string | null };
+    /** id: the member credited with it; null when only a name is known. */
+    uploader: { id: string | null; name: string | null };
+    source: DesignSource;
     tags: string[];
     votes: number;
     comments: number;

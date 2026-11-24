@@ -13,6 +13,7 @@ use App\Marmara\Designs\Models\Design;
 use App\Marmara\Designs\Models\DesignActivity;
 use App\Marmara\Designs\Models\DesignDriveConnection;
 use App\Marmara\Designs\Models\DesignFolder;
+use App\Marmara\Designs\Support\DesignSource;
 use App\Marmara\Designs\Support\DesignTypes;
 use App\Marmara\Designs\Sync\DesignSync;
 use App\Models\User;
@@ -58,10 +59,14 @@ class DesignUploader
     /**
      * $mimeType: the type TryPost already measured for the file (a temporary
      * upload handed over by MCP / Echo); otherwise it is read from the bytes.
+     * $user is who did it (the activity line); $uploader is the member the
+     * design is credited to (the page's member, the WhatsApp sender, or
+     * nobody when only a name is known) and $source how it came in. Both are
+     * also written into the file's appProperties, so a later sync keeps them.
      *
      * @throws DesignUploadUnavailable
      */
-    public function upload(UploadedFile|string $file, string $folderPath, string $title, string $uploaderName, ?User $user = null, ?string $mimeType = null): Design
+    public function upload(UploadedFile|string $file, string $folderPath, string $title, string $uploaderName, ?User $user = null, ?string $mimeType = null, DesignSource $source = DesignSource::Site, ?User $uploader = null): Design
     {
         $connection = $this->connection();
         $workspace = $connection->workspace;
@@ -92,7 +97,11 @@ class DesignUploader
                 'name' => Str::limit($name, 250, ''),
                 'parents' => [$leadCanWrite ? $targetId : $rootId],
                 'description' => "TryPost üzerinden {$uploaderName} yükledi",
-                'appProperties' => ['trypost_uploader' => $uploaderName],
+                'appProperties' => array_filter([
+                    'trypost_uploader' => $uploaderName,
+                    'trypost_uploader_id' => $uploader?->id,
+                    'trypost_source' => $source->value,
+                ], fn (?string $value): bool => $value !== null),
             ], $bytes, $mime);
 
             if (! $leadCanWrite && $targetId !== $rootId) {
@@ -110,7 +119,7 @@ class DesignUploader
 
         $design = Design::query()->updateOrCreate(
             ['workspace_id' => $workspace->id, 'drive_file_id' => (string) $uploaded['id']],
-            [...DesignSync::attributes($uploaded), 'uploader_name' => $uploaderName, 'folder_drive_id' => $targetId, 'folder_path' => $targetPath, 'removed_at' => null],
+            [...DesignSync::attributes($uploaded), 'uploader_name' => $uploaderName, 'uploader_user_id' => $uploader?->id, 'source' => $source, 'folder_drive_id' => $targetId, 'folder_path' => $targetPath, 'removed_at' => null],
         );
 
         DesignActivity::record($design, $user, 'uploaded', ['name' => $uploaderName]);
