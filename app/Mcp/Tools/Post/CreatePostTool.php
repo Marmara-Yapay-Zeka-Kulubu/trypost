@@ -12,6 +12,7 @@ use App\Enums\Post\Status;
 use App\Enums\SocialAccount\Platform;
 use App\Exceptions\Post\QueueBusyException;
 use App\Http\Resources\Api\PostResource;
+use App\Marmara\Members\Support\PostAttribution;
 use App\Mcp\Concerns\AuthorizesMcpTool;
 use App\Mcp\Concerns\DescribesPostMedia;
 use App\Models\Post;
@@ -35,7 +36,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 #[IsReadOnly(false)]
 #[IsDestructive(true)]
 #[IsOpenWorld(true)]
-#[Description('Create one post for one social account in the current workspace: a draft, a post scheduled at a custom time, a post queued in the channel\'s next free slot (queue: next) or first slot (queue: top), a queue post in one specific free slot (queue_slot, an instant from list-free-slots-tool), or a post published now. When the acting member needs approval in this workspace, a scheduled, queued or publish-now post is stored with status pending_approval instead and waits for approve-post-tool. Use create-posts-tool to create a batch. Use list-content-types-tool to discover valid content_types. To publish a thread on X, Bluesky or Mastodon, put the follow-up posts in meta.thread_replies: up to 24 replies published under the post, each {text, media} with up to 4 media items given by url, id or upload_token, e.g. [{"text": "2/ ..."}, {"text": "3/ ...", "media": [{"url": "https://..."}]}]. Each reply must fit the text limit of the account and follows the media rules of a post on that network. On LinkedIn (profile or page), meta.thread_replies takes one text-only reply, published as a comment from the same author, e.g. [{"text": "Read more: https://..."}]. '.PostPlatformMetaRules::SCHEDULING_REQUIREMENTS)]
+#[Description('Create one post for one social account in the current workspace: a draft, a post scheduled at a custom time, a post queued in the channel\'s next free slot (queue: next) or first slot (queue: top), a queue post in one specific free slot (queue_slot, an instant from list-free-slots-tool), or a post published now. When the acting member needs approval in this workspace, a scheduled, queued or publish-now post is stored with status pending_approval instead and waits for approve-post-tool. Use create-posts-tool to create a batch. When the post is made for someone else (the WhatsApp sender), pass their TryPost user id as on_behalf_of_user_id: the post is credited to that member of the workspace. Use list-content-types-tool to discover valid content_types. To publish a thread on X, Bluesky or Mastodon, put the follow-up posts in meta.thread_replies: up to 24 replies published under the post, each {text, media} with up to 4 media items given by url, id or upload_token, e.g. [{"text": "2/ ..."}, {"text": "3/ ...", "media": [{"url": "https://..."}]}]. Each reply must fit the text limit of the account and follows the media rules of a post on that network. On LinkedIn (profile or page), meta.thread_replies takes one text-only reply, published as a comment from the same author, e.g. [{"text": "Read more: https://..."}]. '.PostPlatformMetaRules::SCHEDULING_REQUIREMENTS)]
 class CreatePostTool extends Tool
 {
     use AuthorizesMcpTool;
@@ -50,10 +51,13 @@ class CreatePostTool extends Tool
         }
 
         $validated = $request->validate(
-            PostRequestRules::store($workspace, $request->all()),
+            [...PostRequestRules::store($workspace, $request->all()), ...PostAttribution::rules()],
             PostRequestRules::messages(),
             PostRequestRules::attributes(),
         );
+
+        // Marmara AI fork: the WhatsApp sender gets the credit (app/Marmara/README.md, Members).
+        $member = PostAttribution::member($workspace, $validated);
 
         $platforms = PostRequestRules::selectedAccounts($workspace, $validated)
             ->map(fn (SocialAccount $account): Platform => $account->platform)
@@ -72,7 +76,7 @@ class CreatePostTool extends Tool
                 'label_ids' => $validated['label_ids'] ?? [],
                 'created_via' => CreatedVia::Mcp,
                 'destinations' => [Arr::only($validated, ['social_account_id', 'content_type', 'meta'])],
-            ])->sole());
+            ], afterCreate: PostAttribution::crediting($member, $request->user()))->sole());
         } catch (QueueBusyException) {
             return Response::error(__('posts.errors.queue_busy'));
         }
@@ -99,6 +103,7 @@ class CreatePostTool extends Tool
             'social_account_id' => $schema->string()->required()->description('UUID of the connected social account (list-social-accounts-tool). Use create-posts-tool for several accounts.'),
             'content_type' => $schema->string()->description('Format for this account (e.g. linkedin_post, x_post, instagram_feed). Optional. Omitted, it is chosen as the web composer does: on pinterest a video makes pinterest_video_pin, several images pinterest_carousel, else pinterest_pin; on tiktok images only make tiktok_photo, else tiktok_video; every other network takes its default_content_type (list-content-types-tool). A type sent explicitly is validated against the media and refused when they do not match.'),
             'meta' => $schema->object()->description(PostPlatformMetaRules::documentation()),
+            PostAttribution::PARAMETER => $schema->string()->description(PostAttribution::DESCRIPTION),
         ];
     }
 }

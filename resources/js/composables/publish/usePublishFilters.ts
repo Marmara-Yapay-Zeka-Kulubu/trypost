@@ -31,6 +31,8 @@ interface PublishFilterProps {
         labels: string[];
         untagged: boolean;
         channels: string[];
+        /** Marmara AI fork: the creator filter (app/Marmara/README.md, Members). */
+        creators?: string[];
     };
 }
 
@@ -81,6 +83,7 @@ export const usePublishFilters = (
     const selectedLabelIds = ref<string[]>(props.filters.labels ?? []);
     const selectedUntagged = ref<boolean>(props.filters.untagged ?? false);
     const selectedChannelIds = ref<string[]>(props.filters.channels ?? []);
+    const selectedCreatorIds = ref<string[]>(props.filters.creators ?? []);
 
     const labelsQuery = (): string[] | undefined => {
         if (blank(selectedLabelIds.value)) {
@@ -111,6 +114,14 @@ export const usePublishFilters = (
         return selectedChannelIds.value;
     };
 
+    const creatorsQuery = (): string[] | undefined => {
+        if (blank(selectedCreatorIds.value)) {
+            return undefined;
+        }
+
+        return selectedCreatorIds.value;
+    };
+
     /** The zone goes in the URL only when it is not the user's own. */
     const timezoneQuery = (): string | undefined => {
         if (timezone.value === userTimezone.value) {
@@ -124,6 +135,7 @@ export const usePublishFilters = (
         labels: labelsQuery(),
         untagged: untaggedQuery(),
         channels: channelsQuery(),
+        creators: creatorsQuery(),
         tz: timezoneQuery(),
     });
 
@@ -174,6 +186,7 @@ export const usePublishFilters = (
         selectedLabelIds,
         selectedUntagged,
         selectedChannelIds,
+        selectedCreatorIds,
         filterQuery,
         listUrlFor,
         calendarUrlFor,

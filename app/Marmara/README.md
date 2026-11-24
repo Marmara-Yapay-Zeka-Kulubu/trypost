@@ -17,8 +17,10 @@ club frame on the auth screens) and
 [Inbox](#inbox-comments-and-dms-in-one-place) (comments and DMs of every
 channel, with replies, for the team and for Echo / Hermes) and
 [Designs](#designs-the-shared-drive-design-gallery) (the "Tasarımlar" gallery
-of the club's shared Google Drive folder). Each lists its own upstream touch
-points.
+of the club's shared Google Drive folder) and
+[Members](#members-posts-credited-to-the-whatsapp-sender) (posts Hermes
+creates are credited to the member who asked, a creator filter and per
+member counts). Each lists its own upstream touch points.
 
 ## Upstream merges
 
@@ -1519,3 +1521,79 @@ Drive and may create a folder there when the lead's token cannot (Google can
 refuse a service account even zero-byte files: then only folders the lead's
 token can create work); the exact 400/410 Drive sends for an expired changes
 token (any 400, 404 or 410 restarts with a full sync).
+
+## Members: posts credited to the WhatsApp sender
+
+Hermes (behind Echo's WhatsApp) creates posts with one TryPost token, the
+admin's. Echo tells Hermes the sender's TryPost user id (`[TryPost kullanıcı:
+<uuid>]`); Hermes passes it as `on_behalf_of_user_id` to `create-post-tool`
+and `create-posts-tool` (the same parameter as `add-design-tool`).
+
+- The id must be a member of the workspace (its members or the account
+  owner); otherwise the call fails with a validation error on
+  `on_behalf_of_user_id` and nothing is created.
+- The posts are created exactly as before, as the connected user: the
+  `createPost` check, whether the post needs approval and
+  `approval_requested_by` all follow the token's user. Then, in the same
+  transaction (`CreatePosts::execute()`'s `$afterCreate`), `posts.user_id`
+  becomes the member and `posts.agent_user_id` the connected user. The member
+  gets the credit (shown as the creator, can edit and delete the post like
+  their own), nothing more.
+- `agent_user_id` is null for every other post (web, API, MCP without the
+  parameter). A post with it shows "via WhatsApp" / "WhatsApp üzerinden" after
+  "Created by" on the card and in the post details.
+
+The Publish page (List, Calendar, Board) has a "Created by" / "Oluşturan"
+filter (`creators[]` in the URL, `posts.user_id`), shown when the workspace
+has more than one member. Insights has a "Posts by member" / "Üye bazlı
+paylaşımlar" table (`GET /insights/members?start=&end=&channels[]=`, JSON,
+`WorkspacePolicy::view`), per member for the page's period and channels:
+
+| Column | Counted |
+| --- | --- |
+| Published | `publish_status` published or deleted (the network published it, deleted there since or not), `published_at` in the period; also per platform |
+| Scheduled | status scheduled or publishing, `scheduled_at` in the period |
+| Awaiting approval | status pending_approval, `scheduled_at` (else `created_at`) in the period |
+| Drafts | status draft, `created_at` in the period |
+| Failed | status failed, `scheduled_at` (else `created_at`) in the period |
+
+Only posts written in TryPost (`origin` trypost) with an author count; the
+dates are days in the viewer's time zone (at most 400 days).
+
+### Files
+
+| Path | What |
+| --- | --- |
+| `app/Marmara/Members/MembersServiceProvider.php` | Migration and route |
+| `app/Marmara/Members/database/migrations/` | `posts.agent_user_id` (nullable, FK users, null on delete) |
+| `app/Marmara/Members/Support/PostAttribution.php` | The parameter, its rule and description, the member check, the `$afterCreate` that credits the posts |
+| `app/Marmara/Members/Support/WorkspaceMembers.php` | Members of a workspace (and the account owner), the filter options |
+| `app/Marmara/Members/Actions/BuildMemberPostStats.php`, `Http/MemberPostStatsController.php`, `routes.php` | Per member counts |
+| `resources/js/marmara/members/*` | `PostCreatorFilter.vue`, `MemberPostsCard.vue`, types |
+| `tests/Feature/Marmara/Members/*` | Pest tests |
+
+### Upstream touch points
+
+| File | Change |
+| --- | --- |
+| `bootstrap/providers.php` | `use App\Marmara\Members\MembersServiceProvider;` and the provider at the end of the list |
+| `app/Mcp/Tools/Post/CreatePostTool.php`, `CreatePostsTool.php` | A sentence in `#[Description]`, `PostAttribution::rules()` in the validation, `PostAttribution::member()` after it, `afterCreate: PostAttribution::crediting(...)` on `CreatePosts::execute()`, the schema entry |
+| `app/Models/Post.php` | `scopeCreatedByAny()` before `scopeMatchingLabelFilter()` |
+| `app/Support/PublishFilters.php` | `creatorIds` (from `creators`), `creators` in `toProp()` |
+| `app/Actions/Post/BuildPublishPageProps.php`, `BuildCalendarPageProps.php`, `BuildBoardPageProps.php` | `->createdByAny($filters->creatorIds)` on the posts query, the `filterMembers` prop |
+| `app/Actions/Post/Queue/BuildQueueTimeline.php` | `$creatorIds` parameter: filters the timeline's posts and hides free times while set, like labels |
+| `lang/*/posts.php` (17 locales) | The `members` block at the end of the file |
+| `resources/js/composables/publish/usePublishFilters.ts` | `selectedCreatorIds`, `creators` in the query |
+| `resources/js/pages/publish/Index.vue`, `posts/Calendar.vue`, `posts/Board.vue` | `filterMembers` / `filters.creators` props, `<PostCreatorFilter>` after the channel filter, the watcher |
+| `resources/js/components/publish/PostTimelineCard.vue`, `PostDetailsDialog.vue`, `resources/js/types/publish.ts` | `agent_user_id` and the "via WhatsApp" hint after "Created by" |
+| `resources/js/pages/insights/Index.vue` | `<MemberPostsCard>` after `PostsChart` |
+
+**Servers bind-mount their own `bootstrap/providers.php`.** Add this line to
+the server's copy, after the designs provider, then recreate the container
+and run `php artisan migrate` (without the provider the migration does not
+run and a create with `on_behalf_of_user_id` fails on the missing column):
+
+    App\Marmara\Members\MembersServiceProvider::class,
+
+Hook point for designs: a post's `user_id` is the member it is credited to,
+`agent_user_id` tells it came through the agent.

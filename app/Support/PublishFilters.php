@@ -11,7 +11,8 @@ use Illuminate\Http\Request;
 /**
  * The filters every view of the Publish page (List, Calendar, Board) reads from
  * the URL: labels, untagged, the requested channels on the all-channels page and
- * the display time zone.
+ * the display time zone; and, in the Marmara AI fork, the creators (members
+ * the posts are credited to, app/Marmara/README.md, Members).
  */
 final class PublishFilters
 {
@@ -19,6 +20,7 @@ final class PublishFilters
      * @param  list<string>  $labelIds
      * @param  list<string>  $requestedChannelIds
      * @param  list<string>|null  $scopedChannelIds
+     * @param  list<string>  $creatorIds
      */
     private function __construct(
         public readonly array $labelIds,
@@ -26,6 +28,7 @@ final class PublishFilters
         public readonly array $requestedChannelIds,
         public readonly ?array $scopedChannelIds,
         public readonly string $displayTimezone,
+        public readonly array $creatorIds = [],
     ) {}
 
     public static function fromRequest(Request $request, ?SocialAccount $channel, User $user): self
@@ -39,6 +42,7 @@ final class PublishFilters
             requestedChannelIds: $requestedChannelIds,
             scopedChannelIds: self::scopedChannelIds($channel, $requestedChannelIds),
             displayTimezone: Timezone::known(is_string($timezone) ? $timezone : null) ?? Timezone::normalize($user->timezone),
+            creatorIds: RequestIds::uuidList($request->collect('creators')->unique()),
         );
     }
 
@@ -63,7 +67,7 @@ final class PublishFilters
     }
 
     /**
-     * @return array{labels: list<string>, untagged: bool, channels: list<string>}
+     * @return array{labels: list<string>, untagged: bool, channels: list<string>, creators: list<string>}
      */
     public function toProp(): array
     {
@@ -71,6 +75,7 @@ final class PublishFilters
             'labels' => $this->labelIds,
             'untagged' => $this->untagged,
             'channels' => $this->requestedChannelIds,
+            'creators' => $this->creatorIds,
         ];
     }
 }

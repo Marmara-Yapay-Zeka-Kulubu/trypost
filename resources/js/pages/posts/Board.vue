@@ -32,6 +32,8 @@ import {
 import { useWorkspaceAbilities } from '@/composables/useWorkspaceAbilities';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { blank, filled } from '@/lib/helpers';
+import PostCreatorFilter from '@/marmara/members/PostCreatorFilter.vue';
+import type { WorkspaceMemberOption } from '@/marmara/members/types';
 import { grid } from '@/routes/app/channels';
 import type { BoardColumnMeta, BoardGroup } from '@/types/board';
 import { channelName } from '@/types/channel';
@@ -57,8 +59,11 @@ interface Props {
         labels: string[];
         untagged: boolean;
         channels: string[];
+        creators?: string[];
     };
     filterAccounts: PublishSocialAccount[];
+    /** Marmara AI fork: the creator filter's options. */
+    filterMembers?: WorkspaceMemberOption[];
     hasChannels: boolean;
 }
 
@@ -72,6 +77,7 @@ const {
     selectedLabelIds,
     selectedUntagged,
     selectedChannelIds,
+    selectedCreatorIds,
     filterQuery,
     boardUrlFor,
     listHref,
@@ -124,7 +130,13 @@ const applyBoard = (): void => {
 };
 
 watch(
-    [selectedGroup, selectedLabelIds, selectedUntagged, selectedChannelIds],
+    [
+        selectedGroup,
+        selectedLabelIds,
+        selectedUntagged,
+        selectedChannelIds,
+        selectedCreatorIds,
+    ],
     applyBoard,
     { deep: true },
 );
@@ -244,6 +256,12 @@ const newPostAccountIds = computed((): string[] => {
                         v-if="showsChannelFilter"
                         v-model="selectedChannelIds"
                         :channels="filterAccounts"
+                        sheet-below-sm
+                    />
+                    <PostCreatorFilter
+                        v-if="(filterMembers?.length ?? 0) > 1"
+                        v-model="selectedCreatorIds"
+                        :members="filterMembers ?? []"
                         sheet-below-sm
                     />
                     <PublishFilterMenu

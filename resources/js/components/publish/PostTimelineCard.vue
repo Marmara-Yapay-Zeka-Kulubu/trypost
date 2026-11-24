@@ -761,7 +761,13 @@ const onMenuSelect = (action: PostCardMenuAction): void => {
                                 name: post.user.name,
                                 when: date.diffForHumans(post.created_at),
                             })
-                        }}</span>
+                        }}<span
+                                v-if="post.agent_user_id"
+                                class="text-muted-foreground/80"
+                                :data-testid="`post-created-via-whatsapp-${post.id}`"
+                            >
+                                · {{ $t('posts.members.via_whatsapp') }}</span
+                            ></span>
                     </p>
                     <div
                         class="flex max-w-full shrink-0 flex-wrap items-center gap-1 max-sm:ms-auto"

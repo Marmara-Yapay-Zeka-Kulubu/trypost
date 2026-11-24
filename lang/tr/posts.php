@@ -1233,4 +1233,25 @@ return [
             'too_many' => 'Tek seferde en fazla :max üyeye sorabilirsin.',
         ],
     ],
+    // Marmara AI fork: posts credited to WhatsApp senders, creator filter, counts per member (app/Marmara/README.md, Members).
+    'members' => [
+        'via_whatsapp' => 'WhatsApp üzerinden',
+        'filter' => 'Oluşturan',
+        'search_placeholder' => 'Üye ara...',
+        'no_members' => 'Üye bulunamadı.',
+        'stats' => [
+            'title' => 'Üye bazlı paylaşımlar',
+            'description' => 'Bu dönemde her üyenin yayınladığı, zamanladığı ve taslakta tuttuğu gönderiler.',
+            'member' => 'Üye',
+            'published' => 'Yayınlandı',
+            'scheduled' => 'Zamanlandı',
+            'pending_approval' => 'Onay bekliyor',
+            'drafts' => 'Taslaklar',
+            'failed' => 'Başarısız',
+            'platforms' => 'Yayınlandığı yerler',
+            'via_whatsapp' => ':count tanesi WhatsApp üzerinden',
+            'empty' => 'Bu dönemde hiçbir üyenin gönderisi yok.',
+            'load_failed' => 'Üye bazlı sayılar yüklenemedi. Tekrar deneyin.',
+        ],
+    ],
 ];

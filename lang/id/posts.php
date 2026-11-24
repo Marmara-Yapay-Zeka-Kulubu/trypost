@@ -1233,4 +1233,25 @@ return [
             'too_many' => 'Tanya maksimal :max anggota sekaligus.',
         ],
     ],
+    // Marmara AI fork: posts credited to WhatsApp senders, creator filter, counts per member (app/Marmara/README.md, Members).
+    'members' => [
+        'via_whatsapp' => 'lewat WhatsApp',
+        'filter' => 'Dibuat oleh',
+        'search_placeholder' => 'Cari anggota...',
+        'no_members' => 'Anggota tidak ditemukan.',
+        'stats' => [
+            'title' => 'Postingan per anggota',
+            'description' => 'Jumlah postingan yang dipublikasikan, dijadwalkan, atau disimpan sebagai draf oleh tiap anggota pada periode ini.',
+            'member' => 'Anggota',
+            'published' => 'Dipublikasikan',
+            'scheduled' => 'Dijadwalkan',
+            'pending_approval' => 'Menunggu persetujuan',
+            'drafts' => 'Draf',
+            'failed' => 'Gagal',
+            'platforms' => 'Dipublikasikan di',
+            'via_whatsapp' => ':count lewat WhatsApp',
+            'empty' => 'Tidak ada anggota yang punya postingan pada periode ini.',
+            'load_failed' => 'Tidak dapat memuat jumlah per anggota. Coba lagi.',
+        ],
+    ],
 ];

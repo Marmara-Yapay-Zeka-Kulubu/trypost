@@ -9,6 +9,7 @@ use App\Actions\Post\Queue\MoveChannelPostToQueueSlot;
 use App\Enums\Post\Status as PostStatus;
 use App\Http\Resources\App\PostCardResource;
 use App\Http\Resources\App\SocialAccountResource;
+use App\Marmara\Members\Support\WorkspaceMembers;
 use App\Models\Post;
 use App\Models\SocialAccount;
 use App\Models\Workspace;
@@ -67,6 +68,7 @@ class BuildCalendarPageProps
 
         $scopedPosts = fn (): Builder => BuildPublishPageProps::cardQuery($workspace->posts(), $labelIds, $untagged)
             ->onChannels($filters->scopedChannelIds)
+            ->createdByAny($filters->creatorIds)
             ->visiblePendingApprovalsFor(BuildPublishPageProps::pendingApprovalsRequester($request->user(), $workspace));
 
         $range = [$rangeStart->utc(), $rangeEnd->utc()];
@@ -110,6 +112,8 @@ class BuildCalendarPageProps
                 'status' => $status,
             ],
             'filterAccounts' => fn () => SocialAccountResource::collection($filterAccounts()),
+            // Marmara AI fork: the creator filter's options (app/Marmara/README.md, Members).
+            'filterMembers' => fn (): array => WorkspaceMembers::options($workspace),
         ];
 
         if ($request->boolean('undated')) {

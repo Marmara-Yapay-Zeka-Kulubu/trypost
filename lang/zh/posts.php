@@ -1233,4 +1233,25 @@ return [
             'too_many' => '一次最多可询问 :max 名成员。',
         ],
     ],
+    // Marmara AI fork: posts credited to WhatsApp senders, creator filter, counts per member (app/Marmara/README.md, Members).
+    'members' => [
+        'via_whatsapp' => '通过 WhatsApp',
+        'filter' => '创建者',
+        'search_placeholder' => '搜索成员...',
+        'no_members' => '未找到成员。',
+        'stats' => [
+            'title' => '按成员统计的帖子',
+            'description' => '此期间每位成员发布、排期或保存为草稿的帖子数量。',
+            'member' => '成员',
+            'published' => '已发布',
+            'scheduled' => '已排期',
+            'pending_approval' => '待审批',
+            'drafts' => '草稿',
+            'failed' => '失败',
+            'platforms' => '发布平台',
+            'via_whatsapp' => ':count 条通过 WhatsApp',
+            'empty' => '此期间没有成员发布帖子。',
+            'load_failed' => '无法加载成员统计。请重试。',
+        ],
+    ],
 ];

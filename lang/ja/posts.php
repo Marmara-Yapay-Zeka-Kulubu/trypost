@@ -1233,4 +1233,25 @@ return [
             'too_many' => '一度に依頼できるのは:max人までです。',
         ],
     ],
+    // Marmara AI fork: posts credited to WhatsApp senders, creator filter, counts per member (app/Marmara/README.md, Members).
+    'members' => [
+        'via_whatsapp' => 'WhatsApp経由',
+        'filter' => '作成者',
+        'search_placeholder' => 'メンバーを検索...',
+        'no_members' => 'メンバーが見つかりません。',
+        'stats' => [
+            'title' => 'メンバー別の投稿',
+            'description' => 'この期間に各メンバーが公開、予約、下書き保存した投稿の数。',
+            'member' => 'メンバー',
+            'published' => '公開済み',
+            'scheduled' => '予約済み',
+            'pending_approval' => '承認待ち',
+            'drafts' => '下書き',
+            'failed' => '失敗',
+            'platforms' => '公開先',
+            'via_whatsapp' => ':count件がWhatsApp経由',
+            'empty' => 'この期間に投稿のあるメンバーはいません。',
+            'load_failed' => 'メンバー別の件数を読み込めませんでした。もう一度お試しください。',
+        ],
+    ],
 ];

@@ -503,6 +503,17 @@ class Post extends Model
     }
 
     /**
+     * Posts credited to any of the users (posts.user_id); no filter when empty.
+     * Marmara AI fork: the Publish page's creator filter (app/Marmara/README.md, Members).
+     *
+     * @param  list<string>  $userIds
+     */
+    public function scopeCreatedByAny(Builder $query, array $userIds): Builder
+    {
+        return $query->when($userIds !== [], fn (Builder $filtered): Builder => $filtered->whereIn('posts.user_id', $userIds));
+    }
+
+    /**
      * Posts carrying any of the labels, plus posts without labels when $untagged is set; no filter when both are empty.
      *
      * @param  list<string>  $labelIds

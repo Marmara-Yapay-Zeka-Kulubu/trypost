@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Marmara\Designs\DesignsServiceProvider;
 use App\Marmara\Inbox\InboxServiceProvider;
 use App\Marmara\LinkedIn\LinkedInServiceProvider;
+use App\Marmara\Members\MembersServiceProvider;
 use App\Marmara\Portal\PortalServiceProvider;
 use App\Marmara\Zernio\ZernioServiceProvider;
 use App\Providers\AppServiceProvider;
@@ -25,4 +26,6 @@ return [
     InboxServiceProvider::class,
     // Marmara AI fork: shared Drive design gallery (app/Marmara/README.md).
     DesignsServiceProvider::class,
+    // Marmara AI fork: posts credited to WhatsApp senders, per member counts (app/Marmara/README.md).
+    MembersServiceProvider::class,
 ];

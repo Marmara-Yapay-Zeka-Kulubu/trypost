@@ -11,6 +11,7 @@ use App\Enums\Post\QueuePosition;
 use App\Enums\Post\Status;
 use App\Exceptions\Post\QueueBusyException;
 use App\Http\Resources\Api\PostResource;
+use App\Marmara\Members\Support\PostAttribution;
 use App\Mcp\Concerns\AuthorizesMcpTool;
 use App\Mcp\Concerns\DescribesPostMedia;
 use App\Models\Post;
@@ -31,7 +32,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 #[IsReadOnly(false)]
 #[IsDestructive(true)]
 #[IsOpenWorld(true)]
-#[Description('Create one independent post per destination in the current workspace, as the web composer does when several channels are selected: each destination becomes its own post on its own channel, and the posts share a post_group_id. Each destination may override the shared content, media, content_type and meta. status draft keeps them editable, scheduled schedules them at scheduled_at or in each channel queue (queue: next or top), publishing publishes them now; one specific slot (queue_slot) is not taken here, use create-post-tool or move-post-to-slot-tool for that. When the acting member needs approval in this workspace, scheduled, queued and publish-now posts are stored with status pending_approval and wait for approve-post-tool. To publish a thread on X, Bluesky or Mastodon, put the follow-up posts in meta.thread_replies: up to 24 replies published under the post, each {text, media} with up to 4 media items given by url, id or upload_token, e.g. [{"text": "2/ ..."}, {"text": "3/ ...", "media": [{"url": "https://..."}]}]. Each reply must fit the text limit of the account and follows the media rules of a post on that network. On LinkedIn (profile or page), meta.thread_replies takes one text-only reply, published as a comment from the same author, e.g. [{"text": "Read more: https://..."}]. '.PostPlatformMetaRules::SCHEDULING_REQUIREMENTS)]
+#[Description('Create one independent post per destination in the current workspace, as the web composer does when several channels are selected: each destination becomes its own post on its own channel, and the posts share a post_group_id. Each destination may override the shared content, media, content_type and meta. status draft keeps them editable, scheduled schedules them at scheduled_at or in each channel queue (queue: next or top), publishing publishes them now; one specific slot (queue_slot) is not taken here, use create-post-tool or move-post-to-slot-tool for that. When the acting member needs approval in this workspace, scheduled, queued and publish-now posts are stored with status pending_approval and wait for approve-post-tool. When the posts are made for someone else (the WhatsApp sender), pass their TryPost user id as on_behalf_of_user_id: the posts are credited to that member of the workspace. To publish a thread on X, Bluesky or Mastodon, put the follow-up posts in meta.thread_replies: up to 24 replies published under the post, each {text, media} with up to 4 media items given by url, id or upload_token, e.g. [{"text": "2/ ..."}, {"text": "3/ ...", "media": [{"url": "https://..."}]}]. Each reply must fit the text limit of the account and follows the media rules of a post on that network. On LinkedIn (profile or page), meta.thread_replies takes one text-only reply, published as a comment from the same author, e.g. [{"text": "Read more: https://..."}]. '.PostPlatformMetaRules::SCHEDULING_REQUIREMENTS)]
 class CreatePostsTool extends Tool
 {
     use AuthorizesMcpTool;
@@ -45,14 +46,18 @@ class CreatePostsTool extends Tool
             return $workspace;
         }
 
-        $validated = $request->validate(PostRequestRules::batch($workspace), PostRequestRules::messages());
+        $validated = $request->validate([...PostRequestRules::batch($workspace), ...PostAttribution::rules()], PostRequestRules::messages());
+
+        // Marmara AI fork: the WhatsApp sender gets the credit (app/Marmara/README.md, Members).
+        $member = PostAttribution::member($workspace, $validated);
+        unset($validated[PostAttribution::PARAMETER]);
 
         $validated = HostInlineMedia::forBatch($workspace, $validated);
 
         $validated['created_via'] = CreatedVia::Mcp;
 
         try {
-            $posts = CreatePosts::execute($workspace, $request->user(), $validated);
+            $posts = CreatePosts::execute($workspace, $request->user(), $validated, afterCreate: PostAttribution::crediting($member, $request->user()));
         } catch (QueueBusyException) {
             return Response::error(__('posts.errors.queue_busy'));
         }
@@ -84,6 +89,7 @@ class CreatePostsTool extends Tool
                     'meta' => $destination->object()->description(PostPlatformMetaRules::documentation()),
                 ]))
                 ->required(),
+            PostAttribution::PARAMETER => $schema->string()->description(PostAttribution::DESCRIPTION),
         ];
     }
 }

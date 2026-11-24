@@ -548,7 +548,13 @@ const siblingMoment = (sibling: PostCard): string | null => {
                                         name: current.user.name,
                                         when: date.diffForHumans(current.created_at),
                                     })
-                                }}</span
+                                }}<span
+                                    v-if="current.agent_user_id"
+                                    class="text-muted-foreground/80"
+                                    :data-testid="`post-details-created-via-whatsapp-${currentKey}`"
+                                >
+                                    · {{ $t('posts.members.via_whatsapp') }}</span
+                                ></span
                             >
                         </p>
                         <div

@@ -101,6 +101,8 @@ export interface PostCard {
     recurrence_origin_at?: string | null;
     published_at: string | null;
     user: { name: string } | null;
+    /** Marmara AI fork: the connected user whose agent (Hermes, WhatsApp) created it for `user`. */
+    agent_user_id?: string | null;
     labels: PostCardLabel[];
     notes_count: number;
     media?: MediaItem[];

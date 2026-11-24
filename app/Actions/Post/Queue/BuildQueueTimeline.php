@@ -17,9 +17,10 @@ class BuildQueueTimeline
     /**
      * @param  Collection<int, SocialAccount>  $channels  visible channels (already workspace-scoped)
      * @param  list<string>  $labelIds
+     * @param  list<string>  $creatorIds  Marmara AI fork: the creator filter (app/Marmara/README.md, Members)
      * @return list<array{date: string, items: list<array{type: 'post'|'slot', at: string, channel_id: string, post_id: ?string}>}>
      */
-    public static function handle(Workspace $workspace, Collection $channels, string $displayTimezone, CarbonInterface $until, array $labelIds = [], bool $untagged = false): array
+    public static function handle(Workspace $workspace, Collection $channels, string $displayTimezone, CarbonInterface $until, array $labelIds = [], bool $untagged = false, array $creatorIds = []): array
     {
         $channelIds = $channels->pluck('id')->all();
 
@@ -29,6 +30,7 @@ class BuildQueueTimeline
             ->whereBetween('scheduled_at', [now(), $until])
             ->whereIn('social_account_id', $channelIds)
             ->matchingLabelFilter($labelIds, $untagged)
+            ->createdByAny($creatorIds)
             ->get();
 
         $items = [];
@@ -53,7 +55,7 @@ class BuildQueueTimeline
             }
         }
 
-        if ($labelIds === [] && ! $untagged) {
+        if ($labelIds === [] && ! $untagged && $creatorIds === []) {
             foreach ($channels as $channel) {
                 $schedule = $channel->posting_schedule;
 

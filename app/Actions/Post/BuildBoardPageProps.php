@@ -6,6 +6,7 @@ namespace App\Actions\Post;
 
 use App\Http\Resources\App\PostCardResource;
 use App\Http\Resources\App\SocialAccountResource;
+use App\Marmara\Members\Support\WorkspaceMembers;
 use App\Models\SocialAccount;
 use App\Models\Workspace;
 use App\Models\WorkspaceLabel;
@@ -43,6 +44,7 @@ class BuildBoardPageProps
 
         $posts = BuildPublishPageProps::cardQuery($workspace->posts()->onChannels($filters->scopedChannelIds), [], false)
             ->when($group !== 'tag', fn (Builder $posts): Builder => $posts->matchingLabelFilter($filters->labelIds, $filters->untagged))
+            ->createdByAny($filters->creatorIds)
             ->visiblePendingApprovalsFor(BuildPublishPageProps::pendingApprovalsRequester($user, $workspace));
 
         $columnQuery = fn (array $column): Builder => self::columnQuery($column, clone $posts);
@@ -64,6 +66,8 @@ class BuildBoardPageProps
             'labels' => $labels,
             'filters' => $filters->toProp(),
             'filterAccounts' => fn () => SocialAccountResource::collection($accounts),
+            // Marmara AI fork: the creator filter's options (app/Marmara/README.md, Members).
+            'filterMembers' => fn (): array => WorkspaceMembers::options($workspace),
             'hasChannels' => $hasChannels,
         ];
     }

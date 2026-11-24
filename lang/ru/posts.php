@@ -1233,4 +1233,25 @@ return [
             'too_many' => 'За раз можно спросить не больше :max участников.',
         ],
     ],
+    // Marmara AI fork: posts credited to WhatsApp senders, creator filter, counts per member (app/Marmara/README.md, Members).
+    'members' => [
+        'via_whatsapp' => 'через WhatsApp',
+        'filter' => 'Автор',
+        'search_placeholder' => 'Поиск участников...',
+        'no_members' => 'Участники не найдены.',
+        'stats' => [
+            'title' => 'Публикации по участникам',
+            'description' => 'Сколько публикаций каждый участник опубликовал, запланировал или оставил в черновиках за этот период.',
+            'member' => 'Участник',
+            'published' => 'Опубликовано',
+            'scheduled' => 'Запланировано',
+            'pending_approval' => 'Ждёт одобрения',
+            'drafts' => 'Черновики',
+            'failed' => 'Ошибка',
+            'platforms' => 'Опубликовано в',
+            'via_whatsapp' => ':count через WhatsApp',
+            'empty' => 'За этот период ни у одного участника нет публикаций.',
+            'load_failed' => 'Не удалось загрузить данные по участникам. Попробуйте ещё раз.',
+        ],
+    ],
 ];

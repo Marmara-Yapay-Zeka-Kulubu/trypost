@@ -22,6 +22,7 @@ import { useAnalyticsCoveragePoll } from '@/composables/useAnalyticsCoveragePoll
 import AppLayout from '@/layouts/AppLayout.vue';
 import { accountColor } from '@/lib/analyticsColors';
 import { filled } from '@/lib/helpers';
+import MemberPostsCard from '@/marmara/members/MemberPostsCard.vue';
 import { insights as insightsRoute } from '@/routes/app';
 import type {
     AnalyticsChannelOption,
@@ -270,6 +271,11 @@ const accountColors = computed<Record<string, string>>(() => {
                     :filtered="filtered"
                     :channel-filtered="channelFiltered"
                     :total-channels="channelOptions.length"
+                />
+                <!-- Marmara AI fork: posts by member (app/Marmara/README.md, Members). -->
+                <MemberPostsCard
+                    :range="report.range"
+                    :channels="report.filters.channels"
                 />
             </template>
         </div>

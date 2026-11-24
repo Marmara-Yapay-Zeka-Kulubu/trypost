@@ -67,6 +67,8 @@ import dayjs from '@/dayjs';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { afterHistorySettles, cameFromAppPage } from '@/lib/inAppHistory';
 import { postAttemptAt } from '@/lib/postCard';
+import PostCreatorFilter from '@/marmara/members/PostCreatorFilter.vue';
+import type { WorkspaceMemberOption } from '@/marmara/members/types';
 import { grid, settings } from '@/routes/app/channels';
 import { PostStatus, ScheduleMode } from '@/types/post';
 import type { TimezoneOption } from '@/types/posting-schedule';
@@ -101,8 +103,11 @@ interface Props {
         labels: string[];
         untagged: boolean;
         channels: string[];
+        creators?: string[];
     };
     filterAccounts: PublishSocialAccount[];
+    /** Marmara AI fork: the creator filter's options. */
+    filterMembers?: WorkspaceMemberOption[];
     openComposer?: boolean;
     openComposerAssistant?: boolean;
     editPost?: PostCard | null;
@@ -127,6 +132,7 @@ const {
     selectedLabelIds,
     selectedUntagged,
     selectedChannelIds,
+    selectedCreatorIds,
     filterQuery,
     listUrlFor,
     calendarHref,
@@ -155,6 +161,7 @@ const applyFilters = (): void => {
 watch(selectedLabelIds, applyFilters, { deep: true });
 watch(selectedUntagged, applyFilters);
 watch(selectedChannelIds, applyFilters, { deep: true });
+watch(selectedCreatorIds, applyFilters, { deep: true });
 
 const { showSlots, setShowSlots } = useShowPostingSlots();
 
@@ -820,6 +827,12 @@ const submitComposition = (
                         v-if="scope === 'all' && filterAccounts.length"
                         v-model="selectedChannelIds"
                         :channels="filterAccounts"
+                        sheet-below-sm
+                    />
+                    <PostCreatorFilter
+                        v-if="(filterMembers?.length ?? 0) > 1"
+                        v-model="selectedCreatorIds"
+                        :members="filterMembers ?? []"
                         sheet-below-sm
                     />
                     <PublishFilterMenu

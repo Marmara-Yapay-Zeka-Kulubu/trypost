@@ -13,6 +13,7 @@ use App\Enums\Post\Status as PostStatus;
 use App\Enums\User\WeekStart;
 use App\Http\Resources\App\PostCardResource;
 use App\Http\Resources\App\SocialAccountResource;
+use App\Marmara\Members\Support\WorkspaceMembers;
 use App\Models\Post;
 use App\Models\SocialAccount;
 use App\Models\User;
@@ -80,7 +81,7 @@ class BuildPublishPageProps
             default => $filterAccounts(),
         };
 
-        $basePosts = $workspace->posts()->onChannels($filters->scopedChannelIds);
+        $basePosts = $workspace->posts()->onChannels($filters->scopedChannelIds)->createdByAny($filters->creatorIds);
 
         $openPostNotesId = RequestIds::uuid($request->query('notes'));
         $openPostDetailsId = RequestIds::uuid($request->query('post'));
@@ -117,6 +118,8 @@ class BuildPublishPageProps
             'labels' => fn () => $workspace->labels()->orderBy('name')->get(['id', 'name', 'color']),
             'filters' => $filters->toProp(),
             'filterAccounts' => fn () => SocialAccountResource::collection($filterAccounts()),
+            // Marmara AI fork: the creator filter's options (app/Marmara/README.md, Members).
+            'filterMembers' => fn (): array => WorkspaceMembers::options($workspace),
             'hasData' => $hasData,
             'hasQueueSlots' => $hasQueueSlots,
         ];
@@ -126,7 +129,7 @@ class BuildPublishPageProps
             && ! self::reloadsSameList($request, $tab, $resolveTab);
 
         if ($tab === self::TAB_QUEUE) {
-            $queue = fn (): array => self::queue($workspace, $channels(), $displayTimezone, $request, $labelIds, $untagged, $cards, $channel !== null, $requester);
+            $queue = fn (): array => self::queue($workspace, $channels(), $displayTimezone, $request, $labelIds, $untagged, $cards, $channel !== null, $requester, $filters->creatorIds);
             $props['queue'] = $defersList ? Inertia::defer($queue) : $queue;
         }
 
@@ -280,15 +283,16 @@ class BuildPublishPageProps
      * @param  Collection<int, SocialAccount>  $channels
      * @param  list<string>  $labelIds
      * @param  callable(): Builder  $cards
+     * @param  list<string>  $creatorIds
      * @return array{days: list<array<string, mixed>>, pending: list<array<string, mixed>>, publishing: list<array<string, mixed>>, queueDays: int, maxQueueDays: int}
      */
-    private static function queue(Workspace $workspace, Collection $channels, string $displayTimezone, Request $request, array $labelIds, bool $untagged, callable $cards, bool $channelScope, ?User $requester): array
+    private static function queue(Workspace $workspace, Collection $channels, string $displayTimezone, Request $request, array $labelIds, bool $untagged, callable $cards, bool $channelScope, ?User $requester, array $creatorIds = []): array
     {
         $queueDays = max(self::MIN_QUEUE_DAYS, min(self::MAX_QUEUE_DAYS, $request->integer('queue_days', self::MIN_QUEUE_DAYS)));
 
         $days = ! $channelScope && $cards()->where('status', PostStatus::Scheduled)->exists()
             ? []
-            : BuildQueueTimeline::handle($workspace, $channels, $displayTimezone, now()->addDays($queueDays), $labelIds, $untagged);
+            : BuildQueueTimeline::handle($workspace, $channels, $displayTimezone, now()->addDays($queueDays), $labelIds, $untagged, $creatorIds);
 
         $pending = $cards()
             ->pendingApproval()

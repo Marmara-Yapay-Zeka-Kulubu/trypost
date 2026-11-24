@@ -58,6 +58,8 @@ import { activeLocale } from '@/language';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { calendarDayKey } from '@/lib/calendarItems';
 import { afterPageInHistory } from '@/lib/inAppHistory';
+import PostCreatorFilter from '@/marmara/members/PostCreatorFilter.vue';
+import type { WorkspaceMemberOption } from '@/marmara/members/types';
 import { grid, settings } from '@/routes/app/channels';
 import type { TimezoneOption } from '@/types/posting-schedule';
 import type {
@@ -88,9 +90,12 @@ interface Props {
         labels: string[];
         untagged: boolean;
         channels: string[];
+        creators?: string[];
         status: CalendarStatus;
     };
     filterAccounts: PublishSocialAccount[];
+    /** Marmara AI fork: the creator filter's options. */
+    filterMembers?: WorkspaceMemberOption[];
     undatedDrafts?: ScrollUndatedDrafts;
     slots?: Record<string, CalendarSlot[]>;
 }
@@ -148,6 +153,7 @@ const {
     selectedLabelIds,
     selectedUntagged,
     selectedChannelIds,
+    selectedCreatorIds,
     filterQuery,
     calendarUrlFor,
     listHref,
@@ -234,7 +240,13 @@ const reload = (
 };
 
 watch(
-    [selectedLabelIds, selectedUntagged, selectedChannelIds, selectedStatus],
+    [
+        selectedLabelIds,
+        selectedUntagged,
+        selectedChannelIds,
+        selectedCreatorIds,
+        selectedStatus,
+    ],
     () => reload([...reloadProps(), 'undatedDrafts'], ['undatedDrafts']),
     { deep: true },
 );
@@ -630,6 +642,12 @@ const goToDay = (key: string): void => {
                         v-if="scope === 'all' && filterAccounts.length"
                         v-model="selectedChannelIds"
                         :channels="filterAccounts"
+                        sheet-below-sm
+                    />
+                    <PostCreatorFilter
+                        v-if="(filterMembers?.length ?? 0) > 1"
+                        v-model="selectedCreatorIds"
+                        :members="filterMembers ?? []"
                         sheet-below-sm
                     />
                     <div class="shrink-0 max-md:hidden">

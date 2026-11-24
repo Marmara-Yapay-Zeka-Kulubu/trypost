@@ -1233,4 +1233,25 @@ return [
             'too_many' => 'Frage höchstens :max Mitglieder auf einmal.',
         ],
     ],
+    // Marmara AI fork: posts credited to WhatsApp senders, creator filter, counts per member (app/Marmara/README.md, Members).
+    'members' => [
+        'via_whatsapp' => 'über WhatsApp',
+        'filter' => 'Erstellt von',
+        'search_placeholder' => 'Mitglieder suchen...',
+        'no_members' => 'Keine Mitglieder gefunden.',
+        'stats' => [
+            'title' => 'Beiträge pro Mitglied',
+            'description' => 'Wie viele Beiträge jedes Mitglied in diesem Zeitraum veröffentlicht, geplant oder als Entwurf behalten hat.',
+            'member' => 'Mitglied',
+            'published' => 'Veröffentlicht',
+            'scheduled' => 'Geplant',
+            'pending_approval' => 'Wartet auf Freigabe',
+            'drafts' => 'Entwürfe',
+            'failed' => 'Fehlgeschlagen',
+            'platforms' => 'Veröffentlicht auf',
+            'via_whatsapp' => ':count über WhatsApp',
+            'empty' => 'In diesem Zeitraum hat kein Mitglied Beiträge.',
+            'load_failed' => 'Die Zahlen pro Mitglied konnten nicht geladen werden. Versuche es erneut.',
+        ],
+    ],
 ];
