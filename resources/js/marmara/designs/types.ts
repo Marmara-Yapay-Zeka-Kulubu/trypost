@@ -9,7 +9,12 @@ export type DesignSource = 'site' | 'whatsapp' | 'drive' | 'agent';
 
 export interface DesignItem {
     id: string;
+    /** The title shown: custom_title, else drive_title. */
     title: string;
+    /** The title from the Drive file name (the sync keeps it up to date). */
+    drive_title: string;
+    /** The title set in TryPost; null shows the Drive one. */
+    custom_title: string | null;
     name: string;
     kind: 'image' | 'pdf' | 'video' | 'drawing';
     mime_type: string;
@@ -116,7 +121,7 @@ export interface SelectedDesign extends Omit<DesignItem, 'set'> {
     set: { id: string; count: number; items: DesignSetItem[] } | null;
     publications: DesignPublication[];
     voted: boolean;
-    can: { statuses: DesignStatus[]; create_post: boolean };
+    can: { statuses: DesignStatus[]; create_post: boolean; rename: boolean };
 }
 
 export interface PostChannel {

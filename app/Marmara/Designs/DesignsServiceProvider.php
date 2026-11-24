@@ -13,6 +13,7 @@ use App\Marmara\Designs\Mcp\AddDesignTool;
 use App\Marmara\Designs\Mcp\CommentOnDesignTool;
 use App\Marmara\Designs\Mcp\GetDesignTool;
 use App\Marmara\Designs\Mcp\ListDesignsTool;
+use App\Marmara\Designs\Mcp\RenameDesignTool;
 use App\Marmara\Designs\Models\Design;
 use App\Marmara\Designs\Models\DesignComment;
 use App\Marmara\Designs\Posts\DesignPostLinks;
@@ -65,7 +66,7 @@ class DesignsServiceProvider extends ServiceProvider
         // extends MarmaraTryPostServer; without it this module binds the
         // shared one. Either way the tools below are added (and hide while
         // the module is off).
-        MarmaraMcpTools::register([ListDesignsTool::class, GetDesignTool::class, CommentOnDesignTool::class, AddDesignTool::class]);
+        MarmaraMcpTools::register([ListDesignsTool::class, GetDesignTool::class, CommentOnDesignTool::class, AddDesignTool::class, RenameDesignTool::class]);
 
         if (! $this->app->bound(TryPostServer::class)) {
             $this->app->bind(TryPostServer::class, MarmaraTryPostServer::class);

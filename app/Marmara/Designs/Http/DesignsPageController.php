@@ -106,6 +106,7 @@ class DesignsPageController extends Controller
                 'can' => [
                     'statuses' => collect(DesignStatus::cases())->filter(fn (DesignStatus $status): bool => Gate::forUser($user)->allows(DesignsServiceProvider::STATUS_ABILITY, [$selected, $status]))->map->value->values()->all(),
                     'create_post' => $user->can('createPost', $selected) && $selected->removed_at === null,
+                    'rename' => $user->can('rename', $selected),
                 ],
             ],
             'permissions' => [
@@ -121,8 +122,8 @@ class DesignsPageController extends Controller
                 ->values()->all(),
             'linkCandidates' => $selected === null ? [] : Design::query()->where('workspace_id', $workspace->id)->active()->whereKeyNot($selected->id)
                 ->when($selected->family_id !== null, fn ($query) => $query->where(fn ($inner) => $inner->whereNull('family_id')->orWhere('family_id', '!=', $selected->family_id)))
-                ->orderByDesc('drive_created_at')->limit(200)->get(['id', 'title', 'folder_path', 'drive_created_at'])
-                ->map(fn (Design $design): array => ['id' => $design->id, 'title' => $design->title, 'folder' => $design->folder_path])->values()->all(),
+                ->orderByDesc('drive_created_at')->limit(200)->get(['id', 'title', 'custom_title', 'folder_path', 'drive_created_at'])
+                ->map(fn (Design $design): array => ['id' => $design->id, 'title' => $design->displayTitle(), 'folder' => $design->folder_path])->values()->all(),
             // How many designs each person shared (posts that went out) in the date range.
             'sharedBy' => DesignPublications::countsByMember($workspace, $filters['from'] ?? null, $filters['to'] ?? null),
             'urls' => $this->urls(),
@@ -240,6 +241,7 @@ class DesignsPageController extends Controller
             'index' => route('marmara.designs.index'),
             'upload' => route('marmara.designs.upload'),
             'status' => route('marmara.designs.status', ['design' => '__ID__']),
+            'title' => route('marmara.designs.title', ['design' => '__ID__']),
             'tags' => route('marmara.designs.tags', ['design' => '__ID__']),
             'comments' => route('marmara.designs.comments.store', ['design' => '__ID__']),
             'comment' => route('marmara.designs.comments.update', ['design' => '__ID__', 'comment' => '__COMMENT__']),

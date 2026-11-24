@@ -47,7 +47,7 @@ class DesignMediaController extends Controller
         $revision = $this->revision($model, $request);
         $exportMime = $model->isGoogleNative() ? DesignTypes::DRAWING_EXPORT_MIME : null;
         $mime = $exportMime ?? $revision?->mime_type ?? $model->mime_type;
-        $filename = $model->isGoogleNative() ? "{$model->title}.png" : ($revision?->original_filename ?? $model->name);
+        $filename = $model->isGoogleNative() ? "{$model->displayTitle()}.png" : ($revision?->original_filename ?? $model->name);
 
         try {
             $stream = $drive->stream($model->drive_file_id, $revision?->revision_id, $exportMime);

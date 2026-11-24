@@ -59,7 +59,8 @@ class DesignQuery
 
         if (filled($filters['q'] ?? null)) {
             $term = '%'.str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], mb_strtolower(trim((string) $filters['q']))).'%';
-            $query->where(fn (Builder $inner) => $inner->whereRaw('lower(title) like ?', [$term])->orWhereRaw('lower(name) like ?', [$term]));
+            // The title set in TryPost, the one from Drive and the file name.
+            $query->where(fn (Builder $inner) => $inner->whereRaw('lower(custom_title) like ?', [$term])->orWhereRaw('lower(title) like ?', [$term])->orWhereRaw('lower(name) like ?', [$term]));
         }
 
         if (filled($filters['folder'] ?? null)) {
@@ -110,7 +111,7 @@ class DesignQuery
 
         return match ($filters['sort'] ?? 'newest') {
             'oldest' => $query->orderBy('drive_created_at')->orderBy('id'),
-            'title' => $query->orderByRaw('lower(title)')->orderBy('id'),
+            'title' => $query->orderByRaw('lower(coalesce(custom_title, title))')->orderBy('id'),
             'votes' => $query->orderByDesc('votes_count')->orderByDesc('drive_created_at')->orderBy('id'),
             'last_comment' => $query->orderByRaw('last_commented_at is null')->orderByDesc('last_commented_at')->orderByDesc('drive_created_at')->orderBy('id'),
             default => $query->orderByDesc('drive_created_at')->orderBy('id'),

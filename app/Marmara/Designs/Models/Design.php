@@ -27,7 +27,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $workspace_id
  * @property string $drive_file_id
  * @property string $name
- * @property string $title
+ * @property string $title derived from the Drive file name, rewritten by every sync
+ * @property string|null $custom_title set in TryPost; shown instead of title (displayTitle())
  * @property string $mime_type
  * @property string $kind
  * @property int|null $size
@@ -74,6 +75,7 @@ class Design extends Model
         'drive_file_id',
         'name',
         'title',
+        'custom_title',
         'mime_type',
         'kind',
         'size',
@@ -272,6 +274,15 @@ class Design extends Model
         }
 
         return $this->uploader_name ?? $this->owner_name ?? $this->modifier_name;
+    }
+
+    /**
+     * The title shown everywhere (page, API, MCP, webhooks, post file
+     * names): the one set in TryPost, else the one from the Drive file name.
+     */
+    public function displayTitle(): string
+    {
+        return filled($this->custom_title) ? (string) $this->custom_title : (string) $this->title;
     }
 
     public function isGoogleNative(): bool

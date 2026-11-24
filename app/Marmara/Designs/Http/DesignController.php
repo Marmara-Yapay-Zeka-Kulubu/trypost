@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 
 /**
- * The gallery's changes: status, tags, comments, votes and version links.
+ * The gallery's changes: status, title, tags, comments, votes and version links.
  * Each answers back() for the Inertia page.
  */
 class DesignController extends Controller
@@ -33,6 +33,18 @@ class DesignController extends Controller
         Gate::authorize(DesignsServiceProvider::STATUS_ABILITY, [$model, $status]);
 
         $this->actions->setStatus($model, $request->user(), $status);
+
+        return back();
+    }
+
+    public function title(Request $request, string $design): RedirectResponse
+    {
+        $model = $this->design($request, $design);
+        $this->authorize('rename', $model);
+        // Empty (null after ConvertEmptyStringsToNull) goes back to the Drive name.
+        $validated = $request->validate(['title' => ['present', 'nullable', 'string', 'max:'.DesignActions::MAX_TITLE]]);
+
+        $this->actions->rename($model, $request->user(), $validated['title']);
 
         return back();
     }

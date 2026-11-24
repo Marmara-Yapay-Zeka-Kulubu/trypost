@@ -2,7 +2,8 @@
 /**
  * Marmara AI fork: one design in a drawer — large preview, metadata, "Drive'da
  * aç", versions strip with side-by-side compare, status and tags, votes,
- * comments and activity (app/Marmara/README.md, Designs). A design of a
+ * comments and activity, and the title shown in TryPost edited in place
+ * (the Drive file keeps its name) (app/Marmara/README.md, Designs). A design of a
  * series (one carousel post) shows the series as a strip with previous /
  * next, and every post it went out with.
  */
@@ -16,6 +17,7 @@ import {
     IconExternalLink,
     IconFileTypePdf,
     IconLink,
+    IconPencil,
     IconPhoto,
     IconPhotoOff,
     IconSend,
@@ -140,6 +142,50 @@ const visit = (method: 'post' | 'put' | 'patch' | 'delete', target: string, data
     router.visit(target, { method, data, preserveScroll: true, preserveState: true });
 };
 
+// The title shown in TryPost, edited in place: Enter saves, Esc cancels
+// (and does not close the drawer). Empty goes back to the Drive name.
+const renaming = ref(false);
+const titleForm = useForm({ title: '' });
+
+const startRename = (): void => {
+    titleForm.clearErrors();
+    titleForm.title = props.design.title;
+    renaming.value = true;
+};
+
+const cancelRename = (): void => {
+    renaming.value = false;
+    titleForm.clearErrors();
+};
+
+const saveRename = (): void => {
+    if (titleForm.processing) {
+        return;
+    }
+
+    const title = titleForm.title.trim();
+
+    // Nothing to save: the same title, or empty while the Drive name already shows.
+    if (title === props.design.title || (title === '' && props.design.custom_title === null)) {
+        renaming.value = false;
+
+        return;
+    }
+
+    titleForm.patch(url('title'), {
+        preserveScroll: true,
+        preserveState: true,
+        onSuccess: () => {
+            renaming.value = false;
+        },
+    });
+};
+
+watch(
+    () => props.design.id,
+    () => cancelRename(),
+);
+
 const statusOptions = computed(() => {
     const allowed = new Set([...props.design.can.statuses, props.design.status]);
 
@@ -232,6 +278,10 @@ const kindIcons: Record<string, Component> = { pdf: IconFileTypePdf, video: Icon
 const kindIcon = computed<Component>(() => kindIcons[props.design.kind] ?? IconPhoto);
 
 const activityText = (type: string, data: Record<string, unknown>): string => {
+    if (type === 'title_changed') {
+        return props.t('activity.title_changed', { from: String(data.from ?? ''), to: String(data.to ?? '') });
+    }
+
     if (type === 'status_changed') {
         return props.t('activity.status_changed', {
             from: props.t(`statuses.${String(data.from ?? '')}`),
@@ -253,7 +303,44 @@ const activityText = (type: string, data: Record<string, unknown>): string => {
         >
             <SheetHeader class="sticky top-0 z-10 flex flex-row items-start gap-2 border-b border-border-strong bg-background p-4 md:px-6">
                 <div class="flex min-w-0 flex-1 flex-col gap-1">
-                    <SheetTitle class="truncate font-heading text-lg font-medium" data-testid="marmara-designs-drawer-title">{{ design.title }}</SheetTitle>
+                    <form v-if="renaming" class="flex flex-col gap-1" data-testid="marmara-designs-rename-form" @submit.prevent="saveRename">
+                        <SheetTitle class="sr-only">{{ design.title }}</SheetTitle>
+                        <Label for="marmara-designs-rename-input" class="sr-only">{{ t('detail.rename_label') }}</Label>
+                        <div class="flex items-center gap-2">
+                            <Input
+                                id="marmara-designs-rename-input"
+                                v-model="titleForm.title"
+                                class="h-9 min-w-0 flex-1 font-heading text-base"
+                                maxlength="255"
+                                autofocus
+                                :placeholder="design.drive_title"
+                                data-testid="marmara-designs-rename-input"
+                                @keydown.esc.stop.prevent="cancelRename"
+                            />
+                            <Button type="submit" size="sm" :disabled="titleForm.processing" data-testid="marmara-designs-rename-save">{{ t('detail.rename_save') }}</Button>
+                            <Button type="button" size="sm" variant="ghost" :disabled="titleForm.processing" @click="cancelRename">{{ t('detail.rename_cancel') }}</Button>
+                        </div>
+                        <InputError :message="titleForm.errors.title" />
+                        <p class="text-xs text-muted-foreground">{{ t('detail.rename_hint') }}</p>
+                    </form>
+                    <div v-else class="flex min-w-0 items-center gap-1">
+                        <SheetTitle class="truncate font-heading text-lg font-medium" data-testid="marmara-designs-drawer-title">{{ design.title }}</SheetTitle>
+                        <Button
+                            v-if="design.can.rename"
+                            variant="ghost"
+                            size="icon"
+                            class="size-7 shrink-0"
+                            :aria-label="t('detail.rename')"
+                            :title="t('detail.rename')"
+                            data-testid="marmara-designs-rename"
+                            @click="startRename"
+                        >
+                            <IconPencil class="size-4" />
+                        </Button>
+                    </div>
+                    <p v-if="design.custom_title && !renaming" class="truncate text-xs text-muted-foreground" data-testid="marmara-designs-drive-name">
+                        {{ t('detail.drive_name', { name: design.name }) }}
+                    </p>
                     <SheetDescription class="flex flex-wrap items-center gap-2 text-xs">
                         <DesignStatusBadge :status="design.status" :label="t(`statuses.${design.status}`)" compact />
                         <span class="truncate">{{ design.folder || t('filters.root_folder') }}</span>

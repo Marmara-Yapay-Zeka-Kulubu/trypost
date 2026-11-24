@@ -28,6 +28,38 @@ class DesignActions
 {
     public const int MAX_TAGS = 20;
 
+    public const int MAX_TITLE = 255;
+
+    /**
+     * Sets the title shown in TryPost (trimmed; null or empty goes back to
+     * the title from the Drive file name). The Drive file keeps its name and
+     * the sync never touches custom_title. One `title_changed` activity line
+     * {from, to} with the shown titles (plus reset: true when it goes back
+     * to the Drive name), credited to $user; false when nothing changes.
+     */
+    public function rename(Design $design, User $user, ?string $title): bool
+    {
+        $custom = trim((string) $title);
+        $custom = $custom === '' ? null : mb_substr($custom, 0, self::MAX_TITLE);
+
+        // Nothing changes: the same custom title, or the Drive title while it already shows
+        // (storing it would only stop later Drive renames from showing).
+        if ($custom === $design->custom_title || ($design->custom_title === null && $custom === $design->title)) {
+            return false;
+        }
+
+        $from = $design->displayTitle();
+        $design->forceFill(['custom_title' => $custom])->save();
+        DesignActivity::record($design, $user, 'title_changed', array_filter([
+            'from' => $from,
+            'to' => $design->displayTitle(),
+            // Back to the Drive name.
+            'reset' => $custom === null ? true : null,
+        ], fn (mixed $value): bool => $value !== null));
+
+        return true;
+    }
+
     public function setStatus(Design $design, User $user, DesignStatus $status): bool
     {
         $from = $design->status;
@@ -179,7 +211,7 @@ class DesignActions
             self::refreshFamily($design->workspace_id, $familyId);
         });
 
-        DesignActivity::record($design, $user, 'version_linked', ['previous_id' => $previous->id, 'previous_title' => $previous->title]);
+        DesignActivity::record($design, $user, 'version_linked', ['previous_id' => $previous->id, 'previous_title' => $previous->displayTitle()]);
     }
 
     public function unlinkVersion(Design $design, User $user): void

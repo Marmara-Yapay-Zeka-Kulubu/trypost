@@ -40,6 +40,7 @@ Route::middleware(['web', 'auth', EnsureAccountReady::class, EnsureHasWorkspace:
         // A <video> asks for several byte ranges while it plays and seeks.
         Route::get('{design}/play', [DesignMediaController::class, 'play'])->middleware('throttle:240,1')->name('play');
         Route::patch('{design}/status', [DesignController::class, 'status'])->name('status');
+        Route::patch('{design}/title', [DesignController::class, 'title'])->name('title');
         Route::put('{design}/tags', [DesignController::class, 'tags'])->name('tags');
         Route::post('{design}/comments', [DesignController::class, 'storeComment'])->middleware('throttle:30,1')->name('comments.store');
         Route::patch('{design}/comments/{comment}', [DesignController::class, 'updateComment'])->name('comments.update');
@@ -65,6 +66,7 @@ Route::middleware(['api', 'auth:api', 'workspace.token', 'throttle:api', EnsureD
         Route::get('{design}', [DesignsApiController::class, 'show'])->name('show');
         Route::post('{design}/comments', [DesignsApiController::class, 'comment'])->middleware('throttle:30,1')->name('comments.store');
         Route::patch('{design}/status', [DesignsApiController::class, 'status'])->name('status');
+        Route::patch('{design}/title', [DesignsApiController::class, 'title'])->name('title');
     });
 
 // The public privacy policy for the Google OAuth consent screen: no auth, and on even while the module is off.

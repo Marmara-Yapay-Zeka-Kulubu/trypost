@@ -31,7 +31,11 @@ class DesignPayload
 
         return [
             'id' => $design->id,
-            'title' => $design->title,
+            // The shown title: the one set in TryPost, else the Drive file name without extension.
+            'title' => $design->displayTitle(),
+            // The title from the Drive file name, and the one set in TryPost (null: none).
+            'drive_title' => $design->title,
+            'custom_title' => $design->custom_title,
             'name' => $design->name,
             'kind' => $design->kind,
             'mime_type' => $design->mime_type,
@@ -126,7 +130,7 @@ class DesignPayload
             'count' => $members->count(),
             'items' => $members->map(fn (Design $member): array => [
                 'id' => $member->id,
-                'title' => $member->title,
+                'title' => $member->displayTitle(),
                 'kind' => $member->kind,
                 'status' => $member->status->value,
                 'thumbnail_url' => self::thumbnailUrl($member, 400, null, $signed),
@@ -162,7 +166,7 @@ class DesignPayload
                     'key' => "{$member->id}:{$revision->revision_id}",
                     'design_id' => $member->id,
                     'revision_id' => $revision->revision_id,
-                    'title' => $member->title,
+                    'title' => $member->displayTitle(),
                     'modified_at' => $revision->modified_at?->toIso8601String(),
                     'author' => ['name' => $revision->modifier_name],
                     'kept' => $revision->keep_forever,
@@ -178,7 +182,7 @@ class DesignPayload
                 'key' => "{$member->id}:head",
                 'design_id' => $member->id,
                 'revision_id' => null,
-                'title' => $member->title,
+                'title' => $member->displayTitle(),
                 'modified_at' => ($member->drive_modified_at ?? $head?->modified_at)?->toIso8601String(),
                 'author' => ['name' => $member->modifier_name ?? $member->uploaderLabel()],
                 'kept' => $head?->keep_forever ?? false,

@@ -1184,7 +1184,7 @@ the club lead's personal Drive. The "Tasarımlar" page shows that folder as a
 gallery: classify (status, free tags), filter, sort, comment, vote, see the
 older and newer versions of a design side by side, and turn an approved one
 into a post draft (JPEG as is, other images as quality 100 JPEG). Echo / Hermes get the same through
-the REST API, three MCP tools and the `design.*` webhooks. Variables:
+the REST API, the MCP tools and the `design.*` webhooks. Variables:
 `marmara/designs.env.example`.
 
 ### Files
@@ -1198,7 +1198,7 @@ the REST API, three MCP tools and the `design.*` webhooks. Variables:
 | `app/Marmara/Designs/Sync/DesignSync.php`, `RevisionSync.php`, `Jobs/SyncDesignRevisions.php` | The folder mirror (below) and the revisions with keepForever |
 | `app/Marmara/Designs/Models/*`, `database/migrations/` | `marmara_designs`, `marmara_design_folders`, `marmara_design_revisions`, `marmara_design_sync_states`, `marmara_design_thumbnails`, `marmara_design_tags`, `marmara_design_comments`, `marmara_design_votes`, `marmara_design_activities`, `marmara_design_drive_connections`, `marmara_design_posts`, `marmara_design_media` |
 | `app/Marmara/Designs/DesignPolicy.php` | Who may do what (below); `set-design-status`, `update-design-comment`, `delete-design-comment` gates |
-| `app/Marmara/Designs/Actions/DesignActions.php` | Status, tags, comments, votes, version links, one activity line each; shared by the page, the API and MCP |
+| `app/Marmara/Designs/Actions/DesignActions.php` | Status, title, tags, comments, votes, version links, one activity line each; shared by the page, the API and MCP |
 | `app/Marmara/Designs/Actions/CreatePostFromDesign.php` | "Gönderi oluştur" (TryPost's upload normalization: PNG/WebP/HEIC to JPEG q100), one design or several as one carousel post |
 | `app/Marmara/Designs/Posts/*`, `Models/DesignPost.php`, `Models/DesignMedia.php`, `Jobs/AddPublishedMediaToDesigns.php` | Designs on posts: links, series, "Kullanıldı" on publish, published media added to the gallery (below) |
 | `app/Marmara/Designs/Thumbnails/*` | The thumbnail proxy's source and the bounded LRU cache |
@@ -1206,7 +1206,7 @@ the REST API, three MCP tools and the `design.*` webhooks. Variables:
 | `app/Marmara/Designs/DesignPayload.php`, `DesignQuery.php` | The one design shape (page, API, MCP, webhooks) and the filters / sorts |
 | `app/Marmara/Designs/DesignEvents.php` | `design.added`, `design.commented`, `design.status_changed` |
 | `app/Marmara/Designs/Http/*`, `routes.php` | Page, actions, thumbnail / original, Drive connect, upload, REST API, `EnsureDesignsEnabled` |
-| `app/Marmara/Designs/Mcp/*` | `list-designs-tool`, `get-design-tool`, `comment-on-design-tool`, `add-design-tool` |
+| `app/Marmara/Designs/Mcp/*` | `list-designs-tool`, `get-design-tool`, `comment-on-design-tool`, `add-design-tool`, `rename-design-tool` |
 | `app/Marmara/Hooks/MarmaraTryPostServer.php`, `MarmaraMcpTools.php` | The fork's shared MCP server: modules register tools in `MarmaraMcpTools`; `InboxTryPostServer` extends it |
 | `app/Marmara/Designs/lang/{en,tr}/designs.php` | The page's copy (namespace `marmara-designs`; other locales fall back to English) |
 | `app/Marmara/Designs/Console/*` | `marmara:designs:sync [--full]`, `marmara:designs:status [--check]` |
@@ -1351,7 +1351,7 @@ shows only for its members.
 
 | Action | Who |
 | --- | --- |
-| See, filter, comment, vote, tag, link versions, set Taslak / Değerlendirmede / Arşiv | Every member of the workspace |
+| See, filter, comment, vote, tag, rename (the TryPost title), link versions, set Taslak / Değerlendirmede / Arşiv | Every member of the workspace |
 | Set Onaylandı / Kullanıldı, or move a design away from them | Members who may approve posts (`WorkspacePolicy::approvePosts`: admins and members who publish directly); the `set-design-status` gate, on the page, the API and MCP alike |
 | Edit / delete a comment | Its author only |
 | "Gönderi oluştur", "Yükle" | `createPost` on the workspace |
@@ -1501,9 +1501,26 @@ setting or env var name is ever shown in the UI.
   → `{data, has_more}`; `GET /api/designs/{id}` → design + `comments_list`,
   `versions`, `activity`; `POST /api/designs/{id}/comments {body}` → 201;
   `PATCH /api/designs/{id}/status {status}` → 403 `{code: status_forbidden}`
-  without the right.
+  without the right; `PATCH /api/designs/{id}/title {title}` → the design.
+- Titles: `title` comes from the Drive file name and every sync rewrites
+  it; `custom_title` (migration `2026_11_25_120000_add_marmara_design_custom_title`)
+  is the one set in TryPost (the drawer's pencil, `PATCH designs/{id}/title`,
+  the API, `rename-design-tool`) and the sync never touches it. Everything
+  shows `Design::displayTitle()` (`custom_title ?? title`): payload `title`
+  (plus `drive_title` and `custom_title`), search (`q` matches both and the
+  file name), the title sort, "Gönderi oluştur"'s file name, version links,
+  webhooks. Empty clears it (the Drive name shows again). The Drive file is
+  never renamed. Activity `title_changed {from, to, reset?}`. Right: the
+  `rename` ability (every member, like tags).
 - MCP: `list-designs-tool`, `get-design-tool` (read only),
   `comment-on-design-tool` (writes a TryPost comment, not open world).
+- MCP `rename-design-tool` (write, not open world) `{design_id, title,
+  current_title?, on_behalf_of_user_id?}`: sets the TryPost title (empty:
+  back to the Drive name). `current_title`, when given, must match the
+  shown title or nothing changes (a check on the design id the approval
+  card shows). `on_behalf_of_user_id` as in `add-design-tool` (a member, else
+  a validation error); the activity is credited to that member, else the
+  token user. Answers `{id, title, drive_name, url}`.
 - MCP `add-design-tool` (write, open world: it writes to Drive) puts a file
   TryPost already holds into the shared folder, for Hermes' "bu videoyu
   depoya yükle": `{media: {upload_token}|{id}, title?, tags?, folder?,

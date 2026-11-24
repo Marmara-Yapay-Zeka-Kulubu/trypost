@@ -177,7 +177,7 @@ class AddDesignTool extends Tool
 
         return Response::structured([
             'id' => $design->id,
-            'title' => $design->title,
+            'title' => $design->displayTitle(),
             'kind' => $design->kind,
             'tags' => $tags,
             'folder' => $design->folder_path,

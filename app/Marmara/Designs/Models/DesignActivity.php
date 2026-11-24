@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /**
  * One line of a design's activity log: added, uploaded, status_changed,
  * tags_changed, commented, comment_edited, comment_deleted, voted, unvoted,
- * version_linked, version_unlinked, post_created.
+ * version_linked, version_unlinked, post_created, title_changed.
  *
  * @property int $id
  * @property string $design_id

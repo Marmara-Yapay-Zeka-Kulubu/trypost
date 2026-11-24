@@ -12,7 +12,8 @@ use App\Models\Workspace;
 
 /**
  * Who may do what with a design. Every member of the design's workspace sees,
- * tags, comments, votes and links versions; Onaylandı / Kullanıldı (and
+ * tags, comments, votes, links versions and renames (the title shown in
+ * TryPost; the Drive file keeps its name); Onaylandı / Kullanıldı (and
  * moving a design away from them) need the right to approve or publish
  * posts (WorkspacePolicy::approvePosts, the same right as approving a
  * post); only a comment's author edits or deletes it.
@@ -48,6 +49,16 @@ class DesignPolicy
     }
 
     public function linkVersion(User $user, Design $design): bool
+    {
+        return $this->view($user, $design);
+    }
+
+    /**
+     * The title shown in TryPost (custom_title): club data like the tags,
+     * so the same right as tagging and commenting. The Drive file is not
+     * renamed.
+     */
+    public function rename(User $user, Design $design): bool
     {
         return $this->view($user, $design);
     }

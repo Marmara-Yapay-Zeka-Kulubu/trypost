@@ -18,7 +18,7 @@ use Illuminate\Validation\Rule;
 
 /**
  * REST for Echo / Hermes (API key, workspace of the key): list, read,
- * comment and change the status. Thumbnail URLs are temporary signed URLs,
+ * comment, change the status and rename (the title shown in TryPost). Thumbnail URLs are temporary signed URLs,
  * since API readers have no TryPost session.
  */
 class DesignsApiController extends Controller
@@ -57,6 +57,22 @@ class DesignsApiController extends Controller
         $comment = $actions->comment($model, $request->user(), $validated['body']);
 
         return response()->json(DesignPayload::comment($comment->load('user'), $request->user()), 201);
+    }
+
+    /**
+     * The title shown in TryPost; empty or null goes back to the Drive name.
+     * The Drive file is not renamed.
+     */
+    public function title(Request $request, string $design, DesignActions $actions): JsonResponse
+    {
+        $this->tokenWorkspace($request);
+        $model = $this->design($request, $design);
+        $this->authorize('rename', $model);
+        $validated = $request->validate(['title' => ['present', 'nullable', 'string', 'max:'.DesignActions::MAX_TITLE]]);
+
+        $actions->rename($model, $request->user(), $validated['title']);
+
+        return response()->json(DesignPayload::item($model->fresh(), signedThumbnails: true));
     }
 
     public function status(Request $request, string $design, DesignActions $actions): JsonResponse

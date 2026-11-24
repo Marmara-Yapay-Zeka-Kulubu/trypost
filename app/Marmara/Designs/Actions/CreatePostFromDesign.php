@@ -160,7 +160,7 @@ class CreatePostFromDesign
         }
 
         $extension = DesignTypes::extensionFor($mime);
-        $filename = Str::limit($design->title, 180, '').".{$extension}";
+        $filename = Str::limit($design->displayTitle(), 180, '').".{$extension}";
 
         $base = (string) tempnam(sys_get_temp_dir(), 'marmara-design-');
         $temporary = "{$base}.{$extension}";
