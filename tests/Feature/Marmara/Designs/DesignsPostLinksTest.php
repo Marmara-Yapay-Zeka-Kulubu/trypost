@@ -104,6 +104,7 @@ test('several picked designs become one carousel draft in the order they were pi
     $c = designsMake($this->workspace, ['drive_file_id' => 'fileC', 'mime_type' => 'image/jpeg', 'title' => 'Konuşmacılar']);
     designsFakeDrive(content: ['fileA' => designsJpeg(1080, 1350), 'fileB' => designsJpeg(1080, 1351), 'fileC' => designsJpeg(1080, 1352)]);
 
+    $this->withoutExceptionHandling();
     $response = $this->actingAs($this->owner)->post('/designs/posts', [
         'design_ids' => [$c->id, $a->id, $b->id],
         'social_account_ids' => [$this->linkedin->id],

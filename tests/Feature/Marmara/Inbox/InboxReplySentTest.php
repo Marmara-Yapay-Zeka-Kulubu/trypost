@@ -13,6 +13,7 @@ use App\Models\SocialAccount;
 use App\Models\User;
 use App\Models\Webhook;
 use Carbon\CarbonImmutable;
+use Illuminate\Http\Client\Factory;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 
@@ -201,6 +202,8 @@ test('an on_behalf_of_user_id that is not a member is refused and nothing is sen
 });
 
 test('a reply the network refuses is failed and not announced', function () {
+    // The beforeEach stub answers first, so a fresh factory is used here.
+    Http::swap(new Factory);
     Http::fake([
         'graph.facebook.com/v25.0/777_1/comments' => Http::response(['error' => ['message' => 'Invalid parameter', 'code' => 100]], 400),
     ]);
