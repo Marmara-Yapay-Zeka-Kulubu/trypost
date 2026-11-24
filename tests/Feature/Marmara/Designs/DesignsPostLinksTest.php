@@ -141,7 +141,6 @@ test('several picked designs become one carousel draft in the order they were pi
     expect(app(DesignsConfig::class)->workspace()?->id)->toBe($this->workspace->id)
         ->and(Design::query()->where('workspace_id', $this->workspace->id)->whereNull('removed_at')->whereIn('id', [$a->id, $b->id, $c->id])->count())->toBe(3);
 
-    $this->withoutExceptionHandling();
     $response = $this->actingAs($this->owner)->post('/designs/posts', [
         'design_ids' => [$c->id, $a->id, $b->id],
         'social_account_ids' => [$this->linkedin->id],
@@ -372,7 +371,7 @@ test('the gallery shows a series once, as its first design with the count, and t
             ->where('sharedBy', [['user_id' => $this->member->id, 'name' => 'Behice Kaya', 'count' => 1]]));
 
     // A search that matches only one member still shows the series once.
-    $this->actingAs($this->owner)->get('/designs?q=konuşmacılar')
+    $this->actingAs($this->owner)->get('/designs?'.http_build_query(['q' => 'konuşmacılar']))
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->has('designs', 1)
             ->where('designs.0.id', $first->id)
