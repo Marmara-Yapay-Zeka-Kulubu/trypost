@@ -10,6 +10,7 @@ use App\Marmara\Inbox\Exceptions\InboxReplyRefused;
 use App\Marmara\Inbox\InboxItemPayload;
 use App\Marmara\Inbox\InboxServiceProvider;
 use App\Marmara\Inbox\Models\InboxItem;
+use App\Marmara\Inbox\Models\InboxReply;
 use App\Models\Workspace;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
@@ -79,7 +80,9 @@ class InboxApiController extends Controller
         ]);
 
         try {
-            $result = SendInboxReply::execute($inboxItem, $request->user(), $validated['text'], $validated['request_id'], $validated['acknowledged_reply_id'] ?? null);
+            // Echo's request ids start with "echo-" (replyRequestId in Echo's trypost-inbox.js).
+            $via = str_starts_with($validated['request_id'], 'echo-') ? InboxReply::VIA_ECHO : InboxReply::VIA_API;
+            $result = SendInboxReply::execute($inboxItem, $request->user(), $validated['text'], $validated['request_id'], $validated['acknowledged_reply_id'] ?? null, $via);
         } catch (InboxReplyRefused $refused) {
             return response()->json(array_filter([
                 'message' => $refused->getMessage(),

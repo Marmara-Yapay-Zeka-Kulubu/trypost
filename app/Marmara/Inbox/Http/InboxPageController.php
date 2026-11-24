@@ -97,7 +97,7 @@ class InboxPageController extends Controller
         ]);
 
         try {
-            $result = SendInboxReply::execute($inboxItem, $request->user(), $validated['text'], $validated['request_id'] ?? null, $validated['acknowledged_reply_id'] ?? null);
+            $result = SendInboxReply::execute($inboxItem, $request->user(), $validated['text'], $validated['request_id'] ?? null, $validated['acknowledged_reply_id'] ?? null, InboxReply::VIA_PANEL);
         } catch (InboxReplyRefused $refused) {
             // `already_replied` also names the reply, so the page can ask
             // "send anyway?" and resend with it as acknowledged_reply_id.

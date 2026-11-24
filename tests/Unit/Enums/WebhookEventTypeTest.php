@@ -22,6 +22,7 @@ test('every webhook event has the expected value', function (EventType $event, s
     [EventType::PostRejected, 'post.rejected'],
     [EventType::PostFeedbackRequested, 'post.feedback_requested'],
     [EventType::InboxItemReceived, 'inbox.item_received'],
+    [EventType::InboxReplySent, 'inbox.reply_sent'],
     [EventType::DesignAdded, 'design.added'],
     [EventType::DesignCommented, 'design.commented'],
     [EventType::DesignStatusChanged, 'design.status_changed'],

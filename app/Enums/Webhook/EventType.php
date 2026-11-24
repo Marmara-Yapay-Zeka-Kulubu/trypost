@@ -22,6 +22,7 @@ enum EventType: string
     case PostRejected = 'post.rejected';
     case PostFeedbackRequested = 'post.feedback_requested';
     case InboxItemReceived = 'inbox.item_received'; // Marmara AI fork: app/Marmara/README.md (Inbox)
+    case InboxReplySent = 'inbox.reply_sent'; // Marmara AI fork: app/Marmara/README.md (Inbox)
     case DesignAdded = 'design.added'; // Marmara AI fork: app/Marmara/README.md (Designs)
     case DesignCommented = 'design.commented'; // Marmara AI fork: app/Marmara/README.md (Designs)
     case DesignStatusChanged = 'design.status_changed'; // Marmara AI fork: app/Marmara/README.md (Designs)

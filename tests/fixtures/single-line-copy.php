@@ -255,6 +255,7 @@ return [
     'webhooks.event_descriptions.design_commented' => 54,
     'webhooks.event_descriptions.design_status_changed' => 54,
     'webhooks.event_descriptions.inbox_item_received' => 54,
+    'webhooks.event_descriptions.inbox_reply_sent' => 54,
     'webhooks.event_descriptions.post_approval_requested' => 54,
     'webhooks.event_descriptions.post_approved' => 54,
     'webhooks.event_descriptions.post_created' => 41,

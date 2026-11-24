@@ -921,13 +921,14 @@ its own flag; a missing permission shows as "needs permission X" (page,
 | --- | --- |
 | `app/Marmara/Inbox/InboxServiceProvider.php` | Migrations, lang, routes, schedule (`marmara:inbox:sync` every 5 min), commands, the `marmaraInbox` shared prop, container rebinds (below) |
 | `app/Marmara/Inbox/InboxConfig.php`, `config/marmara-inbox.php` | Flags and limits |
-| `app/Marmara/Inbox/Models/*`, `database/migrations/` | `marmara_inbox_items`, `marmara_inbox_replies`, `marmara_inbox_sync_states` |
+| `app/Marmara/Inbox/Models/*`, `database/migrations/` | `marmara_inbox_items`, `marmara_inbox_replies` (with `agent_user_id` and `via` since `2026_11_24_130000`), `marmara_inbox_sync_states` |
 | `app/Marmara/Inbox/Providers/InboxProvider.php` | The provider interface: capabilities, missing permission, `fetch()` with a cursor, `reply()`, `hide()`, reply length |
 | `app/Marmara/Inbox/Providers/{LinkedIn,X,Zernio}InboxProvider.php`, `Providers/Meta/*` | The providers (matrix below) |
 | `app/Marmara/Inbox/InboxProviders.php` | Which provider reads a channel |
 | `app/Marmara/Inbox/InboxSync.php`, `Jobs/SyncInboxAccount.php` | One sync per channel, provider and kind: cursor saved after every page, statuses, back-off |
 | `app/Marmara/Inbox/InboxItemStore.php` | Dedupe by external id, own replies skipped, DM window per conversation, the webhook (once, after commit) |
-| `app/Marmara/Inbox/Actions/SendInboxReply.php` | The one reply flow (page, API, MCP): checks, idempotency by `request_id`, 409/422 refusals |
+| `app/Marmara/Inbox/Actions/SendInboxReply.php` | The one reply flow (page, API, MCP): checks, idempotency by `request_id`, 409/422 refusals, who is credited and `via`, `inbox.reply_sent` once on `sending` -> `sent` |
+| `app/Marmara/Inbox/InboxReplyEvents.php` | The `inbox.reply_sent` payload and dispatch |
 | `app/Marmara/Inbox/InboxItemPayload.php` | The contract item shape |
 | `app/Marmara/Inbox/Http/*`, `routes.php` | Page, REST API, Zernio webhook receiver, `EnsureInboxEnabled` |
 | `app/Marmara/Inbox/Mcp/*` | `list-inbox-items-tool`, `get-inbox-item-tool`, `reply-to-inbox-item-tool`, `InboxTryPostServer` |
@@ -943,11 +944,11 @@ its own flag; a missing permission shows as "needs permission X" (page,
 | File | Lines | Change |
 | --- | --- | --- |
 | `bootstrap/providers.php` | 6, 24-25 | `use App\Marmara\Inbox\InboxServiceProvider;` and the provider in the list |
-| `app/Enums/Webhook/EventType.php` | 24 | `case InboxItemReceived = 'inbox.item_received';` (webhook validation, the MCP webhook tools and the UI picker all read the enum) |
-| `resources/js/components/webhook/webhook-events.ts` | 19 | `'inbox.item_received'` in the event list, so the webhook dialogs offer it |
-| `lang/*/webhooks.php` (17 locales, `id` since v2.1.0) | 2 lines each | `events.inbox_item_received` and `event_descriptions.inbox_item_received`, after `post_feedback_requested` (WebhookTranslationsTest wants every event in every locale) |
+| `app/Enums/Webhook/EventType.php` | 24-25 | `case InboxItemReceived = 'inbox.item_received';` and `case InboxReplySent = 'inbox.reply_sent';` (webhook validation, the MCP webhook tools and the UI picker all read the enum) |
+| `resources/js/components/webhook/webhook-events.ts` | 19-20 | `'inbox.item_received'` and `'inbox.reply_sent'` in the event list, so the webhook dialogs offer them |
+| `lang/*/webhooks.php` (17 locales, `id` since v2.1.0) | 4 lines each | `events.inbox_item_received`, `events.inbox_reply_sent` and the same two under `event_descriptions`, after `post_feedback_requested` (WebhookTranslationsTest wants every event in every locale) |
 | `resources/js/components/AppSidebar.vue` | 49, 105 | `import { marmaraInboxNavItems } ...` and `...marmaraInboxNavItems(page.props),` in `mainNavItems` (empty while the module is off) |
-| `tests/fixtures/single-line-copy.php`, `tests/Unit/Enums/WebhookEventTypeTest.php` | 1 line each | The new description's length budget and the enum value |
+| `tests/fixtures/single-line-copy.php`, `tests/Unit/Enums/WebhookEventTypeTest.php` | 2 lines each | The new descriptions' length budgets and the enum values |
 
 Not edited, relied on: Laravel resolves route controllers through the
 container, so `InboxServiceProvider` binds `FacebookController`,
@@ -1071,6 +1072,16 @@ null/null. `can_reply` is false once the DM window has closed.
   `post.approval_*` events. Fired once per new item, after the row commits;
   never for our own replies; not for items older than
   `MARMARA_INBOX_NOTIFY_MAX_AGE_HOURS` (the first sync's backlog).
+- Webhook `inbox.reply_sent`: fired once per reply, when it moves from
+  `sending` to `sent` (one conditional update in `SendInboxReply`; replays of
+  the same `request_id`, `failed` replies and replies still `sending` never
+  fire it). `data` = `{workspace: {id, name}, item (the shape above), reply:
+  {id, text, sent_at, request_id}, sent_by: {id, name}|null, via}`. `via` is
+  `echo` (the REST API with a request id starting `echo-`), `agent` (the MCP
+  reply tool), `panel` (the inbox page) or `api` (any other REST client).
+  `sent_by` is the member credited with the reply: the panel user, the API
+  key's user, or for MCP the token's user, or the member named by
+  `on_behalf_of_user_id`.
 - Replying (and hiding) is the `reply-to-inbox-item` gate on the panel, the
   API and MCP alike: the token's user needs the workspace's direct publishing
   right (`WorkspacePolicy::publishDirectly`), like publishing a post.
@@ -1082,7 +1093,12 @@ null/null. `can_reply` is false once the DM window has closed.
 - MCP: `list-inbox-items-tool` and `get-inbox-item-tool` (read only),
   `reply-to-inbox-item-tool` (destructive, open world; `request_id` required,
   `acknowledged_reply_id` as in the API; `already_replied` names who replied
-  and what, so Hermes asks the user before sending again).
+  and what, so Hermes asks the user before sending again). Optional
+  `on_behalf_of_user_id`, as on `create-post-tool` (Members): a member of the
+  workspace, else the call fails (validation error, nothing sent). The reply
+  is credited to that member (`marmara_inbox_replies.user_id`, shown as its
+  author everywhere) and `agent_user_id` keeps the token's user; the reply
+  gate and every check still follow the token's user.
 - One reply per item unless acknowledged (`SendInboxReply`): the check and
   the `sending` row are made in one transaction holding the item row lock
   (`lockForUpdate`), and the network call runs after the commit, so the
@@ -1143,8 +1159,11 @@ used as is on both paths.
    DMs for the app in the X developer portal). Otherwise leave it off; X DMs
    can also come through Zernio.
 6. Echo: in TryPost (Settings > Webhooks, or the webhook API) add
-   `inbox.item_received` to Echo's webhook; Echo answers with
-   `POST /api/inbox/items/{id}/replies` using its API key.
+   `inbox.item_received` and `inbox.reply_sent` to Echo's webhook; Echo
+   answers with `POST /api/inbox/items/{id}/replies` using its API key, and
+   tells the others who were notified of an item when a reply went out
+   (from Echo, Hermes or the panel). `inbox.reply_sent` needs the
+   `2026_11_24_130000` inbox migration (`php artisan migrate`).
 
 ### Not verified against the live API
 

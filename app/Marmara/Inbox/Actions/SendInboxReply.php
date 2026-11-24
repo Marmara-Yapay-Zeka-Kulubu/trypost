@@ -7,6 +7,7 @@ namespace App\Marmara\Inbox\Actions;
 use App\Marmara\Inbox\Exceptions\InboxProviderException;
 use App\Marmara\Inbox\Exceptions\InboxReplyRefused;
 use App\Marmara\Inbox\InboxProviders;
+use App\Marmara\Inbox\InboxReplyEvents;
 use App\Marmara\Inbox\Models\InboxItem;
 use App\Marmara\Inbox\Models\InboxReply;
 use App\Models\User;
@@ -29,6 +30,14 @@ use Illuminate\Support\Str;
  * row older than STALE_SENDING_MINUTES (the process died mid-call) no longer
  * means "in progress"; its outcome is unknown, so it counts as a reply that
  * needs an acknowledgement, and it stays `sending` in the history.
+ *
+ * `$via` says how the reply was made (InboxReply::VIA_*). `$onBehalfOf` is
+ * the member an agent replies for (MCP `on_behalf_of_user_id`): the reply is
+ * credited to them (`user_id`) and `$user`, whose token sent it, is kept as
+ * `agent_user_id`. Permissions are the caller's business and follow `$user`.
+ * The move from `sending` to `sent` is one conditional update, and only the
+ * call that made it fires `inbox.reply_sent` (InboxReplyEvents), so a reply
+ * is announced once whatever retries or replays follow.
  */
 final class SendInboxReply
 {
@@ -41,8 +50,15 @@ final class SendInboxReply
      *
      * @throws InboxReplyRefused
      */
-    public static function execute(InboxItem $item, ?User $user, string $text, ?string $requestId = null, ?string $acknowledgedReplyId = null): array
-    {
+    public static function execute(
+        InboxItem $item,
+        ?User $user,
+        string $text,
+        ?string $requestId = null,
+        ?string $acknowledgedReplyId = null,
+        ?string $via = null,
+        ?User $onBehalfOf = null,
+    ): array {
         $requestId ??= (string) Str::uuid();
         $text = trim($text);
 
@@ -84,7 +100,7 @@ final class SendInboxReply
         }
 
         try {
-            $claimed = DB::transaction(function () use ($item, $user, $text, $requestId, $acknowledgedReplyId): array {
+            $claimed = DB::transaction(function () use ($item, $user, $text, $requestId, $acknowledgedReplyId, $via, $onBehalfOf): array {
                 InboxItem::query()->whereKey($item->id)->lockForUpdate()->first();
 
                 $previous = self::previous($item, $requestId);
@@ -99,7 +115,9 @@ final class SendInboxReply
                     'inbox_item_id' => $item->id,
                     'workspace_id' => $item->workspace_id,
                     'social_account_id' => $item->social_account_id,
-                    'user_id' => $user?->id,
+                    'user_id' => ($onBehalfOf ?? $user)?->id,
+                    'agent_user_id' => $onBehalfOf !== null ? $user?->id : null,
+                    'via' => $via,
                     'request_id' => $requestId,
                     'text' => $text,
                     'status' => InboxReply::STATUS_SENDING,
@@ -117,12 +135,22 @@ final class SendInboxReply
 
         try {
             $externalId = $provider->reply($item, $text, $reply->id);
-            $reply->forceFill([
+            $sent = [
                 'status' => InboxReply::STATUS_SENT,
                 'external_id' => $externalId !== '' ? $externalId : null,
                 'sent_at' => now(),
-            ])->save();
+            ];
+            // Only from `sending`: the one update that makes it sent announces it.
+            $moved = InboxReply::query()
+                ->whereKey($reply->id)
+                ->where('status', InboxReply::STATUS_SENDING)
+                ->update($sent);
+            $reply->forceFill($sent)->syncOriginal();
             $item->forceFill(['read_at' => $item->read_at ?? now()])->save();
+
+            if ($moved === 1) {
+                app(InboxReplyEvents::class)->sent($reply);
+            }
         } catch (InboxProviderException $exception) {
             $windowClosed = $exception->category === 'window_closed';
             $reply->forceFill([
