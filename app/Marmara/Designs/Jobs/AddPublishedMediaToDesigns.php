@@ -122,7 +122,9 @@ class AddPublishedMediaToDesigns implements ShouldQueue
 
         foreach ($rows->values() as $index => $row) {
             $lineage = DesignMedia::lineage($row);
-            $design = DesignMedia::designFor($row, $lineage);
+            $origin = DesignMedia::originFor($lineage);
+            $design = $origin === null ? null : Design::query()->where('workspace_id', $row->workspace_id)->find($origin['design_id']);
+            $version = $origin['version'] ?? null;
 
             if ($design === null) {
                 $design = $this->upload($post, $row, $index, $count, $publishedAt, $config, $uploader);
@@ -130,10 +132,13 @@ class AddPublishedMediaToDesigns implements ShouldQueue
                 if ($design === null) {
                     continue;
                 }
+
+                // The design was made from this file: its first version.
+                $version = $design->approvalVersion();
             }
 
             // This row and the file it was copied from: the other channels' copies find it.
-            DesignMedia::remember($design, [$row->id, $lineage[array_key_last($lineage)]]);
+            DesignMedia::remember($design, [$row->id, $lineage[array_key_last($lineage)]], $version);
             $links->link($design, $post, $index, $post->user);
         }
     }

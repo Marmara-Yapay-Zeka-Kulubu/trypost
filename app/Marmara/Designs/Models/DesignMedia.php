@@ -14,9 +14,14 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * published post. A post's copy of such a row is found through its
  * `meta.copied_from` (SyncOwnedMedia), see lineage().
  *
+ * `version` is the design's version the file was made from
+ * (Design::approvalVersion() at the time); a copy inherits it from the row it
+ * was copied from. Null for rows made before it was kept.
+ *
  * @property int $id
  * @property string $design_id
  * @property string $media_id
+ * @property string|null $version
  */
 class DesignMedia extends Model
 {
@@ -25,7 +30,7 @@ class DesignMedia extends Model
 
     protected $table = 'marmara_design_media';
 
-    protected $fillable = ['design_id', 'media_id'];
+    protected $fillable = ['design_id', 'media_id', 'version'];
 
     /**
      * @return BelongsTo<Design, $this>
@@ -36,15 +41,16 @@ class DesignMedia extends Model
     }
 
     /**
-     * Remembers that these media rows hold the design's file.
+     * Remembers that these media rows hold the design's file, made from
+     * `$version` of it when known. A row already known keeps what it has.
      *
      * @param  list<string>|string  $mediaIds
      */
-    public static function remember(Design $design, array|string $mediaIds): void
+    public static function remember(Design $design, array|string $mediaIds, ?string $version = null): void
     {
         $now = now();
         $rows = collect((array) $mediaIds)->filter()->unique()
-            ->map(fn (string $id): array => ['design_id' => $design->id, 'media_id' => $id, 'created_at' => $now, 'updated_at' => $now])
+            ->map(fn (string $id): array => ['design_id' => $design->id, 'media_id' => $id, 'version' => $version, 'created_at' => $now, 'updated_at' => $now])
             ->values()->all();
 
         if ($rows !== []) {
@@ -80,15 +86,40 @@ class DesignMedia extends Model
      */
     public static function designFor(Media $media, ?array $lineage = null): ?Design
     {
-        $lineage ??= self::lineage($media);
-        $known = self::query()->whereIn('media_id', $lineage)->pluck('design_id', 'media_id');
+        $origin = self::originFor($lineage ?? self::lineage($media));
+
+        return $origin === null ? null : Design::query()->where('workspace_id', $media->workspace_id)->find($origin['design_id']);
+    }
+
+    /**
+     * The design the nearest known row of the lineage holds, and the version
+     * the file was made from: the nearest version known for that design
+     * along the chain (a copy inherits its source's), null when none is.
+     *
+     * @param  list<string>  $lineage
+     * @return array{design_id: string, version: string|null}|null
+     */
+    public static function originFor(array $lineage): ?array
+    {
+        $known = self::query()->whereIn('media_id', $lineage)->get(['design_id', 'media_id', 'version'])->keyBy('media_id');
+        $designId = null;
+        $version = null;
 
         foreach ($lineage as $id) {
-            if ($known->has($id)) {
-                return Design::query()->where('workspace_id', $media->workspace_id)->find($known->get($id));
+            $row = $known->get($id);
+
+            if ($row === null || ($designId !== null && $row->design_id !== $designId)) {
+                continue;
+            }
+
+            $designId ??= $row->design_id;
+            $version = $row->version;
+
+            if (filled($version)) {
+                break;
             }
         }
 
-        return null;
+        return $designId === null ? null : ['design_id' => $designId, 'version' => filled($version) ? $version : null];
     }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__.'/helpers.php';
 
+use App\Actions\Media\SyncOwnedMedia;
 use App\Actions\Post\CreatePosts;
 use App\Actions\Post\HostInlineMedia;
 use App\Enums\Media\Type as MediaType;
@@ -12,17 +13,21 @@ use App\Enums\Post\Status as PostStatus;
 use App\Enums\SocialAccount\Platform;
 use App\Jobs\DispatchWebhook;
 use App\Jobs\PublishPost;
+use App\Marmara\Designs\Actions\DesignActions;
 use App\Marmara\Designs\Jobs\AddPublishedMediaToDesigns;
 use App\Marmara\Designs\Jobs\SyncDesignRevisions;
 use App\Marmara\Designs\Mcp\AddDesignTool;
 use App\Marmara\Designs\Models\Design;
 use App\Marmara\Designs\Models\DesignActivity;
+use App\Marmara\Designs\Models\DesignFolder;
 use App\Marmara\Designs\Models\DesignMedia;
 use App\Marmara\Designs\Models\DesignPost;
+use App\Marmara\Designs\Models\DesignSyncState;
 use App\Marmara\Designs\Posts\DesignPostLinks;
 use App\Marmara\Designs\Posts\RecordDesignPublication;
 use App\Marmara\Designs\Support\DesignSource;
 use App\Marmara\Designs\Support\DesignStatus;
+use App\Marmara\Designs\Sync\DesignSync;
 use App\Mcp\Servers\TryPostServer;
 use App\Mcp\Tools\Post\CreatePostsTool;
 use App\Models\Media;
@@ -30,6 +35,7 @@ use App\Models\Post;
 use App\Models\SocialAccount;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Support\Media\MediaCopyBatch;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
@@ -68,6 +74,32 @@ function designsPostsWithUploads(Workspace $workspace, User $user, array $upload
         'label_ids' => [],
         'destinations' => array_map(fn (SocialAccount $channel): array => ['social_account_id' => $channel->id], $channels),
     ]);
+}
+
+/**
+ * A media row of the post that holds the design's file (made from
+ * `$version` of it when given), linked like the media's saved event does.
+ */
+function designsPutOnPost(Design $design, Post $post, int $position = 0, ?string $version = null): Media
+{
+    $media = Media::factory()->ownedByPost($post)->create(['order' => $position]);
+    DesignMedia::remember($design, $media->id, $version);
+    app(DesignPostLinks::class)->link($design, $post, $position);
+
+    return $media;
+}
+
+/**
+ * The draft's media without the given rows, saved like the composer does.
+ *
+ * @param  list<string>  $removedIds
+ */
+function designsRemoveFromPost(Post $post, array $removedIds): void
+{
+    $post->refresh()->load('workspace');
+    $kept = collect($post->media)->reject(fn (array $item): bool => in_array($item['id'], $removedIds, true))->values()->all();
+
+    MediaCopyBatch::run(fn (MediaCopyBatch $batch) => SyncOwnedMedia::execute($post, $kept, $batch));
 }
 
 function designsRunAutoAdd(Post $post): void
@@ -180,8 +212,8 @@ test('a linked post that goes out makes the design Kullanıldı with one activit
         'publish_status' => PublishStatus::Publishing,
         'platform_name' => 'Marmara AI',
     ]);
-    app(DesignPostLinks::class)->link($design, $post, 0);
-    app(DesignPostLinks::class)->link($archived, $post, 1);
+    designsPutOnPost($design, $post, 0);
+    designsPutOnPost($archived, $post, 1);
 
     $post->markPublicationPublished('urn:li:share:1', 'https://www.linkedin.com/feed/update/urn:li:share:1');
 
@@ -320,7 +352,7 @@ test('the gallery shows a series once, as its first design with the count, and t
     $alone = designsMake($this->workspace, ['title' => 'Tek afiş']);
 
     $post = Post::factory()->forAccount($this->linkedin)->publishing()->create(['user_id' => $this->member->id]);
-    app(DesignPostLinks::class)->link($alone, $post, 0);
+    designsPutOnPost($alone, $post);
     $post->markPublicationPublished('urn:li:share:5');
 
     $this->actingAs($this->owner)->get('/designs')
@@ -360,4 +392,134 @@ test('the gallery shows a series once, as its first design with the count, and t
     // The per-person count follows the date range.
     $this->actingAs($this->owner)->get('/designs?from='.now()->subYear()->format('Y-m-d').'&to='.now()->subMonths(6)->format('Y-m-d'))
         ->assertInertia(fn (AssertableInertia $page) => $page->where('sharedBy', []));
+});
+
+test('a design whose file was taken off the draft before it went out is not recorded, and its link is dropped', function () {
+    $design = designsMake($this->workspace, ['drive_file_id' => 'filePoster', 'mime_type' => 'image/jpeg', 'status' => DesignStatus::Approved]);
+    designsFakeDrive(content: ['filePoster' => designsJpeg()]);
+
+    $this->actingAs($this->owner)->post("/designs/{$design->id}/posts", ['social_account_ids' => [$this->linkedin->id]])->assertRedirect();
+    $post = Post::query()->where('workspace_id', $this->workspace->id)->sole();
+    expect(DesignPost::query()->where('post_id', $post->id)->pluck('design_id')->all())->toBe([$design->id]);
+
+    designsRemoveFromPost($post, collect($post->refresh()->media)->pluck('id')->all());
+    $post->refresh()->markPublicationPublished('urn:li:share:20');
+
+    expect($design->fresh()->status)->toBe(DesignStatus::Approved)
+        ->and(DesignActivity::query()->where('design_id', $design->id)->where('type', 'post_published')->exists())->toBeFalse()
+        ->and(DesignActivity::query()->where('design_id', $design->id)->where('type', 'status_changed')->exists())->toBeFalse()
+        ->and(DesignPost::query()->where('post_id', $post->id)->exists())->toBeFalse();
+
+    $this->actingAs($this->owner)->get("/designs?design={$design->id}")
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('selected.publications', 0)
+            ->where('designs.0.last_publication', null)
+            ->where('sharedBy', []));
+});
+
+test('with two designs on a post and one taken off, only the one still on it is recorded', function () {
+    $kept = designsMake($this->workspace, ['drive_file_id' => 'fileKept', 'mime_type' => 'image/jpeg', 'title' => 'Kapak', 'status' => DesignStatus::Approved]);
+    $removed = designsMake($this->workspace, ['drive_file_id' => 'fileRemoved', 'mime_type' => 'image/jpeg', 'title' => 'Program', 'status' => DesignStatus::Approved]);
+    designsFakeDrive(content: ['fileKept' => designsJpeg(1080, 1350), 'fileRemoved' => designsJpeg(1080, 1351)]);
+
+    $this->actingAs($this->owner)->post('/designs/posts', [
+        'design_ids' => [$removed->id, $kept->id],
+        'social_account_ids' => [$this->linkedin->id],
+    ])->assertSessionHasNoErrors();
+    $post = Post::query()->where('workspace_id', $this->workspace->id)->sole();
+    $removedMedia = DesignMedia::query()->where('design_id', $removed->id)->whereIn('media_id', collect($post->media)->pluck('id'))->pluck('media_id')->all();
+    expect($removedMedia)->toHaveCount(1);
+
+    designsRemoveFromPost($post, $removedMedia);
+    $post->refresh()->markPublicationPublished('urn:li:share:21');
+
+    expect($kept->fresh()->status)->toBe(DesignStatus::Used)
+        ->and($removed->fresh()->status)->toBe(DesignStatus::Approved)
+        ->and(DesignActivity::query()->where('type', 'post_published')->pluck('design_id')->all())->toBe([$kept->id])
+        ->and(DesignPost::query()->where('post_id', $post->id)->pluck('design_id')->all())->toBe([$kept->id])
+        ->and(DesignPost::query()->where('post_id', $post->id)->whereNotNull('published_at')->count())->toBe(1);
+
+    $this->actingAs($this->owner)->get("/designs?design={$removed->id}")
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('selected.publications', 0)
+            ->where('sharedBy', [['user_id' => $this->owner->id, 'name' => $this->owner->name, 'count' => 1]]));
+});
+
+test('the version the post carried is recorded when Drive moved on before it went out, flagged as changed after use', function () {
+    DesignFolder::query()->create(['workspace_id' => $this->workspace->id, 'drive_id' => DESIGNS_ROOT, 'name' => 'Tasarımlar', 'path' => '', 'is_root' => true]);
+    DesignSyncState::query()->create(['workspace_id' => $this->workspace->id, 'folder_id' => DESIGNS_ROOT, 'start_page_token' => 'token-100', 'status' => 'ok', 'last_full_sync_at' => now()]);
+    $v1 = designsJpeg();
+    $design = designsMake($this->workspace, ['drive_file_id' => 'filePoster', 'name' => 'Afiş.jpg', 'mime_type' => 'image/jpeg', 'md5' => md5($v1)]);
+    app(DesignActions::class)->setStatus($design, $this->owner, DesignStatus::Approved);
+    designsFakeDrive(content: ['filePoster' => $v1]);
+
+    $this->actingAs($this->owner)->post("/designs/{$design->id}/posts", ['social_account_ids' => [$this->linkedin->id]])->assertRedirect();
+    $post = Post::query()->where('workspace_id', $this->workspace->id)->sole();
+    expect(DesignMedia::query()->whereIn('media_id', collect($post->media)->pluck('id'))->pluck('version')->all())->toBe([md5($v1)]);
+
+    // V2 lands in Drive and the sync sees it: the approval goes back to review.
+    $v2 = designsDriveFile('filePoster', 'Afiş.jpg', DESIGNS_ROOT, ['mimeType' => 'image/jpeg', 'md5Checksum' => 'md5-v2', 'headRevisionId' => 'rev-2']);
+    designsFakeDrive(changes: ['token-100' => ['newStartPageToken' => 'token-101', 'changes' => [
+        ['kind' => 'drive#change', 'changeType' => 'file', 'fileId' => 'filePoster', 'removed' => false, 'file' => $v2],
+    ]]]);
+    app(DesignSync::class)->run();
+    expect($design->fresh())->status->toBe(DesignStatus::InReview)->md5->toBe('md5-v2');
+
+    $post->refresh()->markPublicationPublished('urn:li:share:22');
+
+    $design->refresh();
+    expect($design->status)->toBe(DesignStatus::Used)
+        ->and($design->approved_version)->toBe(md5($v1))
+        ->and($design->changed_after_use_at)->not->toBeNull()
+        ->and(DesignActivity::query()->where('design_id', $design->id)->where('type', 'post_published')->sole()->data['version'])->toBe(md5($v1))
+        ->and(DesignActivity::query()->where('design_id', $design->id)->where('type', 'changed_after_use')->count())->toBe(1);
+
+    // A later sync without new content does not flag it again; new content does.
+    $flaggedAt = $design->changed_after_use_at;
+    designsFakeDrive(changes: ['token-101' => ['newStartPageToken' => 'token-102', 'changes' => [
+        ['kind' => 'drive#change', 'changeType' => 'file', 'fileId' => 'filePoster', 'removed' => false, 'file' => [...$v2, 'name' => 'Afiş son.jpg']],
+    ]]]);
+    app(DesignSync::class)->run();
+    expect($design->fresh())->approved_version->toBe(md5($v1))
+        ->changed_after_use_at->toEqual($flaggedAt)
+        ->and(DesignActivity::query()->where('design_id', $design->id)->where('type', 'changed_after_use')->count())->toBe(1);
+
+    designsFakeDrive(changes: ['token-102' => ['newStartPageToken' => 'token-103', 'changes' => [
+        ['kind' => 'drive#change', 'changeType' => 'file', 'fileId' => 'filePoster', 'removed' => false, 'file' => [...$v2, 'md5Checksum' => 'md5-v3', 'headRevisionId' => 'rev-3']],
+    ]]]);
+    app(DesignSync::class)->run();
+    expect($design->fresh()->approved_version)->toBe('md5-v3')
+        ->and(DesignActivity::query()->where('design_id', $design->id)->where('type', 'changed_after_use')->count())->toBe(2);
+});
+
+test('a design file without a known version records the current version, as before', function () {
+    $design = designsMake($this->workspace, ['md5' => 'md5-now', 'status' => DesignStatus::Approved]);
+    $post = Post::factory()->forAccount($this->linkedin)->publishing()->create(['user_id' => $this->member->id]);
+    designsPutOnPost($design, $post);
+
+    $post->markPublicationPublished('urn:li:share:23');
+
+    $design->refresh();
+    expect($design->status)->toBe(DesignStatus::Used)
+        ->and($design->approved_version)->toBe('md5-now')
+        ->and($design->changed_after_use_at)->toBeNull()
+        ->and(DesignActivity::query()->where('design_id', $design->id)->where('type', 'post_published')->sole()->data)->toHaveKey('version', null)
+        ->and(DesignActivity::query()->where('design_id', $design->id)->where('type', 'changed_after_use')->exists())->toBeFalse();
+});
+
+test('a channel\'s copy of a design file carries the version of the file it was copied from', function () {
+    $design = designsMake($this->workspace, ['md5' => 'md5-v2']);
+    $post = Post::factory()->forAccount($this->linkedin)->publishing()->create(['user_id' => $this->member->id]);
+    $root = Media::factory()->temporaryUpload($this->workspace)->create();
+    DesignMedia::remember($design, $root->id, 'md5-v1');
+
+    // A copy lands on the post (SyncOwnedMedia::copy() writes meta.copied_from): linked through its root.
+    $copy = Media::factory()->ownedByPost($post)->create(['meta' => ['width' => 1080, 'height' => 1350, 'copied_from' => $root->id]]);
+
+    expect(DesignMedia::query()->where('media_id', $copy->id)->value('version'))->toBe('md5-v1')
+        ->and(DesignPost::query()->where('post_id', $post->id)->pluck('design_id')->all())->toBe([$design->id]);
+
+    $post->markPublicationPublished('urn:li:share:24');
+
+    expect($design->fresh())->status->toBe(DesignStatus::Used)->approved_version->toBe('md5-v1')->changed_after_use_at->not->toBeNull();
 });

@@ -306,6 +306,7 @@ class DesignSync
         $previousFolder = $design->folder_drive_id;
         $previousVersion = $design->exists ? $design->contentVersion() : null;
         $approvedVersion = $design->exists ? ($design->approved_version ?? $design->approvalVersion()) : null;
+        $previousApprovalVersion = $design->exists ? $design->approvalVersion() : null;
 
         $design->fill([
             ...self::attributes($file),
@@ -329,7 +330,7 @@ class DesignSync
                 $result->moved++;
             }
 
-            $this->checkApproval($design, $approvedVersion);
+            $this->checkApproval($design, $approvedVersion, $previousApprovalVersion !== $design->approvalVersion());
         }
 
         if ($contentChanged) {
@@ -387,10 +388,18 @@ class DesignSync
      * activity line and design.status_changed, reason content_changed). A
      * Kullanıldı design already went out, so it stays Kullanıldı and is
      * flagged "kullanıldıktan sonra değişti" (changed_after_use_at) instead.
+     *
+     * A used design already flagged whose content did not change in this
+     * sync is left alone: its approved_version may be the older version a
+     * post went out with (RecordDesignPublication), already flagged then.
      */
-    private function checkApproval(Design $design, ?string $approvedVersion): void
+    private function checkApproval(Design $design, ?string $approvedVersion, bool $contentChanged = true): void
     {
         if (! $design->status->needsApprover() || $approvedVersion === null || $approvedVersion === $design->approvalVersion()) {
+            return;
+        }
+
+        if ($design->status === DesignStatus::Used && $design->changed_after_use_at !== null && ! $contentChanged) {
             return;
         }
 

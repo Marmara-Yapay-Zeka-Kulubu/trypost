@@ -47,15 +47,16 @@ class DesignPostLinks
             return;
         }
 
-        $lineage = DesignMedia::lineage($media);
-        $design = DesignMedia::designFor($media, $lineage);
+        $origin = DesignMedia::originFor(DesignMedia::lineage($media));
+        $design = $origin === null ? null : Design::query()->where('workspace_id', $media->workspace_id)->find($origin['design_id']);
 
         if ($design === null) {
             return;
         }
 
-        // The post's own row, so a later copy of it is found in one step.
-        DesignMedia::remember($design, $media->id);
+        // The post's own row (with the version of the file it copies), so a
+        // later copy of it is found in one step.
+        DesignMedia::remember($design, $media->id, $origin['version']);
         $user = Auth::user();
         $this->link($design, $media->post_id, (int) $media->order, $user instanceof User ? $user : null);
         $this->groupPost($media->post_id);

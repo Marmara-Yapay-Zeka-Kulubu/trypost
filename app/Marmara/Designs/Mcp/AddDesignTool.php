@@ -162,7 +162,7 @@ class AddDesignTool extends Tool
         // The file is the design's now: a post made with media_id (or a
         // channel's copy of it) is linked to the design, and a post that
         // already holds this media row is linked right away.
-        DesignMedia::remember($design, $media->id);
+        DesignMedia::remember($design, $media->id, $design->approvalVersion());
         $media->refresh();
 
         if ($media->post_id !== null) {

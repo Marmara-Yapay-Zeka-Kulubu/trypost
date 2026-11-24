@@ -1392,7 +1392,11 @@ module is off).
   the files it adds. A copy is found through its `meta.copied_from` chain
   (`DesignMedia::lineage()`), and the post's own row is remembered too. So
   Hermes' "bu görseli depoya yükle" followed by `create-posts-tool` with the
-  answer's `media_id` links every channel's post.
+  answer's `media_id` links every channel's post. Each `marmara_design_media`
+  row keeps the design `version` the file was made from
+  (`Design::approvalVersion()`: "Gönderi oluştur" the md5 of the bytes it
+  downloaded, `add-design-tool` and the published-media job the new design's
+  first version); a copy inherits it from its source (null for older rows).
 - **Series** (`marmara_designs.design_set_id`, `set_position`): when two or
   more designs are linked to one post, the ones without a series join the
   series of the first one that has one (by position) or a new one. A design
@@ -1403,12 +1407,20 @@ module is off).
   it with a plain save, so every publisher (native, Zernio, reconcile) passes
   here. After commit and inside `rescue()` (never fails a publication),
   `RecordDesignPublication` takes each link of the post without
-  `published_at` under a row lock, sets it, makes the design Kullanıldı (not
-  an archived one; activity "status_changed" by the post's member and
-  `design.status_changed` with `reason: "post_published"`), and writes the
-  activity `post_published` `{post_id, platform, platform_label, account,
-  published_at, by}` credited to `post.user` (the WhatsApp sender for
-  Hermes' posts). A retry, a second publish or a restore records nothing new.
+  `published_at` under a row lock. A link whose design is no longer on the
+  post (none of the post's current media rows, followed through
+  `copied_from`, is a file of that design: it was taken off the draft) is
+  deleted, not recorded. Otherwise it sets `published_at`, makes the design
+  Kullanıldı (not an archived one; activity "status_changed" by the post's
+  member and `design.status_changed` with `reason: "post_published"`) with
+  `approved_version` = the version the post's file was made from (the
+  current one when unknown), and writes the activity `post_published`
+  `{post_id, version, platform, platform_label, account, published_at, by}`
+  credited to `post.user` (the WhatsApp sender for Hermes' posts). When the
+  file changed in Drive since that version, the design is also flagged
+  `changed_after_use_at` (activity `changed_after_use`), and the sync does
+  not flag it again until the content changes once more. A retry, a second
+  publish or a restore records nothing new.
 - **Published media added to the gallery**: then `AddPublishedMediaToDesigns`
   (queued, 5 tries, backoff 1 / 5 / 15 / 60 min) takes the post's own images
   and videos (not covers, not thread replies) that no design holds and

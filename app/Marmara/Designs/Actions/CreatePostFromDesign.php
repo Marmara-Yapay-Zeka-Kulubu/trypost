@@ -91,10 +91,11 @@ class CreatePostFromDesign
         $tokens = [];
 
         foreach ($designs->values() as $design) {
-            $media = $this->upload($design);
+            [$media, $version] = $this->upload($design);
             $media->issueUploadToken();
-            // The post's rows (this one moved, the other channels' copies) are linked from it.
-            DesignMedia::remember($design, $media->id);
+            // The post's rows (this one moved, the other channels' copies) are
+            // linked from it, and carry the version that was downloaded.
+            DesignMedia::remember($design, $media->id, $version);
             $tokens[] = ['upload_token' => $media->upload_token];
         }
 
@@ -124,7 +125,15 @@ class CreatePostFromDesign
         return $posts;
     }
 
-    private function upload(Design $design): Media
+    /**
+     * The design's file as a temporary upload of the workspace, and the
+     * version it is (Design::approvalVersion(): the md5 of the downloaded
+     * bytes for a binary file, so a Drive change the sync has not seen yet
+     * is not mistaken for the stored one; the head revision of a Google file).
+     *
+     * @return array{0: Media, 1: string|null}
+     */
+    private function upload(Design $design): array
     {
         $workspace = $design->workspace;
         $mime = $design->isGoogleNative() ? DesignTypes::DRAWING_EXPORT_MIME : $design->mime_type;
@@ -159,7 +168,9 @@ class CreatePostFromDesign
         try {
             file_put_contents($temporary, $bytes);
 
-            return $workspace->addMediaFromPath($temporary, $filename, Media::COLLECTION_UPLOADS, [], null, $mime);
+            $version = ! $design->isGoogleNative() && $design->md5 !== null ? md5($bytes) : $design->approvalVersion();
+
+            return [$workspace->addMediaFromPath($temporary, $filename, Media::COLLECTION_UPLOADS, [], null, $mime), $version];
         } finally {
             @unlink($temporary);
             @unlink($base);
