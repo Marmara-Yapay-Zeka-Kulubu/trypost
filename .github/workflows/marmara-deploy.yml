@@ -193,6 +193,16 @@ jobs:
             echo "database backup: backups/db-\$stamp.sql.gz"
           fi
 
+          # Old TryPost images (about 3 GB each) fill the disk: before pulling, keep the ones a
+          # container uses (prod, stage) and the 3 newest, delete the other untagged ones.
+          repo="$NEW_IMAGE"; repo="\${repo%@*}"; repo="\${repo%:*}"
+          used=\$(docker ps -aq | xargs -r docker inspect -f '{{.Image}}' | sort -u)
+          docker images --no-trunc --filter "dangling=false" --format '{{.ID}} {{.Repository}} {{.Tag}}' \
+            | awk -v r="\$repo" '\$2 == r && \$3 == "<none>" {print \$1}' | awk '!seen[\$0]++' | tail -n +4 \
+            | grep -vxF -f <(printf '%s\n' \$used) | xargs -r docker rmi >/dev/null 2>&1 || true
+          docker image prune -f >/dev/null 2>&1 || true
+          df -h / | tail -1
+
           gcloud auth configure-docker $REGISTRY --quiet >/dev/null 2>&1 || true
           if grep -q '^TRYPOST_IMAGE=' .env; then
             sed -i "s|^TRYPOST_IMAGE=.*|TRYPOST_IMAGE=$NEW_IMAGE|" .env
