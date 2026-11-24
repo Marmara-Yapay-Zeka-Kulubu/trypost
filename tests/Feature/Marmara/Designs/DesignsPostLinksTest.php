@@ -110,6 +110,7 @@ test('several picked designs become one carousel draft in the order they were pi
         'content' => 'Program açıklandı',
     ]);
 
+    $response->assertSessionHasNoErrors();
     $post = Post::query()->where('workspace_id', $this->workspace->id)->sole();
     $response->assertRedirect(route('app.posts.edit', $post));
 

@@ -70,7 +70,7 @@ class PostAttribution
         }
 
         return function (Collection $posts) use ($member, $agent): void {
-            Post::query()->whereKey($posts->modelKeys())->update([
+            Post::query()->whereKey($posts->map(fn (Post $post): string => $post->getKey())->all())->update([
                 'user_id' => $member->id,
                 'agent_user_id' => $agent->id,
             ]);

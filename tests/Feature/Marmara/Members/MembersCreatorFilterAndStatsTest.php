@@ -164,6 +164,8 @@ test('member post counts need a workspace member and a valid period', function (
         ->getJson(route('marmara.members.posts', ['start' => '2026-11-01', 'end' => '2026-11-30']))
         ->assertForbidden();
 
+    $this->app['auth']->forgetGuards();
+
     $this->getJson(route('marmara.members.posts', ['start' => '2026-11-01', 'end' => '2026-11-30']))
         ->assertUnauthorized();
 });
