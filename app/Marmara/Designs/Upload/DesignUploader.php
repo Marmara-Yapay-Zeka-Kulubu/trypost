@@ -56,15 +56,19 @@ class DesignUploader
     }
 
     /**
+     * $mimeType: the type TryPost already measured for the file (a temporary
+     * upload handed over by MCP / Echo); otherwise it is read from the bytes.
+     *
      * @throws DesignUploadUnavailable
      */
-    public function upload(UploadedFile|string $file, string $folderPath, string $title, string $uploaderName, ?User $user = null): Design
+    public function upload(UploadedFile|string $file, string $folderPath, string $title, string $uploaderName, ?User $user = null, ?string $mimeType = null): Design
     {
         $connection = $this->connection();
         $workspace = $connection->workspace;
         $rootId = (string) $this->config->folderId();
 
         [$bytes, $mime, $originalName] = $this->read($file);
+        $mime = filled($mimeType) ? strtolower((string) $mimeType) : $mime;
 
         if (! DesignTypes::supported($mime) || DesignTypes::isGoogleNative($mime)) {
             throw new DesignUploadUnavailable('unsupported');

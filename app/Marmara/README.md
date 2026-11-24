@@ -1184,7 +1184,7 @@ the REST API, three MCP tools and the `design.*` webhooks. Variables:
 | `app/Marmara/Designs/DesignPayload.php`, `DesignQuery.php` | The one design shape (page, API, MCP, webhooks) and the filters / sorts |
 | `app/Marmara/Designs/DesignEvents.php` | `design.added`, `design.commented`, `design.status_changed` |
 | `app/Marmara/Designs/Http/*`, `routes.php` | Page, actions, thumbnail / original, Drive connect, upload, REST API, `EnsureDesignsEnabled` |
-| `app/Marmara/Designs/Mcp/*` | `list-designs-tool`, `get-design-tool`, `comment-on-design-tool` |
+| `app/Marmara/Designs/Mcp/*` | `list-designs-tool`, `get-design-tool`, `comment-on-design-tool`, `add-design-tool` |
 | `app/Marmara/Hooks/MarmaraTryPostServer.php`, `MarmaraMcpTools.php` | The fork's shared MCP server: modules register tools in `MarmaraMcpTools`; `InboxTryPostServer` extends it |
 | `app/Marmara/Designs/lang/{en,tr}/designs.php` | The page's copy (namespace `marmara-designs`; other locales fall back to English) |
 | `app/Marmara/Designs/Console/*` | `marmara:designs:sync [--full]`, `marmara:designs:status [--check]` |
@@ -1359,7 +1359,7 @@ setting or env var name is ever shown in the UI.
    once and picks the shared folder. The server checks it is
    `MARMARA_DESIGNS_FOLDER_ID` and that the token can add children.
 3. `DesignUploader::upload($file, 'Bahar Şenliği/Afişler', 'Ana afiş', 'Elif')`
-   (page now; API, MCP and Echo later): finds each folder of the path with the
+   (the page and MCP's `add-design-tool`): finds each folder of the path with the
    service account and creates the missing ones with the lead's token, uploads
    with a resumable upload (`appProperties.trypost_uploader`, so "Ekleyen" is
    the member, not the lead), and when the target is a folder a member made in
@@ -1388,6 +1388,25 @@ setting or env var name is ever shown in the UI.
   without the right.
 - MCP: `list-designs-tool`, `get-design-tool` (read only),
   `comment-on-design-tool` (writes a TryPost comment, not open world).
+- MCP `add-design-tool` (write, open world: it writes to Drive) puts a file
+  TryPost already holds into the shared folder, for Hermes' "bu videoyu
+  depoya yükle": `{media: {upload_token}|{id}, title?, tags?, folder?,
+  on_behalf_of?}`. `upload_token` is the temporary upload Echo makes for a
+  WhatsApp image, video or PDF (or request-media-upload-tool); it is spent
+  only by a successful upload (taken with a conditional update, given back
+  when Drive fails), and the file itself stays a temporary upload (pruned
+  after `upload_retention_hours`), so the answer's `media_id` can still go on
+  a post as `{id}`. `{id}` is any media of the designs workspace, copied,
+  left as it is. Same rules as "Yükle": `createPost` on the workspace,
+  `DesignUploader` with the lead's Drive token, images (JPEG, PNG, WebP,
+  HEIC), PDF and video up to `MARMARA_DESIGNS_UPLOAD_MAX_MB` (100); a GIF is
+  refused. The type is the one TryPost measured at upload. Then
+  `DesignActions::syncTags` as the tags endpoint. "Ekleyen" is
+  `"<on_behalf_of> (WhatsApp)"`, else the token user, who is also the
+  activity's user. Not connected / no folder / reconnect / quota / too large
+  / unsupported answer an English tool error, like the other designs tools.
+  Answers `{id, title, kind, tags, folder, uploader: {name}, url, drive_url,
+  media_id}`.
 
 ### Kurulum (bir kerelik, Google Cloud)
 

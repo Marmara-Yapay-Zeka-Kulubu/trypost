@@ -8,6 +8,7 @@ use App\Marmara\Designs\Console\DesignsStatus;
 use App\Marmara\Designs\Console\SyncDesigns;
 use App\Marmara\Designs\Drive\DriveClient;
 use App\Marmara\Designs\Drive\ServiceAccountToken;
+use App\Marmara\Designs\Mcp\AddDesignTool;
 use App\Marmara\Designs\Mcp\CommentOnDesignTool;
 use App\Marmara\Designs\Mcp\GetDesignTool;
 use App\Marmara\Designs\Mcp\ListDesignsTool;
@@ -56,7 +57,7 @@ class DesignsServiceProvider extends ServiceProvider
         // extends MarmaraTryPostServer; without it this module binds the
         // shared one. Either way the tools below are added (and hide while
         // the module is off).
-        MarmaraMcpTools::register([ListDesignsTool::class, GetDesignTool::class, CommentOnDesignTool::class]);
+        MarmaraMcpTools::register([ListDesignsTool::class, GetDesignTool::class, CommentOnDesignTool::class, AddDesignTool::class]);
 
         if (! $this->app->bound(TryPostServer::class)) {
             $this->app->bind(TryPostServer::class, MarmaraTryPostServer::class);
