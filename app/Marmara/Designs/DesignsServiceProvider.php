@@ -141,7 +141,8 @@ class DesignsServiceProvider extends ServiceProvider
     {
         Media::saved(function (Media $media): void {
             if ($media->post_id !== null) {
-                rescue(fn () => $this->app->make(DesignPostLinks::class)->mediaSaved($media), report: true);
+                // A savepoint, so a failed query here can't abort the post's own transaction (PostgreSQL).
+                rescue(fn () => DB::transaction(fn () => $this->app->make(DesignPostLinks::class)->mediaSaved($media)), report: true);
             }
         });
 
