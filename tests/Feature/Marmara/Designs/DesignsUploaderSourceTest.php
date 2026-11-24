@@ -75,10 +75,10 @@ test('the sync credits a dropped file to the member with the drive owner\'s emai
 
     $credit = fn (string $id): array => [Design::query()->where('drive_file_id', $id)->value('source'), Design::query()->where('drive_file_id', $id)->value('uploader_user_id')];
 
-    expect($credit('fileMember'))->toBe(['drive', $this->elif->id])
-        ->and($credit('fileStranger'))->toBe(['drive', null])
-        ->and($credit('fileWhatsApp'))->toBe(['whatsapp', $this->elif->id])
-        ->and($credit('fileOld'))->toBe(['site', $this->owner->id])
+    expect($credit('fileMember'))->toBe([DesignSource::Drive, $this->elif->id])
+        ->and($credit('fileStranger'))->toBe([DesignSource::Drive, null])
+        ->and($credit('fileWhatsApp'))->toBe([DesignSource::WhatsApp, $this->elif->id])
+        ->and($credit('fileOld'))->toBe([DesignSource::Site, $this->owner->id])
         ->and($existing->fresh()->uploader_name)->toBe('Yasir Arslan');
 });
 
