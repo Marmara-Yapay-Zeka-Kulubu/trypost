@@ -59,6 +59,16 @@ return [
     // Largest file the upload service accepts (MB).
     'upload_max_mb' => (int) env('MARMARA_DESIGNS_UPLOAD_MAX_MB', 100),
 
+    /*
+     * A published post's images and videos that did not come from the
+     * gallery are added to it (uploaded to Drive with the lead's token, so
+     * only once "Drive'a yükleme izni" is given), into "<folder>/<YYYY-MM>".
+     */
+    'auto_add' => [
+        'enabled' => (bool) env('MARMARA_DESIGNS_AUTO_ADD', true),
+        'folder' => env('MARMARA_DESIGNS_AUTO_ADD_FOLDER', 'Paylaşılanlar'),
+    ],
+
     // Changes pages one incremental sync reads before the next run continues.
     'max_change_pages' => (int) env('MARMARA_DESIGNS_MAX_CHANGE_PAGES', 20),
 

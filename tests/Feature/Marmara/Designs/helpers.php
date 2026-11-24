@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use App\Marmara\Designs\Models\Design;
+use App\Marmara\Designs\Models\DesignDriveConnection;
+use App\Marmara\Designs\Upload\DriveUploadAuth;
 use App\Models\Workspace;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
@@ -263,4 +265,79 @@ function designsJpeg(int $width = 1080, int $height = 1350): string
     imagejpeg($image, null, 90);
 
     return (string) ob_get_clean();
+}
+
+/**
+ * "Drive'a yükleme izni" given: the OAuth client and the lead's connection
+ * with the shared folder picked.
+ */
+function designsConnectDrive(Workspace $workspace): DesignDriveConnection
+{
+    config()->set('marmara-designs.oauth.client_id', 'client-123.apps.googleusercontent.com');
+    config()->set('marmara-designs.oauth.client_secret', 'secret-xyz');
+
+    return DesignDriveConnection::query()->create([
+        'workspace_id' => $workspace->id,
+        'google_email' => 'lead@example.com',
+        'access_token' => 'lead-access',
+        'refresh_token' => 'lead-refresh',
+        'expires_at' => now()->addHour(),
+        'scopes' => [DriveUploadAuth::SCOPE],
+        'folder_granted_at' => now(),
+    ]);
+}
+
+/**
+ * Fakes Drive uploads: folder lookups find nothing, folders are created,
+ * and every uploaded file comes back with its own id (fileUp1, fileUp2, …),
+ * the name, parent, appProperties and type it was sent with. The uploads
+ * are listed in $GLOBALS['designsUploads'].
+ */
+function designsFakeDriveUploads(): void
+{
+    $GLOBALS['designsUploads'] = [];
+    $GLOBALS['designsPendingUpload'] = null;
+
+    Http::fake(function (Request $request) {
+        $url = $request->url();
+
+        if (str_starts_with($url, 'https://oauth2.googleapis.com/token')) {
+            return Http::response(['access_token' => 'sa-access-token', 'expires_in' => 3599]);
+        }
+
+        if ($request->method() === 'GET' && str_contains($url, '/drive/v3/files?')) {
+            return Http::response(['files' => []]);
+        }
+
+        if ($request->method() === 'POST' && str_contains($url, 'uploadType=resumable')) {
+            $GLOBALS['designsPendingUpload'] = [
+                'name' => (string) data_get($request->data(), 'name'),
+                'parent' => (string) data_get($request->data(), 'parents.0'),
+                'properties' => (array) data_get($request->data(), 'appProperties', []),
+                'mime' => (string) ($request->header('X-Upload-Content-Type')[0] ?? 'image/jpeg'),
+            ];
+
+            return Http::response('', 200, ['Location' => 'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&upload_id='.count($GLOBALS['designsUploads'])]);
+        }
+
+        if ($request->method() === 'POST' && str_contains($url, '/drive/v3/files?')) {
+            $name = (string) data_get($request->data(), 'name');
+
+            return Http::response(designsDriveFolder('fld'.md5($name), $name, (string) data_get($request->data(), 'parents.0', DESIGNS_ROOT)));
+        }
+
+        if ($request->method() === 'PUT') {
+            $sent = $GLOBALS['designsPendingUpload'];
+            $GLOBALS['designsUploads'][] = $sent;
+            $id = 'fileUp'.count($GLOBALS['designsUploads']);
+
+            return Http::response(designsDriveFile($id, $sent['name'], $sent['parent'], [
+                'mimeType' => $sent['mime'],
+                'appProperties' => $sent['properties'],
+                'createdTime' => now()->toIso8601String(),
+            ]));
+        }
+
+        return Http::response(['error' => ['code' => 404, 'message' => "unexpected {$request->method()} {$url}"]], 404);
+    });
 }

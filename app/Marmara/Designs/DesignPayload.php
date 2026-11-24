@@ -8,6 +8,7 @@ use App\Marmara\Designs\Models\Design;
 use App\Marmara\Designs\Models\DesignActivity;
 use App\Marmara\Designs\Models\DesignComment;
 use App\Marmara\Designs\Models\DesignRevision;
+use App\Marmara\Designs\Posts\DesignPublications;
 use App\Marmara\Designs\Support\DesignTypes;
 use App\Models\User;
 use Carbon\CarbonImmutable;
@@ -54,6 +55,9 @@ class DesignPayload
             'created_at' => $design->drive_created_at?->toIso8601String(),
             'modified_at' => $design->drive_modified_at?->toIso8601String(),
             'family_id' => $design->family_id,
+            // A series: several designs of one carousel post, shown as one card.
+            'set_id' => $design->design_set_id,
+            'set_position' => $design->set_position,
             'removed' => $design->removed_at !== null,
             'drive_url' => $design->web_view_link,
             'url' => route('marmara.designs.index', ['design' => $design->id]),
@@ -76,6 +80,9 @@ class DesignPayload
             'modifier' => ['name' => $design->modifier_name],
             'comments_list' => $design->comments->map(fn (DesignComment $comment): array => self::comment($comment, $viewer))->values()->all(),
             'versions' => self::versions($design, $signedThumbnails),
+            'set' => self::set($design, $signedThumbnails),
+            // Where it went out, newest first (posts that were published).
+            'publications' => DesignPublications::forDesign($design->id),
             'activity' => $design->activities->take(30)->map(fn (DesignActivity $activity): array => [
                 'id' => $activity->id,
                 'type' => $activity->type,
@@ -98,6 +105,32 @@ class DesignPayload
             'created_at' => $comment->created_at->toIso8601String(),
             'edited_at' => $comment->edited_at?->toIso8601String(),
             'mine' => $viewer !== null && $comment->user_id === $viewer->id,
+        ];
+    }
+
+    /**
+     * The series the design belongs to, in order; null outside a series.
+     *
+     * @return array{id: string, count: int, items: list<array<string, mixed>>}|null
+     */
+    public static function set(Design $design, bool $signed = false): ?array
+    {
+        if ($design->design_set_id === null) {
+            return null;
+        }
+
+        $members = $design->setMembers();
+
+        return [
+            'id' => $design->design_set_id,
+            'count' => $members->count(),
+            'items' => $members->map(fn (Design $member): array => [
+                'id' => $member->id,
+                'title' => $member->title,
+                'kind' => $member->kind,
+                'status' => $member->status->value,
+                'thumbnail_url' => self::thumbnailUrl($member, 400, null, $signed),
+            ])->values()->all(),
         ];
     }
 

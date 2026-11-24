@@ -27,6 +27,7 @@ Route::middleware(['web', 'auth', EnsureAccountReady::class, EnsureHasWorkspace:
     ->group(function (): void {
         Route::get('/', [DesignsPageController::class, 'index'])->name('index');
         Route::post('upload', [DesignUploadController::class, 'store'])->middleware('throttle:20,1')->name('upload');
+        Route::post('posts', [DesignPostController::class, 'storeMany'])->middleware('throttle:10,1')->name('posts.many');
 
         Route::get('drive/connect', [DriveConnectController::class, 'connect'])->name('drive.connect');
         Route::get('drive/callback', [DriveConnectController::class, 'callback'])->name('drive.callback');

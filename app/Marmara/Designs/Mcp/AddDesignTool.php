@@ -7,6 +7,9 @@ namespace App\Marmara\Designs\Mcp;
 use App\Actions\Media\ResolveWorkspaceMedia;
 use App\Marmara\Designs\Actions\DesignActions;
 use App\Marmara\Designs\DesignsConfig;
+use App\Marmara\Designs\Models\DesignMedia;
+use App\Marmara\Designs\Posts\DesignPostLinks;
+use App\Marmara\Designs\Posts\RecordDesignPublication;
 use App\Marmara\Designs\Support\DesignMembers;
 use App\Marmara\Designs\Support\DesignSource;
 use App\Marmara\Designs\Support\DesignTypes;
@@ -14,6 +17,7 @@ use App\Marmara\Designs\Upload\DesignUploader;
 use App\Marmara\Designs\Upload\DesignUploadUnavailable;
 use App\Mcp\Concerns\AuthorizesMcpTool;
 use App\Models\Media;
+use App\Models\Post;
 use App\Models\Workspace;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Http\UploadedFile;
@@ -49,7 +53,7 @@ class AddDesignTool extends Tool
         return $config->enabled();
     }
 
-    public function handle(Request $request, DesignUploader $uploader, DesignActions $actions): Response|ResponseFactory
+    public function handle(Request $request, DesignUploader $uploader, DesignActions $actions, DesignPostLinks $links): Response|ResponseFactory
     {
         // The page's "Yükle" needs createPost on the workspace; so does this.
         $workspace = $this->authorizeCurrentWorkspace($request, 'createPost');
@@ -154,6 +158,22 @@ class AddDesignTool extends Tool
         }
 
         $tags = $actions->syncTags($design, $user, array_values((array) ($validated['tags'] ?? [])));
+
+        // The file is the design's now: a post made with media_id (or a
+        // channel's copy of it) is linked to the design, and a post that
+        // already holds this media row is linked right away.
+        DesignMedia::remember($design, $media->id);
+        $media->refresh();
+
+        if ($media->post_id !== null) {
+            $links->link($design, $media->post_id, (int) $media->order, $user);
+            $links->groupPost($media->post_id);
+            $post = Post::query()->find($media->post_id);
+
+            if ($post !== null) {
+                app(RecordDesignPublication::class)->record($post);
+            }
+        }
 
         return Response::structured([
             'id' => $design->id,

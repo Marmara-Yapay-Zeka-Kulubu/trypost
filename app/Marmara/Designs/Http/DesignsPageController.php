@@ -14,11 +14,13 @@ use App\Marmara\Designs\Models\Design;
 use App\Marmara\Designs\Models\DesignDriveConnection;
 use App\Marmara\Designs\Models\DesignSyncState;
 use App\Marmara\Designs\Models\DesignVote;
+use App\Marmara\Designs\Posts\DesignPublications;
 use App\Marmara\Designs\Support\DesignStatus;
 use App\Marmara\Designs\Support\DesignTypes;
 use App\Models\SocialAccount;
 use App\Models\User;
 use App\Models\Workspace;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
@@ -52,6 +54,7 @@ class DesignsPageController extends Controller
         'syncInfo',
         'postChannels',
         'linkCandidates',
+        'sharedBy',
         'urls',
     ];
 
@@ -64,8 +67,8 @@ class DesignsPageController extends Controller
         $page = (int) ($validated['page'] ?? 1);
         $filters = collect($validated)->only(array_keys(DesignQuery::rules()))->filter(fn (mixed $value): bool => $value !== null && $value !== '')->all();
 
-        $designs = DesignQuery::for($workspace, $filters)->limit($page * self::PER_PAGE + 1)->get();
-        $visible = $designs->take($page * self::PER_PAGE);
+        [$visible, $hasMore, $sets] = $this->cards($workspace, $filters, $page * self::PER_PAGE);
+        $publications = DesignPublications::latestFor($visible->pluck('id'));
         $voted = DesignVote::query()->where('user_id', $user->id)->whereIn('design_id', $visible->pluck('id'))->pluck('design_id')->flip();
         $versionCounts = Design::query()->where('workspace_id', $workspace->id)->active()->whereNotNull('family_id')
             ->whereIn('family_id', $visible->pluck('family_id')->filter()->unique())
@@ -88,8 +91,13 @@ class DesignsPageController extends Controller
                 ...DesignPayload::item($design),
                 'voted' => $voted->has($design->id),
                 'versions_count' => $design->family_id !== null ? (int) ($versionCounts[$design->family_id] ?? 1) : 1,
+                // A series is one card: its first design, with every member's id in order.
+                'set' => $design->design_set_id !== null && isset($sets[$design->design_set_id])
+                    ? ['id' => $design->design_set_id, 'count' => count($sets[$design->design_set_id]), 'item_ids' => $sets[$design->design_set_id]]
+                    : null,
+                'last_publication' => $publications[$design->id] ?? null,
             ])->values()->all(),
-            'pagination' => ['page' => $page, 'has_more' => $designs->count() > $visible->count(), 'per_page' => self::PER_PAGE],
+            'pagination' => ['page' => $page, 'has_more' => $hasMore, 'per_page' => self::PER_PAGE],
             'selected' => $selected === null ? null : [
                 ...DesignPayload::detail($selected, $user),
                 'owner_email' => $selected->owner_email,
@@ -107,15 +115,69 @@ class DesignsPageController extends Controller
             ],
             'driveUpload' => $this->driveUpload($workspace, $user, $config),
             'syncInfo' => $this->syncInfo($workspace, $config),
-            'postChannels' => $selected === null ? [] : SocialAccount::query()->where('workspace_id', $workspace->id)->orderBy('platform')->get()
+            // Also without a selected design: several designs can be picked for one post.
+            'postChannels' => ! $user->can('createPost', $workspace) ? [] : SocialAccount::query()->where('workspace_id', $workspace->id)->orderBy('platform')->get()
                 ->map(fn (SocialAccount $account): array => ['id' => $account->id, 'name' => $account->display_name ?? $account->username, 'platform' => $account->platform->value, 'connected' => $account->status?->value === 'connected'])
                 ->values()->all(),
             'linkCandidates' => $selected === null ? [] : Design::query()->where('workspace_id', $workspace->id)->active()->whereKeyNot($selected->id)
                 ->when($selected->family_id !== null, fn ($query) => $query->where(fn ($inner) => $inner->whereNull('family_id')->orWhere('family_id', '!=', $selected->family_id)))
                 ->orderByDesc('drive_created_at')->limit(200)->get(['id', 'title', 'folder_path', 'drive_created_at'])
                 ->map(fn (Design $design): array => ['id' => $design->id, 'title' => $design->title, 'folder' => $design->folder_path])->values()->all(),
+            // How many designs each person shared (posts that went out) in the date range.
+            'sharedBy' => DesignPublications::countsByMember($workspace, $filters['from'] ?? null, $filters['to'] ?? null),
             'urls' => $this->urls(),
         ]);
+    }
+
+    /**
+     * The gallery's cards for the first $limit of them: the matching
+     * designs in order, a series once (as its first design, wherever one of
+     * its members matched), and whether there are more.
+     *
+     * @param  array<string, mixed>  $filters
+     * @return array{0: Collection<int, Design>, 1: bool, 2: array<string, list<string>>}
+     */
+    private function cards(Workspace $workspace, array $filters, int $limit): array
+    {
+        $cards = [];
+        $seenSets = [];
+        $hasMore = false;
+
+        foreach (DesignQuery::for($workspace, $filters)->lazy(200) as $design) {
+            if ($design->design_set_id !== null) {
+                if (isset($seenSets[$design->design_set_id])) {
+                    continue;
+                }
+
+                $seenSets[$design->design_set_id] = true;
+            }
+
+            if (count($cards) === $limit) {
+                $hasMore = true;
+
+                break;
+            }
+
+            $cards[] = $design;
+        }
+
+        $sets = [];
+        $members = $seenSets === [] ? collect() : Design::query()->with(['tags', 'uploader'])
+            ->where('workspace_id', $workspace->id)->active()
+            ->whereIn('design_set_id', array_keys($seenSets))
+            ->orderBy('set_position')->orderBy('created_at')->orderBy('id')
+            ->get()->groupBy('design_set_id');
+
+        foreach ($cards as $index => $design) {
+            $group = $design->design_set_id !== null ? $members->get($design->design_set_id) : null;
+
+            if ($group !== null && $group->isNotEmpty()) {
+                $sets[$design->design_set_id] = $group->pluck('id')->values()->all();
+                $cards[$index] = $group->first();
+            }
+        }
+
+        return [new Collection($cards), $hasMore, $sets];
     }
 
     /**
@@ -186,6 +248,7 @@ class DesignsPageController extends Controller
             'original' => route('marmara.designs.original', ['design' => '__ID__']),
             'play' => route('marmara.designs.play', ['design' => '__ID__']),
             'posts' => route('marmara.designs.posts.store', ['design' => '__ID__']),
+            'posts_many' => route('marmara.designs.posts.many'),
             'drive_connect' => route('marmara.designs.drive.connect'),
             'drive_picker_token' => route('marmara.designs.drive.picker-token'),
             'drive_folder' => route('marmara.designs.drive.folder'),

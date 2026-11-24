@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Marmara\Designs;
 
 use App\Models\Workspace;
+use DateTimeInterface;
 
 /**
  * Reads config/marmara-designs.php with sane bounds. Read on every call, never
@@ -121,6 +122,26 @@ class DesignsConfig
     public function uploadMaxBytes(): int
     {
         return max(1, (int) config('marmara-designs.upload_max_mb', 100)) * 1024 * 1024;
+    }
+
+    /**
+     * Whether a published post's images and videos that are not in the
+     * gallery yet are uploaded to Drive (AddPublishedMediaToDesigns).
+     */
+    public function autoAddPublished(): bool
+    {
+        return (bool) config('marmara-designs.auto_add.enabled', true);
+    }
+
+    /**
+     * The collection those files go into, with the month they went out:
+     * "Paylaşılanlar/2026-11".
+     */
+    public function autoAddFolder(DateTimeInterface $publishedAt): string
+    {
+        $base = trim((string) ($this->string('marmara-designs.auto_add.folder') ?? 'Paylaşılanlar'), ' /');
+
+        return ltrim($base.'/'.$publishedAt->format('Y-m'), '/');
     }
 
     public function maxChangePages(): int

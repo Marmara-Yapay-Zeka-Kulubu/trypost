@@ -54,6 +54,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property CarbonImmutable|null $changed_after_use_at
  * @property string|null $family_id
  * @property bool $family_latest
+ * @property string|null $design_set_id
+ * @property int|null $set_position
  * @property int $votes_count
  * @property int $comments_count
  * @property CarbonImmutable|null $last_commented_at
@@ -98,6 +100,8 @@ class Design extends Model
         'changed_after_use_at',
         'family_id',
         'family_latest',
+        'design_set_id',
+        'set_position',
         'votes_count',
         'comments_count',
         'last_commented_at',
@@ -128,6 +132,7 @@ class Design extends Model
             'status_changed_at' => 'immutable_datetime',
             'changed_after_use_at' => 'immutable_datetime',
             'family_latest' => 'boolean',
+            'set_position' => 'integer',
             'votes_count' => 'integer',
             'comments_count' => 'integer',
             'last_commented_at' => 'immutable_datetime',
@@ -192,6 +197,38 @@ class Design extends Model
     public function activities(): HasMany
     {
         return $this->hasMany(DesignActivity::class)->orderByDesc('created_at')->orderByDesc('id');
+    }
+
+    /**
+     * The posts the design went on (one row per post, i.e. per channel).
+     *
+     * @return HasMany<DesignPost, $this>
+     */
+    public function postLinks(): HasMany
+    {
+        return $this->hasMany(DesignPost::class);
+    }
+
+    /**
+     * The other designs of its series (several designs of one carousel
+     * post), in order, this one included; just this one outside a series.
+     *
+     * @return Collection<int, Design>
+     */
+    public function setMembers(): Collection
+    {
+        if ($this->design_set_id === null) {
+            return new Collection([$this]);
+        }
+
+        return self::query()
+            ->where('workspace_id', $this->workspace_id)
+            ->where('design_set_id', $this->design_set_id)
+            ->active()
+            ->orderBy('set_position')
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->get();
     }
 
     /**

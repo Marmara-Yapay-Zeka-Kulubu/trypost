@@ -1177,10 +1177,11 @@ the REST API, three MCP tools and the `design.*` webhooks. Variables:
 | `app/Marmara/Designs/Drive/ServiceAccountToken.php` | JWT bearer flow for the service account (RS256 with firebase/php-jwt, which signs with `openssl_sign`; already installed through google/apiclient, nothing added to composer.json), token cached until 2 min before it expires |
 | `app/Marmara/Designs/Drive/DriveClient.php` | Drive v3 REST with Laravel's HTTP client: files.list/get, changes.getStartPageToken/list, revisions.list/update, media download/stream/export, thumbnails, folders, move, resumable upload; one retry with a fresh token on 401 |
 | `app/Marmara/Designs/Sync/DesignSync.php`, `RevisionSync.php`, `Jobs/SyncDesignRevisions.php` | The folder mirror (below) and the revisions with keepForever |
-| `app/Marmara/Designs/Models/*`, `database/migrations/` | `marmara_designs`, `marmara_design_folders`, `marmara_design_revisions`, `marmara_design_sync_states`, `marmara_design_thumbnails`, `marmara_design_tags`, `marmara_design_comments`, `marmara_design_votes`, `marmara_design_activities`, `marmara_design_drive_connections` |
+| `app/Marmara/Designs/Models/*`, `database/migrations/` | `marmara_designs`, `marmara_design_folders`, `marmara_design_revisions`, `marmara_design_sync_states`, `marmara_design_thumbnails`, `marmara_design_tags`, `marmara_design_comments`, `marmara_design_votes`, `marmara_design_activities`, `marmara_design_drive_connections`, `marmara_design_posts`, `marmara_design_media` |
 | `app/Marmara/Designs/DesignPolicy.php` | Who may do what (below); `set-design-status`, `update-design-comment`, `delete-design-comment` gates |
 | `app/Marmara/Designs/Actions/DesignActions.php` | Status, tags, comments, votes, version links, one activity line each; shared by the page, the API and MCP |
-| `app/Marmara/Designs/Actions/CreatePostFromDesign.php` | "Gönderi oluştur" (TryPost's upload normalization: PNG/WebP/HEIC to JPEG q100) |
+| `app/Marmara/Designs/Actions/CreatePostFromDesign.php` | "Gönderi oluştur" (TryPost's upload normalization: PNG/WebP/HEIC to JPEG q100), one design or several as one carousel post |
+| `app/Marmara/Designs/Posts/*`, `Models/DesignPost.php`, `Models/DesignMedia.php`, `Jobs/AddPublishedMediaToDesigns.php` | Designs on posts: links, series, "Kullanıldı" on publish, published media added to the gallery (below) |
 | `app/Marmara/Designs/Thumbnails/*` | The thumbnail proxy's source and the bounded LRU cache |
 | `app/Marmara/Designs/Upload/*` | "Drive'a yükleme izni" (OAuth, drive.file) and `DesignUploader::upload()` |
 | `app/Marmara/Designs/DesignPayload.php`, `DesignQuery.php` | The one design shape (page, API, MCP, webhooks) and the filters / sorts |
@@ -1215,7 +1216,11 @@ Relied on, not edited: `WebhookService::dispatch()` / `DispatchWebhook`
 `addMediaFromPath()`, `Media::issueUploadToken()`, `HostInlineMedia::forPost()`
 and `CreatePosts::execute()` (the same path as the Echo media bridge's
 `POST /api/uploads` + `upload_token`); `WorkspacePolicy::view`, `createPost`,
-`approvePosts`, `update`; `AuthorizesMcpTool`; Inertia's shared props.
+`approvePosts`, `update`; `AuthorizesMcpTool`; Inertia's shared props; the
+`saved` event of `App\Models\Media` and the `updated` event of
+`App\Models\Post` (listened to by `DesignsServiceProvider::listenToPosts()`,
+see "Designs on posts"), `meta.copied_from` on a post's media copies
+(`SyncOwnedMedia::copy()`) and `PublishStatus::wentOut()`.
 
 **Servers bind-mount their own `bootstrap/providers.php`.** Add this line to
 the server's copy, after `App\Marmara\Inbox\InboxServiceProvider::class,`
@@ -1349,6 +1354,69 @@ PNG and so becomes a JPEG too. The untouched original stays available through
 apply (e.g. a PDF on Instagram is refused with TryPost's own message). The
 composer of the first draft opens.
 
+### Designs on posts
+
+No upstream file is edited for this; it hangs on two model events registered
+in `DesignsServiceProvider::listenToPosts()` (both return at once while the
+module is off).
+
+- **Links** (`marmara_design_posts`: design, post, workspace, `position` in
+  the post's media, `linked_by_user_id`, `published_at`; unique per design
+  and post). A post is one channel, so a design shared on Instagram and
+  LinkedIn has two rows. The link is made from `Media::saved`: when a media
+  row lands on a post (a channel's copy is created, or a temporary upload is
+  adopted) and it holds a design's file, the post is linked, in the same
+  transaction. Which rows hold a design's file is `marmara_design_media`
+  (`media_id` → design, no foreign key on the media): "Gönderi oluştur"
+  remembers the upload it makes, `add-design-tool` the media it was given
+  (and links at once a post that already holds it), the published-media job
+  the files it adds. A copy is found through its `meta.copied_from` chain
+  (`DesignMedia::lineage()`), and the post's own row is remembered too. So
+  Hermes' "bu görseli depoya yükle" followed by `create-posts-tool` with the
+  answer's `media_id` links every channel's post.
+- **Series** (`marmara_designs.design_set_id`, `set_position`): when two or
+  more designs are linked to one post, the ones without a series join the
+  series of the first one that has one (by position) or a new one. A design
+  already in another series stays there; there is no "ungroup".
+- **"Kullanıldı" on publish**: `Post::updated` with `publish_status` moving
+  from a state that did not go out into one that did (`wentOut()`: published,
+  or deleted on the network since). `Post::markPublicationPublished()` writes
+  it with a plain save, so every publisher (native, Zernio, reconcile) passes
+  here. After commit and inside `rescue()` (never fails a publication),
+  `RecordDesignPublication` takes each link of the post without
+  `published_at` under a row lock, sets it, makes the design Kullanıldı (not
+  an archived one; activity "status_changed" by the post's member and
+  `design.status_changed` with `reason: "post_published"`), and writes the
+  activity `post_published` `{post_id, platform, platform_label, account,
+  published_at, by}` credited to `post.user` (the WhatsApp sender for
+  Hermes' posts). A retry, a second publish or a restore records nothing new.
+- **Published media added to the gallery**: then `AddPublishedMediaToDesigns`
+  (queued, 5 tries, backoff 1 / 5 / 15 / 60 min) takes the post's own images
+  and videos (not covers, not thread replies) that no design holds and
+  uploads each through `DesignUploader` into `Paylaşılanlar/<YYYY-MM>` (the
+  month it went out; `MARMARA_DESIGNS_AUTO_ADD_FOLDER`), titled with the first
+  60 characters of the post text or "<Platform> paylaşımı <dd.mm.yyyy>" ("(2/3)"
+  after it for a carousel), source `whatsapp` when the post has an
+  `agent_user_id`, else `site`, credited to `post.user`, status Kullanıldı
+  (activity `auto_added`), linked to the post; several form a series. The
+  same files on another channel's post (copied from the first, or from the
+  same upload) are found by their root (`copied_from`) and only linked: one
+  design per file, linked to every post. A cache lock per post group keeps
+  two channels' jobs from uploading the same file twice. Skipped (logged)
+  without the Drive upload permission, with `MARMARA_DESIGNS_AUTO_ADD=false`,
+  for unsupported types (GIF, documents), files no longer stored, or a
+  too-large file; a Drive "failed" answer is retried.
+- **Page**: a series is one card (its first design, a "4 görsel" badge;
+  filters and search still match each member, the series shows once); the
+  drawer shows the series as a strip with previous / next, and every post the
+  design went out with ("Paylaşıldı · Instagram · Behice · 24 Kas"; the card
+  shows the latest). "Seç" picks designs (a series as a whole) in order, and
+  "Gönderi oluştur" makes one draft per channel with all of them as media
+  (`POST /designs/posts {design_ids[], social_account_ids[], content}`, at
+  most 20; each channel's media rules apply as for any post). "Paylaşanlar"
+  counts, per member (`post.user`), the designs of posts that went out,
+  within the date filter's range when one is set.
+
 ### Drive uploads ("Drive'a yükleme izni")
 
 A service account has no storage quota, so it cannot create files in a
@@ -1385,13 +1453,17 @@ setting or env var name is ever shown in the UI.
   kind, mime_type, status, status_label, folder, uploader: {id, name},
   source, tags,
   votes, comments, last_commented_at, width, height, size, created_at,
-  modified_at, family_id, removed, drive_url, url, thumbnail_url,
-  preview_url}`. Names only, never emails.
+  modified_at, family_id, set_id, set_position, removed, drive_url, url,
+  thumbnail_url, preview_url}`. Names only, never emails. The detail (API
+  `GET /api/designs/{id}`) adds `set: {id, count, items}|null` and
+  `publications: [{post_id, platform, platform_label, account, by: {id,
+  name}, url, published_at, deleted}]`.
 - Webhooks (Settings > Webhooks): `design.added` (new file after the first
   sync, at most `MARMARA_DESIGNS_NOTIFY_MAX_AGE_HOURS` old, or an upload),
   `design.commented` (+ `comment: {id, body, author: {id, name},
   created_at}`), `design.status_changed` (+ `status: {from, from_label, to,
-  to_label, changed_by: {id, name}|null, reason: null|"content_changed"}`).
+  to_label, changed_by: {id, name}|null, reason: null|"content_changed"|"post_published"}`;
+  `post_published`: a linked post went out, `changed_by` is the post's member).
   The design also carries `status_reason` and `changed_after_use_at`. Fired after commit, signed with
   `X-Webhook-Signature`.
 - REST (API key): `GET /api/designs?q=&folder=&uploader=&status=&tag=&kind=&from=&to=&sort=&limit=&page=`
@@ -1488,7 +1560,9 @@ setting or env var name is ever shown in the UI.
 1. Push / deploy the branch as usual; the migrations
    (`2026_11_22_120000_create_marmara_design_drive_tables`,
    `2026_11_22_120100_create_marmara_design_app_tables`,
-   `2026_11_22_120200_add_marmara_design_approval_version`) run with the others.
+   `2026_11_22_120200_add_marmara_design_approval_version`,
+   `2026_11_24_120000_add_marmara_design_uploader_source`,
+   `2026_11_24_130000_create_marmara_design_post_links`) run with the others.
    With `MARMARA_DESIGNS_ENABLED=false` nothing changes.
 2. Do the setup above, add the provider line to the server's
    `providers.php`, then `docker compose up -d --force-recreate app` (the
