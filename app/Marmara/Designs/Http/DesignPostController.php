@@ -59,7 +59,7 @@ class DesignPostController extends Controller
         ]);
 
         $ids = array_values($validated['design_ids']);
-        $found = Design::query()->where('workspace_id', $workspace->id)->whereIn('id', $ids)->whereNull('removed_at')->get()->keyBy('id');
+        $found = Design::query()->with('workspace')->where('workspace_id', $workspace->id)->whereIn('id', $ids)->whereNull('removed_at')->get()->keyBy('id');
         abort_if($found->count() !== count($ids), 404);
 
         $designs = new EloquentCollection(array_map(fn (string $id): Design => $found->get($id), $ids));
