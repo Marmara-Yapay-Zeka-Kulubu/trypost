@@ -36,6 +36,8 @@ Route::middleware(['web', 'auth', EnsureAccountReady::class, EnsureHasWorkspace:
 
         Route::get('{design}/thumbnail/{size}', [DesignMediaController::class, 'thumbnail'])->whereNumber('size')->middleware('throttle:600,1')->name('thumbnail');
         Route::get('{design}/original', [DesignMediaController::class, 'original'])->middleware('throttle:30,1')->name('original');
+        // A <video> asks for several byte ranges while it plays and seeks.
+        Route::get('{design}/play', [DesignMediaController::class, 'play'])->middleware('throttle:240,1')->name('play');
         Route::patch('{design}/status', [DesignController::class, 'status'])->name('status');
         Route::put('{design}/tags', [DesignController::class, 'tags'])->name('tags');
         Route::post('{design}/comments', [DesignController::class, 'storeComment'])->middleware('throttle:30,1')->name('comments.store');

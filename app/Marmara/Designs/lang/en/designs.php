@@ -64,6 +64,8 @@ return [
         'close' => 'Close',
         'open_in_drive' => 'Open in Drive',
         'download' => 'Download original',
+        'preview_pending' => 'Drive has not made a preview yet. Download the original or open it in Drive.',
+        'video_unavailable' => 'This video cannot play here. Download the original or open it in Drive.',
         'folder' => 'Collection',
         'uploader' => 'Added by',
         'last_editor' => 'Last edited by',

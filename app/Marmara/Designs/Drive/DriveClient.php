@@ -10,6 +10,7 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
+use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\StreamInterface;
 
 /**
@@ -175,6 +176,18 @@ class DriveClient
         $query = $exportMime !== null ? ['mimeType' => $exportMime] : ['alt' => 'media', 'supportsAllDrives' => 'true'];
 
         return $this->send('get', $path, $query, null, ['stream' => true])->toPsrResponse()->getBody();
+    }
+
+    /**
+     * The current content as a stream, with Drive's own status and headers,
+     * so a byte range (`bytes=0-1023`) asked by a <video> comes back as 206
+     * with its Content-Range. Nothing is buffered here.
+     */
+    public function media(string $fileId, ?string $range = null): ResponseInterface
+    {
+        $headers = $range !== null ? ['Range' => $range] : [];
+
+        return $this->send('get', $this->contentPath($fileId, null), ['alt' => 'media', 'supportsAllDrives' => 'true'], null, ['stream' => true], $headers)->toPsrResponse();
     }
 
     /**

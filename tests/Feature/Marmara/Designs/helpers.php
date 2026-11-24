@@ -110,6 +110,7 @@ function designsDriveFolder(string $id, string $name, string $parent): array
  * @param  array<string, array<string, mixed>>  $changes  page token => changes.list answer
  * @param  array<string, list<array<string, mixed>>>  $revisions  file id => revisions
  * @param  array<string, string>  $content  "fileId" or "fileId@revisionId" => bytes
+ * @param  array<string, string|null>  $thumbnails  thumbnail URL => bytes; a bare file id => null means Drive has no thumbnailLink for it (yet)
  */
 function designsFakeDrive(array $children = [], array $changes = [], array $revisions = [], string $startToken = 'token-100', array $content = [], array $thumbnails = []): void
 {
@@ -178,11 +179,26 @@ function designsFakeDrive(array $children = [], array $changes = [], array $revi
 
         if (preg_match('#^/drive/v3/files/([^/]+)$#', $path, $match) === 1) {
             if (($query['alt'] ?? null) === 'media') {
-                return isset($content[$match[1]]) ? Http::response($content[$match[1]]) : Http::response(['error' => ['code' => 404, 'message' => 'File not found']], 404);
+                if (! isset($content[$match[1]])) {
+                    return Http::response(['error' => ['code' => 404, 'message' => 'File not found']], 404);
+                }
+
+                $bytes = $content[$match[1]];
+
+                if (preg_match('/^bytes=(\d+)-(\d*)$/', $request->header('Range')[0] ?? '', $range) === 1) {
+                    $end = $range[2] === '' ? strlen($bytes) - 1 : min((int) $range[2], strlen($bytes) - 1);
+                    $part = substr($bytes, (int) $range[1], $end - (int) $range[1] + 1);
+
+                    return Http::response($part, 206, ['Content-Length' => (string) strlen($part), 'Content-Range' => "bytes {$range[1]}-{$end}/".strlen($bytes)]);
+                }
+
+                return Http::response($bytes, 200, ['Content-Length' => (string) strlen($bytes)]);
             }
 
             if (($query['fields'] ?? null) === 'thumbnailLink') {
-                return Http::response(['thumbnailLink' => "https://lh3.googleusercontent.com/drive-storage/{$match[1]}=s220"]);
+                return array_key_exists($match[1], $thumbnails) && $thumbnails[$match[1]] === null
+                    ? Http::response(['id' => $match[1]])
+                    : Http::response(['thumbnailLink' => "https://lh3.googleusercontent.com/drive-storage/{$match[1]}=s220"]);
             }
 
             return Http::response(['kind' => 'drive#file', 'id' => $match[1], 'name' => 'Tasarımlar', 'mimeType' => 'application/vnd.google-apps.folder']);

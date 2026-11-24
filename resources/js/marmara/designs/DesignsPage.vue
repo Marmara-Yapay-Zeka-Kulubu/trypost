@@ -210,6 +210,24 @@ const close = (): void => visit({ design: null }, { keepPage: true });
 
 const kindIcons: Record<string, Component> = { pdf: IconFileTypePdf, video: IconVideo };
 
+// Thumbnails that did not load (a fresh video has none until Drive makes it):
+// the card shows the kind placeholder instead. Cleared on every new list, so
+// a thumbnail Drive made in the meantime shows on the next visit.
+const failedThumbnails = ref<Set<string>>(new Set());
+const thumbnailShown = (src: string | null): boolean => src !== null && src !== '' && !failedThumbnails.value.has(src);
+const thumbnailFailed = (src: string | null): void => {
+    if (src) {
+        failedThumbnails.value = new Set([...failedThumbnails.value, src]);
+    }
+};
+
+watch(
+    () => props.designs,
+    () => {
+        failedThumbnails.value = new Set();
+    },
+);
+
 const uploadOpen = ref(false);
 const postOpen = ref(false);
 const highlightPick = computed(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('drive') === 'pick');
@@ -468,8 +486,22 @@ const syncNotice = computed((): string | null => {
                         @click="open(design)"
                     >
                         <span class="relative flex aspect-square items-center justify-center overflow-hidden bg-muted">
-                            <img v-if="design.thumbnail_url" :src="design.thumbnail_url" :alt="design.title" loading="lazy" class="h-full w-full object-cover" />
-                            <component :is="kindIcons[design.kind] ?? IconPhoto" v-else class="size-8 text-muted-foreground" stroke-width="1.5" />
+                            <img
+                                v-if="thumbnailShown(design.thumbnail_url)"
+                                :src="design.thumbnail_url ?? undefined"
+                                alt=""
+                                loading="lazy"
+                                class="h-full w-full object-cover"
+                                @error="thumbnailFailed(design.thumbnail_url)"
+                            />
+                            <span
+                                v-else
+                                class="flex min-w-0 flex-col items-center gap-1 px-3 text-muted-foreground"
+                                :data-testid="`marmara-designs-placeholder-${design.id}`"
+                            >
+                                <component :is="kindIcons[design.kind] ?? IconPhoto" class="size-8 shrink-0" stroke-width="1.5" aria-hidden="true" />
+                                <span class="truncate text-xs font-medium">{{ t(`kinds.${design.kind}`) }}</span>
+                            </span>
                             <DesignStatusBadge :status="design.status" :label="t(`statuses.${design.status}`)" compact class="absolute top-2 start-2" />
                             <Badge
                                 v-if="(design.versions_count ?? 1) > 1"

@@ -107,3 +107,62 @@ test('originals are streamed from drive on demand and never stored', function ()
         ->and($response->headers->get('Content-Disposition'))->toContain('attachment')
         ->and(DesignThumbnail::query()->count())->toBe(0);
 });
+
+test('a fresh video without a drive thumbnail gets an empty uncached 404, and its thumbnail shows once drive makes it', function () {
+    $video = designsMake($this->workspace, ['drive_file_id' => 'fileClip', 'name' => 'Klip.mp4', 'title' => 'Klip', 'mime_type' => 'video/mp4', 'kind' => 'video', 'size' => 11 * 1024 * 1024]);
+    designsFakeDrive(thumbnails: ['fileClip' => null]);
+
+    $response = $this->actingAs($this->owner)->get("/designs/{$video->id}/thumbnail/400")->assertNotFound();
+
+    expect($response->getContent())->toBe('')
+        ->and($response->headers->get('Cache-Control'))->toContain('no-store')
+        ->and(DesignThumbnail::query()->count())->toBe(0);
+    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/files/fileClip') && str_contains($request->url(), 'alt=media'));
+
+    $this->get(DesignPayload::thumbnailUrl($video, 400, signed: true))->assertNotFound();
+
+    // Some minutes later Drive has made it: the same URL now answers with it.
+    designsFakeDrive(thumbnails: ['https://lh3.googleusercontent.com/drive-storage/fileClip=s400' => designsJpeg(400, 225)]);
+
+    $response = $this->actingAs($this->owner)->get("/designs/{$video->id}/thumbnail/400")->assertOk();
+
+    expect($response->headers->get('Content-Type'))->toBe('image/jpeg')
+        ->and(DesignThumbnail::query()->count())->toBe(1);
+});
+
+test('an answer from drive that is not a picture is never cached as a thumbnail', function () {
+    $video = designsMake($this->workspace, ['drive_file_id' => 'fileClip', 'mime_type' => 'video/mp4', 'kind' => 'video']);
+    designsFakeDrive(thumbnails: ['https://lh3.googleusercontent.com/drive-storage/fileClip=s400' => '<!doctype html><title>Processing</title>']);
+
+    $this->actingAs($this->owner)->get("/designs/{$video->id}/thumbnail/400")->assertNotFound();
+
+    expect(DesignThumbnail::query()->count())->toBe(0);
+});
+
+test('a video plays inline from drive, with byte ranges passed through', function () {
+    $bytes = str_repeat('0123456789', 100);
+    $video = designsMake($this->workspace, ['drive_file_id' => 'fileClip', 'mime_type' => 'video/mp4', 'kind' => 'video', 'size' => strlen($bytes)]);
+    designsFakeDrive(content: ['fileClip' => $bytes]);
+
+    $full = $this->actingAs($this->owner)->get("/designs/{$video->id}/play")->assertOk();
+
+    expect($full->streamedContent())->toBe($bytes)
+        ->and($full->headers->get('Content-Type'))->toBe('video/mp4')
+        ->and($full->headers->get('Accept-Ranges'))->toBe('bytes')
+        ->and($full->headers->get('Content-Disposition'))->toBeNull();
+
+    $part = $this->actingAs($this->owner)->get("/designs/{$video->id}/play", ['Range' => 'bytes=10-19'])->assertStatus(206);
+
+    expect($part->streamedContent())->toBe('0123456789')
+        ->and($part->headers->get('Content-Range'))->toBe('bytes 10-19/'.strlen($bytes));
+    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/files/fileClip') && $request->hasHeader('Range', 'bytes=10-19'));
+
+    expect(DesignThumbnail::query()->count())->toBe(0);
+});
+
+test('only videos play, and only for members of the workspace', function () {
+    $this->actingAs($this->owner)->get("/designs/{$this->design->id}/play")->assertNotFound();
+
+    $video = designsMake($this->workspace, ['drive_file_id' => 'fileClip', 'mime_type' => 'video/mp4', 'kind' => 'video']);
+    $this->actingAs(workspaceOutsider($this->workspace))->get("/designs/{$video->id}/play")->assertNotFound();
+});

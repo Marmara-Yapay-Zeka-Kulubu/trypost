@@ -23,6 +23,10 @@ use Throwable;
  * Either way the result is re-encoded as a JPEG (about 50 KB at 400 px) and
  * kept in the bounded ThumbnailCache, keyed by the content version, so an
  * edit never shows a stale picture.
+ *
+ * Only a real picture is cached. Drive makes a video's thumbnail some
+ * minutes after the upload (no thumbnailLink until then), so "no thumbnail
+ * yet" is a null that is never stored: the next request asks Drive again.
  */
 class DesignThumbnails
 {
@@ -81,7 +85,17 @@ class DesignThumbnails
         $bytes = $this->drive->thumbnail($design->drive_file_id, $size);
 
         if ($bytes !== null) {
-            return $this->encode($bytes, $size) ?? ['bytes' => $bytes, 'mime_type' => self::sniff($bytes)];
+            $encoded = $this->encode($bytes, $size);
+
+            if ($encoded !== null) {
+                return $encoded;
+            }
+
+            // GD could not open it: pass it on only if it is a picture at all
+            // (never an HTML or JSON answer cached as image/jpeg).
+            $mime = self::sniff($bytes);
+
+            return $mime !== null ? ['bytes' => $bytes, 'mime_type' => $mime] : null;
         }
 
         if (! $this->decodable($design->mime_type) || ($design->size ?? PHP_INT_MAX) > $this->config->thumbnailSourceMaxBytes()) {
@@ -127,12 +141,13 @@ class DesignThumbnails
         }
     }
 
-    private static function sniff(string $bytes): string
+    private static function sniff(string $bytes): ?string
     {
         return match (true) {
-            str_starts_with($bytes, "\x89PNG") => 'image/png',
+            str_starts_with($bytes, "\x89PNG\r\n\x1a\n") => 'image/png',
             str_starts_with($bytes, 'RIFF') && substr($bytes, 8, 4) === 'WEBP' => 'image/webp',
-            default => 'image/jpeg',
+            str_starts_with($bytes, "\xFF\xD8\xFF") => 'image/jpeg',
+            default => null,
         };
     }
 }

@@ -64,6 +64,8 @@ return [
         'close' => 'Kapat',
         'open_in_drive' => "Drive'da aç",
         'download' => 'Orijinali indir',
+        'preview_pending' => "Drive önizlemeyi henüz hazırlamadı. Orijinali indirebilir ya da Drive'da açabilirsiniz.",
+        'video_unavailable' => "Video burada oynatılamadı. Orijinali indirin ya da Drive'da açın.",
         'folder' => 'Koleksiyon',
         'uploader' => 'Ekleyen',
         'last_editor' => 'Son düzenleyen',

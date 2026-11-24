@@ -61,12 +61,25 @@ const shown = ref<DesignVersion | undefined>(current.value);
 const comparing = ref(false);
 const compared = ref<DesignVersion[]>([]);
 
+// Pictures that did not load (a fresh video has no Drive thumbnail yet) and
+// a video the browser could not play: both fall back to the kind placeholder.
+const failedImages = ref<Set<string>>(new Set());
+const videoFailed = ref(false);
+const imageShown = (src: string | null): boolean => src !== null && src !== '' && !failedImages.value.has(src);
+const imageFailed = (src: string | null): void => {
+    if (src) {
+        failedImages.value = new Set([...failedImages.value, src]);
+    }
+};
+
 watch(
     () => props.design.id,
     () => {
         shown.value = current.value;
         comparing.value = false;
         compared.value = [];
+        failedImages.value = new Set();
+        videoFailed.value = false;
     },
 );
 
@@ -96,6 +109,18 @@ const toggleCompare = (): void => {
 };
 
 const previewUrl = computed(() => shown.value?.preview_url ?? props.design.preview_url);
+
+// The current content of a video plays here, streamed from Drive in ranges
+// (DesignMediaController::play); older revisions only have the placeholder.
+const playUrl = computed(() => (props.urls.play ? url('play') : ''));
+const playsVideo = computed(
+    () =>
+        props.design.kind === 'video' &&
+        !props.design.removed &&
+        playUrl.value !== '' &&
+        !videoFailed.value &&
+        (shown.value === undefined || (shown.value.design_id === props.design.id && shown.value.revision_id === null)),
+);
 
 const visit = (method: 'post' | 'put' | 'patch' | 'delete', target: string, data: Record<string, unknown> = {}): void => {
     router.visit(target, { method, data, preserveScroll: true, preserveState: true });
@@ -253,8 +278,14 @@ const activityText = (type: string, data: Record<string, unknown>): string => {
                 <div v-if="comparing && compared.length > 0" class="grid grid-cols-2 gap-2" data-testid="marmara-designs-compare">
                     <figure v-for="version in compared" :key="version.key" class="flex flex-col gap-1">
                         <div class="flex aspect-square items-center justify-center overflow-hidden rounded-xl border border-border bg-muted">
-                            <img v-if="version.preview_url" :src="version.preview_url" :alt="`${version.label} ${version.title}`" class="max-h-full max-w-full object-contain" />
-                            <IconPhotoOff v-else class="size-8 text-muted-foreground" />
+                            <img
+                                v-if="imageShown(version.preview_url)"
+                                :src="version.preview_url ?? undefined"
+                                alt=""
+                                class="max-h-full max-w-full object-contain"
+                                @error="imageFailed(version.preview_url)"
+                            />
+                            <IconPhotoOff v-else class="size-8 text-muted-foreground" :aria-label="t('versions.no_preview')" />
                         </div>
                         <figcaption class="text-xs text-muted-foreground">
                             <span class="font-medium text-foreground">{{ version.label }}</span>
@@ -263,8 +294,34 @@ const activityText = (type: string, data: Record<string, unknown>): string => {
                     </figure>
                 </div>
                 <div v-else class="flex min-h-64 items-center justify-center overflow-hidden rounded-xl border border-border bg-muted">
-                    <img v-if="previewUrl" :src="previewUrl" :alt="design.title" class="max-h-[70vh] max-w-full object-contain" data-testid="marmara-designs-preview" />
-                    <component :is="kindIcon" v-else class="size-10 text-muted-foreground" />
+                    <video
+                        v-if="playsVideo"
+                        :key="design.id"
+                        :src="playUrl"
+                        :poster="imageShown(previewUrl) ? (previewUrl ?? undefined) : undefined"
+                        controls
+                        preload="metadata"
+                        playsinline
+                        class="max-h-[70vh] w-full bg-black"
+                        :aria-label="design.title"
+                        data-testid="marmara-designs-video"
+                        @error="videoFailed = true"
+                    />
+                    <img
+                        v-else-if="imageShown(previewUrl)"
+                        :src="previewUrl ?? undefined"
+                        alt=""
+                        class="max-h-[70vh] max-w-full object-contain"
+                        data-testid="marmara-designs-preview"
+                        @error="imageFailed(previewUrl)"
+                    />
+                    <div v-else class="flex max-w-sm flex-col items-center gap-2 p-6 text-center text-muted-foreground" data-testid="marmara-designs-preview-placeholder">
+                        <component :is="kindIcon" class="size-10 shrink-0" stroke-width="1.5" aria-hidden="true" />
+                        <span class="text-sm font-medium">{{ t(`kinds.${design.kind}`) }}</span>
+                        <span v-if="design.kind === 'video' && !design.removed" class="text-xs">
+                            {{ videoFailed ? t('detail.video_unavailable') : t('detail.preview_pending') }}
+                        </span>
+                    </div>
                 </div>
 
                 <div class="flex flex-wrap items-center gap-2">
@@ -312,7 +369,14 @@ const activityText = (type: string, data: Record<string, unknown>): string => {
                             @click="pickVersion(version)"
                         >
                             <span class="flex aspect-square items-center justify-center overflow-hidden rounded-md bg-muted">
-                                <img v-if="version.thumbnail_url" :src="version.thumbnail_url" :alt="version.label" loading="lazy" class="h-full w-full object-cover" />
+                                <img
+                                    v-if="imageShown(version.thumbnail_url)"
+                                    :src="version.thumbnail_url ?? undefined"
+                                    alt=""
+                                    loading="lazy"
+                                    class="h-full w-full object-cover"
+                                    @error="imageFailed(version.thumbnail_url)"
+                                />
                                 <IconPhotoOff v-else class="size-5 text-muted-foreground" :aria-label="t('versions.no_preview')" />
                             </span>
                             <span class="font-medium">{{ version.label }}<template v-if="version.is_current"> · {{ t('versions.current') }}</template></span>
