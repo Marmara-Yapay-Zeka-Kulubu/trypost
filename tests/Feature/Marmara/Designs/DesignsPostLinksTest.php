@@ -14,6 +14,7 @@ use App\Enums\SocialAccount\Platform;
 use App\Jobs\DispatchWebhook;
 use App\Jobs\PublishPost;
 use App\Marmara\Designs\Actions\DesignActions;
+use App\Marmara\Designs\DesignsConfig;
 use App\Marmara\Designs\Jobs\AddPublishedMediaToDesigns;
 use App\Marmara\Designs\Jobs\SyncDesignRevisions;
 use App\Marmara\Designs\Mcp\AddDesignTool;
@@ -135,6 +136,10 @@ test('several picked designs become one carousel draft in the order they were pi
     $b = designsMake($this->workspace, ['drive_file_id' => 'fileB', 'mime_type' => 'image/jpeg', 'title' => 'Program']);
     $c = designsMake($this->workspace, ['drive_file_id' => 'fileC', 'mime_type' => 'image/jpeg', 'title' => 'Konuşmacılar']);
     designsFakeDrive(content: ['fileA' => designsJpeg(1080, 1350), 'fileB' => designsJpeg(1080, 1351), 'fileC' => designsJpeg(1080, 1352)]);
+
+    // The three are visible in the designs workspace before the request.
+    expect(app(DesignsConfig::class)->workspace()?->id)->toBe($this->workspace->id)
+        ->and(Design::query()->where('workspace_id', $this->workspace->id)->whereNull('removed_at')->whereIn('id', [$a->id, $b->id, $c->id])->count())->toBe(3);
 
     $this->withoutExceptionHandling();
     $response = $this->actingAs($this->owner)->post('/designs/posts', [
