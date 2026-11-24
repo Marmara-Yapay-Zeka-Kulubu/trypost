@@ -2,11 +2,15 @@
 /**
  * Marmara AI fork: one design in a drawer — large preview, metadata, "Drive'da
  * aç", versions strip with side-by-side compare, status and tags, votes,
- * comments and activity (app/Marmara/README.md, Designs).
+ * comments and activity (app/Marmara/README.md, Designs). A design of a
+ * series (one carousel post) shows the series as a strip with previous /
+ * next, and every post it went out with.
  */
 import { router, useForm } from '@inertiajs/vue3';
 import {
     IconAlertTriangle,
+    IconChevronLeft,
+    IconChevronRight,
     IconColumns,
     IconDownload,
     IconExternalLink,
@@ -38,6 +42,7 @@ import {
     fill,
     formatBytes,
     formatDateTime,
+    publicationLine,
     type DesignVersion,
     type LinkCandidate,
     type SelectedDesign,
@@ -52,7 +57,16 @@ const props = defineProps<{
     urls: Record<string, string>;
 }>();
 
-const emit = defineEmits<{ close: []; createPost: [] }>();
+const emit = defineEmits<{ close: []; createPost: []; navigate: [id: string] }>();
+
+// The series: where this design sits, and its neighbours.
+const setIndex = computed(() => props.design.set?.items.findIndex((item) => item.id === props.design.id) ?? -1);
+const setNeighbour = (step: number): string | null => {
+    const items = props.design.set?.items ?? [];
+    const target = items[setIndex.value + step];
+
+    return setIndex.value >= 0 && target ? target.id : null;
+};
 
 const url = (name: string, extra: Record<string, string> = {}): string => fill(props.urls[name] ?? '', props.design.id, extra);
 
@@ -225,7 +239,7 @@ const activityText = (type: string, data: Record<string, unknown>): string => {
         });
     }
 
-    return props.t(`activity.${type}`, { name: String(data.name ?? '') });
+    return props.t(`activity.${type}`, { name: String(data.name ?? ''), platform: String(data.platform_label ?? '') });
 };
 </script>
 
@@ -345,6 +359,64 @@ const activityText = (type: string, data: Record<string, unknown>): string => {
                     </Button>
                     <slot name="actions" />
                 </div>
+
+                <!-- Series (one carousel post): the members in order, previous / next -->
+                <section v-if="design.set && design.set.items.length > 1" class="flex flex-col gap-2" data-testid="marmara-designs-set">
+                    <div class="flex items-center gap-2">
+                        <h3 class="font-heading text-base font-medium">{{ t('set.title') }}</h3>
+                        <Badge variant="secondary" class="h-5 px-1.5">
+                            {{ t('set.position', { current: setIndex + 1, total: design.set.items.length }) }}
+                        </Badge>
+                        <div class="ms-auto flex gap-1">
+                            <Button
+                                variant="outline"
+                                size="icon-sm"
+                                :disabled="setNeighbour(-1) === null"
+                                :aria-label="t('set.previous')"
+                                data-testid="marmara-designs-set-previous"
+                                @click="setNeighbour(-1) && emit('navigate', setNeighbour(-1) as string)"
+                            >
+                                <IconChevronLeft class="size-4" />
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="icon-sm"
+                                :disabled="setNeighbour(1) === null"
+                                :aria-label="t('set.next')"
+                                data-testid="marmara-designs-set-next"
+                                @click="setNeighbour(1) && emit('navigate', setNeighbour(1) as string)"
+                            >
+                                <IconChevronRight class="size-4" />
+                            </Button>
+                        </div>
+                    </div>
+                    <div class="flex gap-2 overflow-x-auto pb-1">
+                        <button
+                            v-for="(item, index) in design.set.items"
+                            :key="item.id"
+                            type="button"
+                            class="flex w-20 shrink-0 cursor-pointer flex-col gap-1 rounded-lg border bg-card p-1 text-start text-xs transition-colors hover:border-border-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
+                            :class="item.id === design.id ? 'border-primary' : 'border-border'"
+                            :aria-current="item.id === design.id"
+                            :aria-label="`${index + 1}. ${item.title}`"
+                            :data-testid="`marmara-designs-set-item-${item.id}`"
+                            @click="item.id !== design.id && emit('navigate', item.id)"
+                        >
+                            <span class="flex aspect-square items-center justify-center overflow-hidden rounded-md bg-muted">
+                                <img
+                                    v-if="imageShown(item.thumbnail_url)"
+                                    :src="item.thumbnail_url ?? undefined"
+                                    alt=""
+                                    loading="lazy"
+                                    class="h-full w-full object-cover"
+                                    @error="imageFailed(item.thumbnail_url)"
+                                />
+                                <IconPhotoOff v-else class="size-5 text-muted-foreground" :aria-label="t('versions.no_preview')" />
+                            </span>
+                            <span class="font-medium">{{ index + 1 }}</span>
+                        </button>
+                    </div>
+                </section>
 
                 <!-- Versions strip -->
                 <section v-if="design.versions.length > 1" class="flex flex-col gap-2" data-testid="marmara-designs-versions">
@@ -467,6 +539,28 @@ const activityText = (type: string, data: Record<string, unknown>): string => {
                         <dd>{{ formatBytes(design.size) }}</dd>
                     </template>
                 </dl>
+
+                <!-- Where it went out -->
+                <section v-if="design.publications.length > 0" class="flex flex-col gap-1.5" data-testid="marmara-designs-publications">
+                    <h3 class="font-heading text-base font-medium">{{ t('publications.title') }}</h3>
+                    <ul class="flex flex-col gap-1 text-sm">
+                        <li v-for="publication in design.publications" :key="publication.post_id" class="flex min-w-0 flex-wrap items-center gap-x-2">
+                            <span class="truncate">{{ publicationLine(t, publication) }}</span>
+                            <span v-if="publication.account" class="truncate text-muted-foreground">{{ publication.account }}</span>
+                            <span v-if="publication.deleted" class="text-xs text-muted-foreground">({{ t('publications.deleted') }})</span>
+                            <a
+                                v-if="publication.url && !publication.deleted"
+                                :href="publication.url"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                class="inline-flex items-center gap-1 text-xs text-primary-text hover:underline"
+                            >
+                                <IconExternalLink class="size-3.5" aria-hidden="true" />
+                                {{ t('publications.open') }}
+                            </a>
+                        </li>
+                    </ul>
+                </section>
 
                 <!-- "Bu tasarım, X'in yeni sürümü" -->
                 <section class="flex flex-col gap-1.5">

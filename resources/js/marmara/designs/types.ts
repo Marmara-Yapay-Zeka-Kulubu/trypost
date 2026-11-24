@@ -32,6 +32,9 @@ export interface DesignItem {
     created_at: string | null;
     modified_at: string | null;
     family_id: string | null;
+    /** A series: several designs of one carousel post, shown as one card. */
+    set_id: string | null;
+    set_position: number | null;
     removed: boolean;
     drive_url: string | null;
     url: string;
@@ -39,6 +42,36 @@ export interface DesignItem {
     preview_url: string | null;
     voted?: boolean;
     versions_count?: number;
+    /** The page's card of a series: its first design, every member's id in order. */
+    set?: { id: string; count: number; item_ids: string[] } | null;
+    last_publication?: DesignPublication | null;
+}
+
+/** A post the design went out with (DesignPublications). */
+export interface DesignPublication {
+    post_id: string;
+    platform: string | null;
+    platform_label: string | null;
+    account: string | null;
+    by: { id: string; name: string } | null;
+    url: string | null;
+    published_at: string | null;
+    deleted: boolean;
+}
+
+export interface DesignSetItem {
+    id: string;
+    title: string;
+    kind: DesignItem['kind'];
+    status: DesignStatus;
+    thumbnail_url: string | null;
+}
+
+/** How many designs one person shared (posts that went out). */
+export interface SharedByRow {
+    user_id: string;
+    name: string;
+    count: number;
 }
 
 export interface DesignComment {
@@ -73,13 +106,15 @@ export interface DesignActivity {
     created_at: string;
 }
 
-export interface SelectedDesign extends DesignItem {
+export interface SelectedDesign extends Omit<DesignItem, 'set'> {
     modifier: { name: string | null };
     owner_email: string | null;
     modifier_email: string | null;
     comments_list: DesignComment[];
     versions: DesignVersion[];
     activity: DesignActivity[];
+    set: { id: string; count: number; items: DesignSetItem[] } | null;
+    publications: DesignPublication[];
     voted: boolean;
     can: { statuses: DesignStatus[]; create_post: boolean };
 }
@@ -148,6 +183,21 @@ export const formatDateTime = (iso: string | null): string =>
               timeStyle: 'short',
           }).format(new Date(iso))
         : '';
+
+/** "24 Kas" / "Nov 24". */
+export const formatDayMonth = (iso: string | null): string =>
+    iso ? new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' }).format(new Date(iso)) : '';
+
+/** "Paylaşıldı · Instagram · Behice · 24 Kas". */
+export const publicationLine = (t: Translate, publication: DesignPublication): string =>
+    [
+        t('publications.shared'),
+        publication.platform_label,
+        publication.by?.name,
+        formatDayMonth(publication.published_at),
+    ]
+        .filter((part): part is string => typeof part === 'string' && part !== '')
+        .join(' · ');
 
 export const formatBytes = (bytes: number | null): string => {
     if (bytes === null) {

@@ -2,10 +2,13 @@
 /**
  * Marmara AI fork: "Gönderi oluştur" — a draft with the design's original
  * attached (JPEG as is, PNG/WebP/HEIC as q100 JPEG) for the channels picked here (app/Marmara/README.md,
- * Designs). The server downloads the original from Drive.
+ * Designs). The server downloads the original from Drive. With `designIds`
+ * (several designs picked on the page, or a series) one post per channel
+ * gets all of them as media, in that order.
  */
 import { useForm } from '@inertiajs/vue3';
 import { IconSend } from '@tabler/icons-vue';
+import { computed } from 'vue';
 
 import InputError from '@/components/InputError.vue';
 import PlatformLogo from '@/components/PlatformLogo.vue';
@@ -29,7 +32,10 @@ const props = defineProps<{
     t: Translate;
     channels: PostChannel[];
     url: string;
+    designIds?: string[];
 }>();
+
+const many = computed(() => (props.designIds?.length ?? 0) > 0);
 
 const open = defineModel<boolean>('open', { default: false });
 
@@ -45,7 +51,7 @@ const toggle = (id: string, checked: boolean): void => {
 };
 
 const submit = (): void => {
-    form.post(props.url, { preserveScroll: true });
+    form.transform((data) => (many.value ? { ...data, design_ids: props.designIds } : data)).post(props.url, { preserveScroll: true });
 };
 </script>
 
@@ -53,8 +59,8 @@ const submit = (): void => {
     <Dialog v-model:open="open">
         <DialogContent class="sm:max-w-md" data-testid="marmara-designs-post-dialog">
             <DialogHeader>
-                <DialogTitle>{{ t('post.title') }}</DialogTitle>
-                <DialogDescription>{{ t('post.description') }}</DialogDescription>
+                <DialogTitle>{{ many ? t('post.title_many') : t('post.title') }}</DialogTitle>
+                <DialogDescription>{{ many ? t('post.description_many', { count: designIds?.length ?? 0 }) : t('post.description') }}</DialogDescription>
             </DialogHeader>
 
             <p v-if="channels.length === 0" class="text-sm text-muted-foreground">{{ t('post.no_channels') }}</p>

@@ -11,12 +11,18 @@
  * (DesignsFilterSelect, as CalendarStatusFilter / MultiSelectFilter), the
  * shared DateRangePicker (as Insights) and a search input (as
  * TemplateSearch), and EmptyState for an empty gallery.
+ *
+ * A series (several designs of one carousel post) is one card with a count
+ * badge; the drawer walks through it. "Seç" picks several designs (a series
+ * as a whole) in order for one post. A card shows where the design last
+ * went out, and "Paylaşanlar" how many designs each person shared.
  */
 import { Head, router } from '@inertiajs/vue3';
 import {
     IconAlertTriangle,
     IconArrowsSort,
     IconCalendar,
+    IconCheck,
     IconChevronDown,
     IconDotsVertical,
     IconFileText,
@@ -26,7 +32,9 @@ import {
     IconMessageCircle,
     IconPhoto,
     IconSearch,
+    IconSelectAll,
     IconSend,
+    IconStack2,
     IconTag,
     IconThumbUp,
     IconUnlink,
@@ -64,6 +72,7 @@ import {
     fill,
     formatDateTime,
     makeTranslator,
+    publicationLine,
     type Copy,
     type DesignItem,
     type DriveUpload,
@@ -71,6 +80,7 @@ import {
     type LinkCandidate,
     type PostChannel,
     type SelectedDesign,
+    type SharedByRow,
 } from './types';
 
 type FilterKey = 'q' | 'folder' | 'uploader' | 'status' | 'tag' | 'kind' | 'from' | 'to' | 'sort';
@@ -96,6 +106,7 @@ const props = defineProps<{
     syncInfo: { configured: boolean; status: string | null; detail: string | null; last_synced_at: string | null };
     postChannels: PostChannel[];
     linkCandidates: LinkCandidate[];
+    sharedBy: SharedByRow[];
     urls: Record<string, string>;
 }>();
 
@@ -215,6 +226,29 @@ const changeRange = (range: { start: Date; end: Date }): void => {
 const clearDateRange = (): void => visit({ from: null, to: null, page: null, design: null });
 
 const open = (design: DesignItem): void => visit({ design: design.id }, { keepPage: true });
+const navigate = (id: string): void => visit({ design: id }, { keepPage: true });
+
+// "Seç": designs picked in order for one post; a series counts as all of its items.
+const selecting = ref(false);
+const picked = ref<string[]>([]);
+const manyPostOpen = ref(false);
+const cardIds = (design: DesignItem): string[] => design.set?.item_ids ?? [design.id];
+const isPicked = (design: DesignItem): boolean => cardIds(design).every((id) => picked.value.includes(id));
+
+const togglePick = (design: DesignItem): void => {
+    const ids = cardIds(design);
+
+    picked.value = isPicked(design)
+        ? picked.value.filter((id) => !ids.includes(id))
+        : [...picked.value, ...ids.filter((id) => !picked.value.includes(id))];
+};
+
+const stopSelecting = (): void => {
+    selecting.value = false;
+    picked.value = [];
+};
+
+const clickCard = (design: DesignItem): void => (selecting.value ? togglePick(design) : open(design));
 const close = (): void => visit({ design: null }, { keepPage: true });
 
 const kindIcons: Record<string, Component> = { pdf: IconFileTypePdf, video: IconVideo };
@@ -447,6 +481,17 @@ const syncNotice = computed((): string | null => {
                     @update:model-value="select('sort')($event)"
                 />
 
+                <Button
+                    v-if="permissions.canCreatePost && designs.length > 0"
+                    :variant="selecting ? 'secondary' : 'ghost'"
+                    :aria-pressed="selecting"
+                    data-testid="marmara-designs-select"
+                    @click="selecting ? stopSelecting() : (selecting = true)"
+                >
+                    <IconSelectAll class="size-4" />
+                    {{ selecting ? t('selection.cancel') : t('selection.start') }}
+                </Button>
+
                 <Button v-if="hasFilters" variant="ghost" class="text-muted-foreground" data-testid="marmara-designs-clear" @click="clearFilters">
                     {{ t('filters.clear') }}
                 </Button>
@@ -469,6 +514,20 @@ const syncNotice = computed((): string | null => {
 
                 <DriveUploadPanel v-if="showDriveNotice" :t="t" :drive="driveUpload" :urls="urls" :highlight-pick="highlightPick" />
 
+                <!-- Who shared how many designs (posts that went out), in the date range -->
+                <div
+                    v-if="sharedBy.length > 0"
+                    class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground"
+                    data-testid="marmara-designs-shared-by"
+                >
+                    <span class="font-medium text-foreground">{{ hasDateRange ? t('shared_by.title_range') : t('shared_by.title') }}</span>
+                    <span v-for="row in sharedBy" :key="row.user_id" :data-testid="`marmara-designs-shared-by-${row.user_id}`">
+                        {{ row.name }} · {{ t('shared_by.count', { count: row.count }) }}
+                    </span>
+                </div>
+
+                <p v-if="selecting" class="text-sm text-muted-foreground">{{ t('selection.hint') }}</p>
+
                 <!-- Gallery -->
                 <div v-if="designs.length === 0" class="flex flex-1 flex-col" data-testid="marmara-designs-empty">
                     <EmptyState
@@ -490,9 +549,10 @@ const syncNotice = computed((): string | null => {
                         :key="design.id"
                         type="button"
                         class="group flex min-w-0 cursor-pointer flex-col overflow-hidden rounded-xl border bg-card text-start transition-[border-color,box-shadow] duration-150 hover:border-border-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
-                        :class="selected?.id === design.id ? 'border-primary' : 'border-border'"
+                        :class="(selecting ? isPicked(design) : selected?.id === design.id) ? 'border-primary' : 'border-border'"
+                        :aria-pressed="selecting ? isPicked(design) : undefined"
                         :data-testid="`marmara-designs-card-${design.id}`"
-                        @click="open(design)"
+                        @click="clickCard(design)"
                     >
                         <span class="relative flex aspect-square items-center justify-center overflow-hidden bg-muted">
                             <img
@@ -512,8 +572,25 @@ const syncNotice = computed((): string | null => {
                                 <span class="truncate text-xs font-medium">{{ t(`kinds.${design.kind}`) }}</span>
                             </span>
                             <DesignStatusBadge :status="design.status" :label="t(`statuses.${design.status}`)" compact class="absolute top-2 start-2" />
+                            <span
+                                v-if="selecting"
+                                class="absolute top-2 end-2 flex size-6 items-center justify-center rounded-md border-2 bg-background"
+                                :class="isPicked(design) ? 'border-primary bg-primary text-primary-foreground' : 'border-border-strong'"
+                                aria-hidden="true"
+                            >
+                                <IconCheck v-if="isPicked(design)" class="size-4" />
+                            </span>
                             <Badge
-                                v-if="(design.versions_count ?? 1) > 1"
+                                v-else-if="design.set && design.set.count > 1"
+                                variant="secondary"
+                                class="absolute top-2 end-2 h-5 gap-1 px-1.5"
+                                :data-testid="`marmara-designs-set-count-${design.id}`"
+                            >
+                                <IconStack2 aria-hidden="true" />
+                                {{ t('gallery.set_count', { count: design.set.count }) }}
+                            </Badge>
+                            <Badge
+                                v-else-if="(design.versions_count ?? 1) > 1"
                                 variant="secondary"
                                 class="absolute top-2 end-2 h-5 px-1.5"
                             >
@@ -560,12 +637,33 @@ const syncNotice = computed((): string | null => {
                                     <IconMessageCircle class="size-3.5" aria-hidden="true" />{{ design.comments }}
                                 </span>
                             </span>
+                            <span
+                                v-if="design.last_publication"
+                                class="truncate text-xs text-muted-foreground"
+                                :data-testid="`marmara-designs-published-${design.id}`"
+                            >
+                                {{ publicationLine(t, design.last_publication) }}
+                            </span>
                         </span>
                     </button>
                 </div>
 
                 <Button v-if="pagination.has_more" variant="outline" class="self-center" data-testid="marmara-designs-more" @click="visit({ page: pagination.page + 1 })">
                     {{ t('gallery.load_more') }}
+                </Button>
+            </div>
+
+            <!-- The picked designs, for one post -->
+            <div
+                v-if="selecting && picked.length > 0"
+                class="sticky bottom-0 z-10 mx-4 mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-border-strong bg-background px-4 py-2 shadow-sm md:mx-8"
+                data-testid="marmara-designs-selection"
+            >
+                <span class="text-sm font-medium">{{ t('selection.count', { count: picked.length }) }}</span>
+                <Button variant="ghost" class="ms-auto" @click="stopSelecting">{{ t('selection.cancel') }}</Button>
+                <Button data-testid="marmara-designs-selection-post" @click="manyPostOpen = true">
+                    <IconSend class="size-4" />
+                    {{ t('selection.create_post') }}
                 </Button>
             </div>
         </div>
@@ -578,6 +676,7 @@ const syncNotice = computed((): string | null => {
             :can-approve="permissions.canApprove"
             :urls="urls"
             @close="close"
+            @navigate="navigate"
         >
             <template #actions>
                 <Button
@@ -597,6 +696,15 @@ const syncNotice = computed((): string | null => {
             :t="t"
             :channels="postChannels"
             :url="fill(urls.posts ?? '', selected.id)"
+        />
+
+        <CreatePostDialog
+            v-if="picked.length > 0"
+            v-model:open="manyPostOpen"
+            :t="t"
+            :channels="postChannels"
+            :url="urls.posts_many ?? ''"
+            :design-ids="picked"
         />
 
         <DesignUploadDialog
