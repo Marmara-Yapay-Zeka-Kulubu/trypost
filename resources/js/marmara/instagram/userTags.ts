@@ -17,3 +17,23 @@ export const tagsNeedPosition = (
     contentTypes.some((contentType) =>
         POSITIONED_CONTENT_TYPES.includes(contentType),
     );
+
+/** Content types besides the feed that take tags on a video (one per post). */
+const VIDEO_TAG_CONTENT_TYPES = ['instagram_story', 'instagram_reel'];
+
+/**
+ * Meta takes no people tags on the videos of a carousel, so the publisher
+ * sends none there: a feed post with more than one media item is a carousel.
+ * The tab stays when a story or a reel of the post takes the tags.
+ */
+export const carouselDropsVideoTags = (
+    contentTypes: string[],
+    mediaCount: number,
+): boolean =>
+    mediaCount > 1 &&
+    contentTypes.some((contentType) =>
+        POSITIONED_CONTENT_TYPES.includes(contentType),
+    ) &&
+    !contentTypes.some((contentType) =>
+        VIDEO_TAG_CONTENT_TYPES.includes(contentType),
+    );

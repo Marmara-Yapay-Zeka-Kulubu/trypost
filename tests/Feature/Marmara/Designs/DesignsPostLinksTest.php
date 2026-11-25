@@ -216,7 +216,7 @@ test('a linked post that goes out makes the design Kullanıldı with one activit
         'publish_status' => PublishStatus::Publishing,
         'platform_name' => 'Marmara AI',
     ]);
-    designsPutOnPost($design, $post, 0);
+    designsPutOnPost($design, $post, 0, $design->approvalVersion());
     designsPutOnPost($archived, $post, 1);
 
     $post->markPublicationPublished('urn:li:share:1', 'https://www.linkedin.com/feed/update/urn:li:share:1');
@@ -496,8 +496,8 @@ test('the version the post carried is recorded when Drive moved on before it wen
         ->and(DesignActivity::query()->where('design_id', $design->id)->where('type', 'changed_after_use')->count())->toBe(2);
 });
 
-test('a design file without a known version records the current version, as before', function () {
-    $design = designsMake($this->workspace, ['md5' => 'md5-now', 'status' => DesignStatus::Approved]);
+test('a design file without a known version makes the design Kullanıldı but keeps its approved version', function () {
+    $design = designsMake($this->workspace, ['md5' => 'md5-now', 'status' => DesignStatus::Approved, 'approved_version' => 'md5-approved']);
     $post = Post::factory()->forAccount($this->linkedin)->publishing()->create(['user_id' => $this->member->id]);
     designsPutOnPost($design, $post);
 
@@ -505,8 +505,42 @@ test('a design file without a known version records the current version, as befo
 
     $design->refresh();
     expect($design->status)->toBe(DesignStatus::Used)
-        ->and($design->approved_version)->toBe('md5-now')
+        ->and($design->approved_version)->toBe('md5-approved')
         ->and($design->changed_after_use_at)->toBeNull()
+        ->and(DesignActivity::query()->where('design_id', $design->id)->where('type', 'post_published')->sole()->data)->toHaveKey('version', null)
+        ->and(DesignActivity::query()->where('design_id', $design->id)->where('type', 'status_changed')->count())->toBe(1)
+        ->and(DesignActivity::query()->where('design_id', $design->id)->where('type', 'changed_after_use')->exists())->toBeFalse();
+});
+
+test('a legacy draft without a version, published after Drive moved to V2, does not record V2 as the version used', function () {
+    DesignFolder::query()->create(['workspace_id' => $this->workspace->id, 'drive_id' => DESIGNS_ROOT, 'name' => 'Tasarımlar', 'path' => '', 'is_root' => true]);
+    DesignSyncState::query()->create(['workspace_id' => $this->workspace->id, 'folder_id' => DESIGNS_ROOT, 'start_page_token' => 'token-100', 'status' => 'ok', 'last_full_sync_at' => now()]);
+    $v1 = designsJpeg();
+    $design = designsMake($this->workspace, ['drive_file_id' => 'filePoster', 'name' => 'Afiş.jpg', 'mime_type' => 'image/jpeg', 'md5' => md5($v1)]);
+    app(DesignActions::class)->setStatus($design, $this->owner, DesignStatus::Approved);
+    designsFakeDrive(content: ['filePoster' => $v1]);
+
+    $this->actingAs($this->owner)->post("/designs/{$design->id}/posts", ['social_account_ids' => [$this->linkedin->id]])->assertRedirect();
+    $post = Post::query()->where('workspace_id', $this->workspace->id)->sole();
+
+    // Remembered before the version column existed.
+    DesignMedia::query()->where('design_id', $design->id)->update(['version' => null]);
+
+    $v2 = designsDriveFile('filePoster', 'Afiş.jpg', DESIGNS_ROOT, ['mimeType' => 'image/jpeg', 'md5Checksum' => 'md5-v2', 'headRevisionId' => 'rev-2']);
+    designsFakeDrive(changes: ['token-100' => ['newStartPageToken' => 'token-101', 'changes' => [
+        ['kind' => 'drive#change', 'changeType' => 'file', 'fileId' => 'filePoster', 'removed' => false, 'file' => $v2],
+    ]]]);
+    app(DesignSync::class)->run();
+    $before = $design->fresh();
+    expect($before)->md5->toBe('md5-v2');
+
+    $post->refresh()->markPublicationPublished('urn:li:share:25');
+
+    $design->refresh();
+    expect($design->status)->toBe(DesignStatus::Used)
+        ->and($design->approved_version)->toBe($before->approved_version)
+        ->and($design->approved_version)->not->toBe('md5-v2')
+        ->and($design->changed_after_use_at)->toEqual($before->changed_after_use_at)
         ->and(DesignActivity::query()->where('design_id', $design->id)->where('type', 'post_published')->sole()->data)->toHaveKey('version', null)
         ->and(DesignActivity::query()->where('design_id', $design->id)->where('type', 'changed_after_use')->exists())->toBeFalse();
 });

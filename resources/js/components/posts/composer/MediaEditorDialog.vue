@@ -69,6 +69,8 @@ const props = withDefaults(
         initialIndex?: number;
         initialTab?: EditorTab;
         contentTypes: string[];
+        /** How many media items the post has (default: the items given). */
+        mediaCount?: number;
         aspectBounds?: { min?: number; max?: number };
         mode?: 'media' | 'photo';
         outputSize?: number;
@@ -232,7 +234,12 @@ const supportsCustomCover = computed(() =>
     rules.value.some((rule) => rule.supportsCustomVideoCover),
 );
 const tabs = computed<EditorTab[]>(() =>
-    activeItem.value ? editorTabsFor(activeItem.value, rules.value) : [],
+    activeItem.value
+        ? editorTabsFor(activeItem.value, rules.value, {
+              contentTypes: props.contentTypes,
+              mediaCount: props.mediaCount ?? editingItems.value.length,
+          })
+        : [],
 );
 const tabFor = (preferred: EditorTab): EditorTab =>
     tabs.value.includes(preferred) ? preferred : (tabs.value[0] ?? 'edit');

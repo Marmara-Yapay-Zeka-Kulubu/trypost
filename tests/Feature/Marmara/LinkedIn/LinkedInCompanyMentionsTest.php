@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Enums\PostPlatform\ContentType;
 use App\Enums\SocialAccount\Platform;
+use App\Marmara\LinkedIn\Mentions\LinkedInOrganizationResolver;
 use App\Marmara\LinkedIn\Mentions\MentionAwareContentSanitizer;
 use App\Models\Post;
 use App\Models\SocialAccount;
@@ -14,6 +15,7 @@ use App\Services\Social\LinkedInPagePublisher;
 use App\Services\Social\LinkedInPublisher;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -177,6 +179,50 @@ test('a cached miss expires after a short while', function () {
     (new LinkedInPagePublisher)->publish(liMentionPost($account, $this->user, 'B @[Akbank](linkedin.com/company/akbank)'));
 
     expect(liMentionLookups())->toBe(2);
+});
+
+test('a refused lookup is cached for that channel only: another channel with its own token still resolves within the window', function () {
+    Http::fake([
+        LI_MENTION_LOOKUP => fn (Request $request) => $request->hasHeader('Authorization', 'Bearer token-a')
+            ? Http::response(['message' => 'Not enough permissions to access: organizations.FINDER-vanityName', 'status' => 403], 403)
+            : Http::response(['elements' => [['id' => 123, 'localizedName' => 'Akbank', 'vanityName' => 'akbank']]]),
+        config('trypost.platforms.linkedin-page.api').'/rest/posts' => Http::response(null, 201, ['x-restli-id' => 'urn:li:share:7400000000000000003']),
+    ]);
+    $channelA = liMentionAccount($this->workspace, 'linkedin-page');
+    $channelA->update(['access_token' => 'token-a']);
+    $channelB = SocialAccount::factory()->linkedinPage()->create([
+        'workspace_id' => $this->workspace->id,
+        'platform_user_id' => '104857601',
+        'access_token' => 'token-b',
+        'token_expires_at' => now()->addDays(60),
+        'meta' => ['organization_id' => '104857601'],
+    ]);
+    $content = 'Hi @[Akbank](https://www.linkedin.com/company/akbank)';
+
+    (new LinkedInPagePublisher)->publish(liMentionPost($channelA->fresh(), $this->user, $content));
+    (new LinkedInPagePublisher)->publish(liMentionPost($channelA->fresh(), $this->user, $content));
+    $this->travel(5)->minutes();
+    (new LinkedInPagePublisher)->publish(liMentionPost($channelB, $this->user, $content));
+    // Now found for everyone, channel A included, without another call.
+    (new LinkedInPagePublisher)->publish(liMentionPost($channelA->fresh(), $this->user, $content));
+
+    expect(liMentionCommentaries())->toBe(['Hi Akbank', 'Hi Akbank', 'Hi @[Akbank](urn:li:organization:123)', 'Hi @[Akbank](urn:li:organization:123)'])
+        ->and(liMentionLookups())->toBe(2);
+});
+
+test('without a channel id a refused lookup is cached per token, and the token is never stored', function () {
+    Http::fake([
+        LI_MENTION_LOOKUP => fn (Request $request) => $request->hasHeader('Authorization', 'Bearer token-a')
+            ? Http::response(['message' => 'Not enough permissions'], 403)
+            : Http::response(['elements' => [['id' => 123, 'localizedName' => 'Akbank', 'vanityName' => 'akbank']]]),
+    ]);
+    $resolver = app(LinkedInOrganizationResolver::class);
+
+    expect($resolver->resolve('akbank', 'token-a')->status)->toBe(403)
+        ->and($resolver->resolve('akbank', 'token-a')->status)->toBe(403)
+        ->and($resolver->resolve('akbank', 'token-b')->id)->toBe('123')
+        ->and(liMentionLookups())->toBe(2)
+        ->and(serialize(Cache::store()->getStore()))->not->toContain('token-a');
 });
 
 test('every other network gets the display name', function (Platform $platform) {

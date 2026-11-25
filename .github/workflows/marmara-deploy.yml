@@ -195,12 +195,16 @@ jobs:
 
           # Old TryPost images (about 3 GB each) fill the disk: before pulling, keep the ones a
           # container uses (prod, stage) and the 3 newest, delete the other untagged ones.
+          # Only images of the TryPost repository are touched: the VM is shared with the web,
+          # backoffice and monitoring images, so no server-wide "docker image prune".
+          # No container at all -> \$used is empty -> grep's empty pattern matches every
+          # line -> nothing is deleted. "docker rmi" without -f refuses an image a container
+          # uses or one with tags in another repository.
           repo="$NEW_IMAGE"; repo="\${repo%@*}"; repo="\${repo%:*}"
           used=\$(docker ps -aq | xargs -r docker inspect -f '{{.Image}}' | sort -u)
           docker images --no-trunc --filter "dangling=false" --format '{{.ID}} {{.Repository}} {{.Tag}}' \
             | awk -v r="\$repo" '\$2 == r && \$3 == "<none>" {print \$1}' | awk '!seen[\$0]++' | tail -n +4 \
             | grep -vxF -f <(printf '%s\n' \$used) | xargs -r docker rmi >/dev/null 2>&1 || true
-          docker image prune -f >/dev/null 2>&1 || true
           df -h / | tail -1
 
           gcloud auth configure-docker $REGISTRY --quiet >/dev/null 2>&1 || true

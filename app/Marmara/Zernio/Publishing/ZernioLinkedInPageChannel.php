@@ -7,7 +7,6 @@ namespace App\Marmara\Zernio\Publishing;
 use App\Dto\MediaItem;
 use App\Enums\SocialAccount\Platform;
 use App\Exceptions\Social\ErrorCategory;
-use App\Marmara\LinkedIn\Mentions\CompanyMentions;
 use App\Marmara\Zernio\Exceptions\ZernioPublishException;
 use App\Models\Post;
 use App\Services\Social\ContentSanitizer;
@@ -20,7 +19,8 @@ use Illuminate\Support\Collection;
  * more images as a multi-image post (Zernio: up to 20), or one video or one
  * image; a text post gets LinkedIn's link preview unless the user turned it
  * off. TryPost's first comment (its one thread reply) becomes Zernio's
- * `firstComment`.
+ * `firstComment`. Company mentions in the text: {@see ZernioCompanyMentions}
+ * (the first comment gets the display name, like a native LinkedIn comment).
  *
  * @see https://docs.zernio.com/platforms/linkedin
  */
@@ -55,8 +55,8 @@ class ZernioLinkedInPageChannel implements ZernioChannel
         }
 
         return array_filter([
-            // Zernio gets no mention: the LinkedIn mention marker becomes its display name.
-            'content' => CompanyMentions::toPlainText((string) (app(ContentSanitizer::class)->forPost($post) ?? '')),
+            // Company mentions as Zernio's `@[Name](urn:li:organization:<id>)` when resolved, else the display name.
+            'content' => app(ZernioCompanyMentions::class)->content((string) (app(ContentSanitizer::class)->forPost($post) ?? ''), $post),
             'mediaItems' => $mediaItems,
             'platforms' => [$target],
             'publishNow' => true,

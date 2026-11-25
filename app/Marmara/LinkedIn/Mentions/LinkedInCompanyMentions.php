@@ -37,8 +37,9 @@ class LinkedInCompanyMentions
 
     /**
      * @param  Closure(string): string  $escape  the publisher's plain-text escaping
+     * @param  string|null  $accountId  the publishing channel, which keys a cached failed lookup
      */
-    public function commentary(string $content, string $token, Closure $escape): string
+    public function commentary(string $content, string $token, Closure $escape, ?string $accountId = null): string
     {
         $mentions = CompanyMentions::find($content);
 
@@ -52,7 +53,7 @@ class LinkedInCompanyMentions
 
         foreach ($mentions as $mention) {
             $commentary .= $this->escapeSegment(substr($content, $position, $mention['offset'] - $position), $escape);
-            $commentary .= $this->mention($mention, $token, $resolved);
+            $commentary .= $this->mention($mention, $token, $accountId, $resolved);
             $position = $mention['offset'] + strlen($mention['marker']);
         }
 
@@ -68,7 +69,7 @@ class LinkedInCompanyMentions
      * @param  array{marker: string, offset: int, name: string, vanity: ?string, id: ?string}  $mention
      * @param  array<string, OrganizationLookup>  $resolved  lookups of this post, by vanity
      */
-    private function mention(array $mention, string $token, array &$resolved): string
+    private function mention(array $mention, string $token, ?string $accountId, array &$resolved): string
     {
         if ($mention['id'] !== null) {
             return $this->little($mention['name'], $mention['id']);
@@ -77,7 +78,7 @@ class LinkedInCompanyMentions
         $vanity = (string) $mention['vanity'];
 
         if (! isset($resolved[$vanity])) {
-            $resolved[$vanity] = $this->resolver->resolve($vanity, $token);
+            $resolved[$vanity] = $this->resolver->resolve($vanity, $token, $accountId);
 
             if (! $resolved[$vanity]->resolved()) {
                 LinkedInOrganizationResolver::warn($vanity, $resolved[$vanity]);

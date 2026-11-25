@@ -1048,6 +1048,29 @@ test('a feed video offers only the cover frame', function () {
         ->assertNoJavaScriptErrors();
 });
 
+test('a video in an Instagram feed carousel offers no Tag People tab', function () {
+    // Marmara AI fork: Meta takes no people tags on a carousel's videos.
+    [$post] = seedMediaEditorPost(ContentType::InstagramFeed);
+    $webm = base64_encode((string) file_get_contents(base_path('tests/fixtures/cover-3s.webm')));
+    $post->update(['media' => [...$post->media, [
+        'id' => 'video-1',
+        'type' => 'video',
+        'mime_type' => 'video/webm',
+        'path' => 'uploads/video-1.webm',
+        'url' => "data:video/webm;base64,{$webm}",
+        'size' => 855,
+        'meta' => ['width' => 16, 'height' => 16],
+    ]]]);
+    $accountId = $post->social_account_id;
+    $page = visit(route('app.posts.edit', $post));
+    waitForState($page, "@composer-{$accountId}-edit-1", 'true');
+    $page->click("@composer-{$accountId}-edit-1");
+    waitForState($page, '@media-editor-cover', 'true');
+
+    expect(mediaEditorSegmentIds($page))->toBe(['media-editor-thumbnail-tab']);
+    $page->assertNoJavaScriptErrors();
+});
+
 test('the thumbnail tab picks the frame by dragging along a strip under the video', function () {
     [$post] = seedMediaEditorVideoPost(ContentType::InstagramReel);
     $accountId = $post->social_account_id;

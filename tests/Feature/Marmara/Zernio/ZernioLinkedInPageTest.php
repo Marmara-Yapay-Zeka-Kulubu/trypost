@@ -17,6 +17,7 @@ use App\Jobs\Analytics\CollectPublicationMetrics;
 use App\Jobs\PublishToSocialPlatform;
 use App\Marmara\Zernio\Analytics\Collectors\ZernioLinkedInPagePublicationCollector;
 use App\Marmara\Zernio\Models\ZernioPublication;
+use App\Marmara\Zernio\Publishing\ZernioLinkedInPageChannel;
 use App\Marmara\Zernio\ZernioConfig;
 use App\Marmara\Zernio\ZernioLinkedInPagePublisher;
 use App\Models\AnalyticsAccountDailySnapshot;
@@ -193,6 +194,53 @@ test('a text post with the link preview turned off asks Zernio not to add one', 
 
     Http::assertSent(fn (Request $request): bool => $request->url() === ZERNIO_LI_API.'/posts'
         && $request['platforms'][0]['platformSpecificData']['disableLinkPreview'] === true);
+});
+
+test('company mentions go to Zernio as organization URNs, resolved with the page\'s native token', function () {
+    config()->set('marmara-linkedin.api', 'https://api.linkedin.com');
+    $this->page->update(['access_token' => 'li-native-token', 'token_expires_at' => now()->addDays(60)]);
+    $post = zernioLinkedInPost($this->page, $this->user);
+    $post->forceFill(['content' => 'Teşekkürler @[Akbank](https://www.linkedin.com/company/akbank) ve @[Marmara AI](urn:li:organization:789) (sponsor)'])->save();
+    Http::fake([
+        'https://api.linkedin.com/rest/organizations*' => Http::response(['elements' => [['id' => 123, 'localizedName' => 'Akbank T.A.Ş.', 'vanityName' => 'akbank']]]),
+        ...zernioLinkedInFakes(),
+    ]);
+
+    (new PublishToSocialPlatform($post->fresh()))->handle();
+
+    expect($post->fresh()->publish_status)->toBe(PlatformStatus::Published);
+    Http::assertSent(fn (Request $request): bool => $request->url() === ZERNIO_LI_API.'/posts'
+        && $request['content'] === 'Teşekkürler @[Akbank T.A.Ş.](urn:li:organization:123) ve @[Marmara AI](urn:li:organization:789) (sponsor)');
+    Http::assertSent(fn (Request $request): bool => str_starts_with($request->url(), 'https://api.linkedin.com/rest/organizations')
+        && $request->hasHeader('Authorization', 'Bearer li-native-token'));
+});
+
+test('a Zernio page without a native token sends a vanity mention as the plain name, until a native LinkedIn channel can resolve it', function () {
+    config()->set('marmara-linkedin.api', 'https://api.linkedin.com');
+    $this->page->update(['access_token' => 'zernio-managed:'.ZERNIO_LI_ACCOUNT, 'meta' => ['organization_id' => '104857600', 'managed_by' => 'zernio']]);
+    Http::fake([
+        'https://api.linkedin.com/rest/organizations*' => Http::response(['elements' => [['id' => 123, 'localizedName' => 'Akbank', 'vanityName' => 'akbank']]]),
+    ]);
+    $post = zernioLinkedInPost($this->page, $this->user);
+    $post->forceFill(['content' => 'Teşekkürler @[Akbank](https://www.linkedin.com/company/akbank) ve @[Marmara AI](urn:li:organization:789)'])->save();
+    $channel = app(ZernioLinkedInPageChannel::class);
+
+    expect($channel->payload($post->fresh(), ZERNIO_LI_ACCOUNT, 'trypost-ref')['content'])
+        ->toBe('Teşekkürler Akbank ve @[Marmara AI](urn:li:organization:789)');
+    Http::assertNothingSent();
+
+    // A natively connected LinkedIn profile in the workspace lends its token.
+    SocialAccount::factory()->linkedin()->create([
+        'workspace_id' => $this->workspace->id,
+        'platform_user_id' => 'member-native',
+        'access_token' => 'li-profile-token',
+        'token_expires_at' => now()->addDays(60),
+    ]);
+
+    expect($channel->payload($post->fresh(), ZERNIO_LI_ACCOUNT, 'trypost-ref')['content'])
+        ->toBe('Teşekkürler @[Akbank](urn:li:organization:123) ve @[Marmara AI](urn:li:organization:789)');
+    Http::assertSent(fn (Request $request): bool => str_starts_with($request->url(), 'https://api.linkedin.com/rest/organizations')
+        && $request->hasHeader('Authorization', 'Bearer li-profile-token'));
 });
 
 test('one image, several images and a video go to Zernio as LinkedIn media', function (array $media, array $expected) {

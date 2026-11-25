@@ -1417,14 +1417,19 @@ module is off).
   deleted, not recorded. Otherwise it sets `published_at`, makes the design
   Kullanıldı (not an archived one; activity "status_changed" by the post's
   member and `design.status_changed` with `reason: "post_published"`) with
-  `approved_version` = the version the post's file was made from (the
-  current one when unknown), and writes the activity `post_published`
+  `approved_version` = the version the post's file was made from, and writes
+  the activity `post_published`
   `{post_id, version, platform, platform_label, account, published_at, by}`
   credited to `post.user` (the WhatsApp sender for Hermes' posts). When the
   file changed in Drive since that version, the design is also flagged
   `changed_after_use_at` (activity `changed_after_use`), and the sync does
-  not flag it again until the content changes once more. A retry, a second
-  publish or a restore records nothing new.
+  not flag it again until the content changes once more. When the version
+  is unknown (a file remembered before versions were kept), Drive may have
+  moved on since the draft, so the current version is not claimed: the
+  design still becomes Kullanıldı, but `approved_version` and
+  `changed_after_use_at` are left as they are and the activity has
+  `version: null`. A retry, a second publish or a restore records nothing
+  new.
 - **Published media added to the gallery**: then `AddPublishedMediaToDesigns`
   (queued, 5 tries, backoff 1 / 5 / 15 / 60 min) takes the post's own images
   and videos (not covers, not thread replies) that no design holds and
@@ -1753,9 +1758,16 @@ Meta's content publishing API takes `user_tags` on image and video stories
   reels as `[{"username": "..."}]` (`InstagramUserTags::usernames()`: `@`
   stripped, duplicates dropped, at most 20). Feed images keep upstream's
   `MediaItem::userTags()` (`{username, x, y}`, tags without a position left
-  out). Videos in a carousel get no tags (not sent, as upstream).
+  out). Videos in a carousel get no tags: Meta takes none on carousel video
+  children, so they are accepted (validation does not refuse them, existing
+  drafts keep working) and quietly not sent; the MCP descriptions say "tags
+  on carousel videos are not supported".
 - Editor: the "Tag People" tab is offered for videos too (reels, video
-  stories, feed videos). On a feed image the tags are placed on the image as
+  stories, a single feed video), but not for a video of a carousel: a post
+  with more than one media item whose only tag-taking content type is
+  `instagram_feed` (`carouselDropsVideoTags()`; `editorTabsFor()` gets the
+  post's content types and media count from `MediaTray`, the composer and
+  `MediaEditorDialog`'s `mediaCount`). On a feed image the tags are placed on the image as
   before; on a video, and on images of a post that has no
   `instagram_feed` channel (stories only), `UsernameTagsPanel.vue` shows a
   username list instead (`tagsNeedPosition()`). Existing translations only.
@@ -1765,7 +1777,7 @@ Meta's content publishing API takes `user_tags` on image and video stories
 | Path | What |
 | --- | --- |
 | `app/Marmara/Instagram/InstagramUserTags.php` | Which content types take tags, which need a position, the story / reel tag list, the feed position check and its message |
-| `resources/js/marmara/instagram/userTags.ts`, `UsernameTagsPanel.vue` | Whether the editor places tags on the image; the username list panel |
+| `resources/js/marmara/instagram/userTags.ts`, `UsernameTagsPanel.vue` | Whether the editor places tags on the image, whether a carousel drops a video's tags; the username list panel |
 | `tests/Feature/Marmara/Instagram/InstagramUserTagsTest.php` | Pest tests |
 
 ### Upstream touch points
@@ -1777,10 +1789,12 @@ Meta's content publishing API takes `user_tags` on image and video stories
 | `app/Rules/ContentTypeCompatibleWithMedia.php` | `use InstagramUserTags`; in `validate()`, before `failOnDimensionRules()`, the feed position check |
 | `app/Services/Social/InstagramPublisher.php` | `use InstagramUserTags`; `publishReel()` adds `user_tags`; `publishStory()` sends `user_tags` after the image / video branch instead of inside the image branch |
 | `app/Mcp/Concerns/DescribesPostMedia.php`, `app/Mcp/Tools/Post/AttachMediaFromUploadTool.php`, `AttachMediaFromUrlTool.php`, `app/Mcp/Tools/Platform/ListContentTypesTool.php`, `app/Support/PostPlatformMetaRules.php` | The `user_tags` sentence of the descriptions |
-| `resources/js/lib/mediaEditor.ts` | `VIDEO_TABS` gets the `tags` tab |
+| `resources/js/lib/mediaEditor.ts` | `VIDEO_TABS` gets the `tags` tab; `editorTabsFor()` takes an optional `{contentTypes, mediaCount}` and drops `tags` for a carousel's video |
+| `resources/js/components/media/MediaTray.vue`, `resources/js/components/posts/composer/PostComposerDialog.vue` | Pass `{contentTypes, mediaCount}` to `editorTabsFor()`; the composer passes `:media-count` to the editor dialog |
+| `app/Rules/ContentTypeCompatibleWithMedia.php` (comment only), `app/Mcp/...` descriptions | Carousel video tags accepted and not sent |
 | `resources/js/types/media.ts` | `MediaUserTag.x` / `y` optional |
-| `resources/js/components/posts/composer/MediaEditorDialog.vue` | Imports, `positionedTags`, stage markers only when positioned (`tag.x ?? 0.5`), `<UsernameTagsPanel>` before `<MediaEditorTagsPanel>` |
-| `tests/Unit/Enums/ContentTypeTest.php`, `tests/Feature/Mcp/MediaFlowTest.php`, `tests/Browser/MediaEditorTest.php` | Story `supports_user_tags` true; a reel's segments include `media-editor-tags-tab` |
+| `resources/js/components/posts/composer/MediaEditorDialog.vue` | `mediaCount` prop, passed with `contentTypes` to `editorTabsFor()`; imports, `positionedTags`, stage markers only when positioned (`tag.x ?? 0.5`), `<UsernameTagsPanel>` before `<MediaEditorTagsPanel>` |
+| `tests/Unit/Enums/ContentTypeTest.php`, `tests/Feature/Mcp/MediaFlowTest.php`, `tests/Browser/MediaEditorTest.php` | Story `supports_user_tags` true; a reel's segments include `media-editor-tags-tab`, a feed carousel's video has none |
 
 ## LinkedIn company mentions
 
@@ -1815,11 +1829,16 @@ mistyped link) stays as typed.
   without an error, so LinkedIn's `localizedName` is used, the display name
   only when LinkedIn gives none. A URN marker needs no call and uses the
   display name as is ([little text format](https://learn.microsoft.com/linkedin/marketing/community-management/shares/little-text-format));
-- found: cached 30 days; any failure (empty answer, 401, 403, 404, 429,
-  5xx, no answer in 5 / 20 s, daily call budget used up): cached 15 minutes.
-  Cache key `marmara-linkedin:organization-vanity:<sha1(lower vanity)>`.
-  Each call takes a unit of `MARMARA_LINKEDIN_DAILY_CALL_BUDGET`; a 429 sets
-  the module's back-off like the analytics calls;
+- found: cached 30 days for every channel (key
+  `marmara-linkedin:organization-vanity:<sha1(lower vanity)>`); any failure
+  (empty answer, 401, 403, 404, 429, 5xx, no answer in 5 / 20 s, daily call
+  budget used up): cached 15 minutes for the channel that failed only (key
+  `…:miss:<sha1(vanity)>:<sha1("account:" + social account id)>`, or
+  `"token:" + sha256(token)` without an account; the token itself is never
+  stored), so one channel's token without the permission does not turn
+  another channel's mentions into plain text. Each call takes a unit of
+  `MARMARA_LINKEDIN_DAILY_CALL_BUDGET`; a 429 sets the module's back-off like
+  the analytics calls;
 - not resolved: the display name is published as plain, escaped text and
   `LinkedIn company mention published as plain text` is logged as a warning
   (vanity, status, reason; never the token). **A mention never fails the
@@ -1832,12 +1851,29 @@ from the container: `sanitize()`, `displayText()` (the per-network character
 limits) and `plainText()` (the overall length, mail excerpts) replace the
 marker by the name on every network; `forPost()` keeps it only for LinkedIn
 and LinkedIn pages. So Instagram, X, Facebook, TikTok and the rest publish
-the name, a LinkedIn thread reply (comment) gets the name, Zernio's LinkedIn
-page channel strips it (`CompanyMentions::toPlainText()`), and the length
+the name, a LinkedIn thread reply (comment) gets the name, and the length
 counts the name, not the link. In the editor `contentForPlatform()`
 (`resources/js/lib/defuseXLinks.ts`) does the same, so the counter and the
 previews show the name. Known limitation: LinkedIn may count the mention's
 text differently from the display name (only matters near the 3,000 limit).
+
+**Through Zernio** (`ZernioLinkedInPageChannel`, `ZernioCompanyMentions`):
+Zernio publishes `@[Name](urn:li:...)` written in `content` as a mention, as
+written ([LinkedIn](https://docs.zernio.com/platforms/linkedin),
+[Resolve LinkedIn mention](https://docs.zernio.com/utilities/linkedin-mentions)).
+It can also resolve `@[Name](https://www.linkedin.com/company/<vanity>)`
+itself, but then rejects the whole post when a URL does not resolve
+(`linkedin_mentions_invalid`), so TryPost sends only URNs: a URN marker as
+is; a vanity another channel already found (the cache above) with LinkedIn's
+name, without a call; otherwise looked up with a native LinkedIn token of the
+workspace (the post's channel when it has one, else another connected
+LinkedIn page, else a profile; a Zernio placeholder token is never used).
+Without such a token, or not resolved: the display name as plain text, as
+before. Zernio documents no escaping inside `@[...]`, so `[` and `]` are
+dropped from the name. The first comment gets the display name, like a native
+comment. The docs show the URN form with `urn:li:person:` only; that it takes
+`urn:li:organization:` the same way is not verified against the live API (the
+club's page publishes natively, so this path is rarely used).
 
 Which permission LinkedIn wants for the vanity lookup is not verified with
 the club's app: check on prod with
@@ -1846,8 +1882,10 @@ the club's app: check on prod with
 
 It uses the first LinkedIn page channel with a native token (else a LinkedIn
 profile), prints the request, then the organization URN, name and the
-mention it would write, or `Not resolved (HTTP 403): ...`. One call; its
-answer replaces the cached one. A 403 means mentions publish as plain names.
+mention it would write, or `Not resolved (HTTP 403): ...`. One call; a
+found organization replaces the cached one for every channel, a failure is
+cached for that channel. A 403 means that channel's mentions publish as plain
+names.
 
 ### Files
 
@@ -1857,15 +1895,16 @@ answer replaces the cached one. A 403 means mentions publish as plain names.
 | `app/Marmara/LinkedIn/Mentions/LinkedInOrganizationResolver.php`, `OrganizationLookup.php` | The vanity lookup, its cache and budget |
 | `app/Marmara/LinkedIn/Mentions/LinkedInCompanyMentions.php` | The commentary with mentions, the fallback |
 | `app/Marmara/LinkedIn/Mentions/MentionAwareContentSanitizer.php` | The display name on every other path |
+| `app/Marmara/Zernio/Publishing/ZernioCompanyMentions.php` | Mentions for a LinkedIn page published through Zernio |
 | `app/Marmara/LinkedIn/Console/LookupLinkedInOrganization.php` | `marmara:linkedin-org` |
 | `resources/js/marmara/linkedin/companyMentions.ts` | The editor's mirror of the pattern |
-| `tests/Feature/Marmara/LinkedIn/LinkedInCompanyMentionsTest.php` | Pest tests |
+| `tests/Feature/Marmara/LinkedIn/LinkedInCompanyMentionsTest.php`, `tests/Feature/Marmara/Zernio/ZernioLinkedInPageTest.php` | Pest tests |
 
 ### Upstream touch points
 
 | File | Change |
 | --- | --- |
-| `app/Services/Social/AbstractLinkedInPublisher.php` | `use CompanyMentions`, `use LinkedInCompanyMentions`; `basePayload()` builds `commentary` through `LinkedInCompanyMentions::commentary()` with `$this->toLittleText(...)`; `articleCard()` fetches the link card from `CompanyMentions::toPlainText($content)` (a mention's link is not the post's link) |
+| `app/Services/Social/AbstractLinkedInPublisher.php` | `use CompanyMentions`, `use LinkedInCompanyMentions`; `basePayload()` builds `commentary` through `LinkedInCompanyMentions::commentary()` with `$this->toLittleText(...)` and `$this->account->id`; `articleCard()` fetches the link card from `CompanyMentions::toPlainText($content)` (a mention's link is not the post's link) |
 | `resources/js/lib/defuseXLinks.ts` | `contentForPlatform()` runs `companyMentionsToText()` first |
 
 The `ContentSanitizer` binding lives in `LinkedInServiceProvider::register()`

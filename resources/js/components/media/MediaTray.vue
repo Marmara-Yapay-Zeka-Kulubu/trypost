@@ -80,7 +80,12 @@ const takesCoverImage = computed(() =>
 /** The items as the tiles draw them, without an uploaded cover no network of the post shows. */
 const tileItems = computed(() => withCoversFor(props.items, takesCoverImage.value));
 const itemTabs = computed<EditorTab[][]>(() =>
-    props.items.map((item) => editorTabsFor(item, editorRules.value)),
+    props.items.map((item) =>
+        editorTabsFor(item, editorRules.value, {
+            contentTypes: props.contentTypes,
+            mediaCount: props.items.length,
+        }),
+    ),
 );
 
 const page = usePage<SharedData>();

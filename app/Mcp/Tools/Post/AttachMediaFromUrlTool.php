@@ -75,7 +75,7 @@ class AttachMediaFromUrlTool extends Tool
                 ->items($schema->object(fn ($u) => [
                     'url' => $u->string()->required()->description('Public HTTP/HTTPS URL of an image, video, or PDF.'),
                     'alt' => $u->string()->description('Optional accessibility alt text for an image or a video (ignored for PDF; sent for a video only where supports_video_alt_text).'),
-                    'meta' => $u->object()->description('Optional per-item settings: user_tags (Instagram people tags, up to 20: feed images take {username, x, y} with x and y required, between 0 and 1 from the top-left corner; stories and reels take {username}, x and y optional), cover_offset_ms (video cover frame in milliseconds, for content types with supports_video_cover).'),
+                    'meta' => $u->object()->description('Optional per-item settings: user_tags (Instagram people tags, up to 20: feed images take {username, x, y} with x and y required, between 0 and 1 from the top-left corner; stories and reels take {username}, x and y optional; tags on carousel videos are not supported: Instagram takes none there, so they are accepted and not sent), cover_offset_ms (video cover frame in milliseconds, for content types with supports_video_cover).'),
                 ]))
                 ->required()
                 ->description('Media to attach. Max 10 per call. Allowed types: image/jpeg, image/png, image/gif, image/webp, video/mp4, video/quicktime, application/pdf. The server per-type size ceilings apply on download; stricter per-network caps apply at schedule/publish.'),

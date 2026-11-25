@@ -368,7 +368,7 @@ abstract class AbstractLinkedInPublisher
         return [
             'author' => $this->authorUrn(),
             // Marmara AI fork: company mention markers become LinkedIn mentions (app/Marmara/README.md, LinkedIn company mentions).
-            'commentary' => app(LinkedInCompanyMentions::class)->commentary($content ?? '', $this->accessToken, $this->toLittleText(...)),
+            'commentary' => app(LinkedInCompanyMentions::class)->commentary($content ?? '', $this->accessToken, $this->toLittleText(...), $this->account->id),
             'visibility' => 'PUBLIC',
             'distribution' => [
                 'feedDistribution' => 'MAIN_FEED',

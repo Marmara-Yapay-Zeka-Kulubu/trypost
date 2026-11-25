@@ -131,10 +131,15 @@ class RecordDesignPublication
      * a status change by the post's member and sent as design.status_changed
      * with reason "post_published".
      *
-     * Used for the version that went out (`$version`, null when unknown: the
-     * current one). When the file has changed since, it is flagged
-     * "kullanıldıktan sonra değişti" (changed_after_use_at and the activity
-     * line changed_after_use), as the sync does for a change after use.
+     * Used for the version that went out (`$version`). When the file has
+     * changed since, it is flagged "kullanıldıktan sonra değişti"
+     * (changed_after_use_at and the activity line changed_after_use), as the
+     * sync does for a change after use.
+     *
+     * Unknown version (null: a file remembered before versions were kept):
+     * Drive may have moved on since the draft, so the current version is not
+     * claimed as the one that went out. The design still becomes Kullanıldı,
+     * but approved_version and changed_after_use_at stay as they are.
      */
     private function markUsed(Design $design, Post $post, ?string $version): void
     {
@@ -146,14 +151,18 @@ class RecordDesignPublication
 
         $current = $design->approvalVersion();
         $changedSince = $version !== null && $current !== null && $version !== $current;
-
-        $design->forceFill([
+        $attributes = [
             'status' => DesignStatus::Used,
             'status_changed_at' => CarbonImmutable::now(),
-            'approved_version' => $version ?? $current,
             'status_reason' => null,
-            'changed_after_use_at' => $changedSince ? CarbonImmutable::now() : null,
-        ])->save();
+        ];
+
+        if ($version !== null) {
+            $attributes['approved_version'] = $version;
+            $attributes['changed_after_use_at'] = $changedSince ? CarbonImmutable::now() : null;
+        }
+
+        $design->forceFill($attributes)->save();
 
         DesignActivity::record($design, $post->user, 'status_changed', ['from' => $from->value, 'to' => DesignStatus::Used->value, 'reason' => 'post_published']);
         $this->events->statusChanged($design, $post->user, $from, 'post_published');

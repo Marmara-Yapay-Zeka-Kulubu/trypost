@@ -180,6 +180,31 @@ test('a story or reel accepts tags without a position', function (ContentType $c
     'reel' => [ContentType::InstagramReel, 'video'],
 ]);
 
+test('tags on a carousel video are accepted and quietly not sent, while the carousel images keep theirs', function () {
+    marmaraFakeGraph($this->graph, 'carousel-tags');
+    $media = [
+        marmaraTaggedItem('image', ['user_tags' => [['username' => 'akbank', 'x' => 0.5, 'y' => 0.5]]]),
+        marmaraTaggedItem('video', ['duration' => 10, 'user_tags' => [['username' => 'marmaraai']]]),
+    ];
+
+    expect(ContentTypeCompatibleWithMedia::errorsFor([['key' => 'content_type', 'content_type' => ContentType::InstagramFeed->value]], $media))->toBe([]);
+
+    (new InstagramPublisher)->publish(marmaraTaggedPost($this->account, ContentType::InstagramFeed, $media));
+
+    $children = Http::recorded(fn (Request $request): bool => $request->url() === "{$this->graph}/ig_marmara/media"
+        && data_get($request->data(), 'is_carousel_item') === 'true')
+        ->map(fn (array $pair): array => $pair[0]->data())
+        ->values();
+    $image = $children->first(fn (array $data): bool => isset($data['image_url']));
+    $video = $children->first(fn (array $data): bool => isset($data['video_url']));
+
+    expect($children)->toHaveCount(2)
+        ->and(json_decode((string) $image['user_tags'], true)[0]['username'])->toBe('akbank')
+        ->and($video)->not->toHaveKey('user_tags');
+    Http::assertSent(fn (Request $request): bool => $request->url() === "{$this->graph}/ig_marmara/media"
+        && data_get($request->data(), 'media_type') === 'CAROUSEL');
+});
+
 test('the media meta rules accept a username-only tag and still refuse half a position', function (array $tags, bool $passes) {
     $validator = Validator::make(
         ['media' => [[...marmaraTaggedItem('image'), 'meta' => ['user_tags' => $tags]]]],

@@ -1847,10 +1847,16 @@ const openEditor = (
     if (cropUploading.value) return;
     if (target.groupKey !== null && !findGroup(target.groupKey)) return;
     const replyKey = target.replyKey ?? null;
-    const rules = rulesFor(editorContentTypes(target.groupKey, replyKey));
-    const indexes = editorMedia(target.groupKey, replyKey).flatMap(
-        (candidate, position) =>
-            editorTabsFor(candidate, rules).length > 0 ? [position] : [],
+    const contentTypes = editorContentTypes(target.groupKey, replyKey);
+    const rules = rulesFor(contentTypes);
+    const media = editorMedia(target.groupKey, replyKey);
+    const indexes = media.flatMap((candidate, position) =>
+        editorTabsFor(candidate, rules, {
+            contentTypes,
+            mediaCount: media.length,
+        }).length > 0
+            ? [position]
+            : [],
     );
     if (!indexes.includes(index)) return;
     cropError.value = false;
@@ -1894,6 +1900,12 @@ const cropItems = computed(() => {
         media[index] ? [media[index]] : [],
     );
 });
+const cropMediaCount = computed(() =>
+    cropTarget.value
+        ? editorMedia(cropTarget.value.groupKey, cropTarget.value.replyKey)
+              .length
+        : 0,
+);
 const cropAspectBounds = computed(() => {
     if (!cropTarget.value?.groupKey) return {};
     const rules = getMediaRulesForContentType(cropContentTypes.value[0] ?? '');
@@ -3713,6 +3725,7 @@ const onDialogOpenChange = (value: boolean): void => {
         :initial-index="cropTarget?.initialIndex ?? 0"
         :initial-tab="cropTarget?.tab ?? 'edit'"
         :content-types="cropContentTypes"
+        :media-count="cropMediaCount"
         :aspect-bounds="cropAspectBounds"
         @apply="onMediaEdited"
     />

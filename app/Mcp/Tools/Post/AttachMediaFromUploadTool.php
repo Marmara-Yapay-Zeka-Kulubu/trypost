@@ -82,7 +82,7 @@ class AttachMediaFromUploadTool extends Tool
             'post_id' => $schema->string()->required()->description('UUID of the post to attach the uploaded media to.'),
             'upload_token' => $schema->string()->required()->description('upload_token returned by request-media-upload-tool, after the file was sent to its upload_url.'),
             'alt' => $schema->string()->description('Optional accessibility alt text for an image or a video (ignored for PDF; sent for a video only where supports_video_alt_text).'),
-            'meta' => $schema->object()->description('Optional per-item settings: user_tags (Instagram people tags, up to 20: feed images take {username, x, y} with x and y required, between 0 and 1 from the top-left corner; stories and reels take {username}, x and y optional), cover_offset_ms (video cover frame in milliseconds, for content types with supports_video_cover).'),
+            'meta' => $schema->object()->description('Optional per-item settings: user_tags (Instagram people tags, up to 20: feed images take {username, x, y} with x and y required, between 0 and 1 from the top-left corner; stories and reels take {username}, x and y optional; tags on carousel videos are not supported: Instagram takes none there, so they are accepted and not sent), cover_offset_ms (video cover frame in milliseconds, for content types with supports_video_cover).'),
         ];
     }
 }

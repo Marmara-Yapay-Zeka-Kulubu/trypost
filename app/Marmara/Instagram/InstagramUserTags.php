@@ -77,8 +77,10 @@ final class InstagramUserTags
 
     /**
      * Whether an image of the given (stored or submitted) media has a tag
-     * without a numeric `x` and `y`. Videos are not checked: a feed video
-     * publishes as a Reel.
+     * without a numeric `x` and `y`. Videos are not checked: a single feed
+     * video publishes as a Reel (username tags), and the tags of a carousel's
+     * videos are quietly not sent (Meta takes none on carousel children that
+     * are videos), not refused, so existing drafts keep working.
      *
      * @param  array<int, mixed>  $media
      */

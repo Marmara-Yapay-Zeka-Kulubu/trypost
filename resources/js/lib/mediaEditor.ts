@@ -12,6 +12,7 @@ import {
     type SourceRect,
 } from '@/lib/imageCrop';
 import { isGif, isImage, isVideo } from '@/lib/mediaType';
+import { carouselDropsVideoTags } from '@/marmara/instagram/userTags';
 import type { CoverImage, CoverSource, MediaItem, MediaUserTag } from '@/types/media';
 
 export type CropPresetValue =
@@ -170,13 +171,28 @@ const offeredTabs = (tabs: OptionalTab[], rules: MediaRules[]): EditorTab[] =>
         .filter(({ offeredBy }) => rules.some(offeredBy))
         .map(({ tab }) => tab);
 
+/** The post around the item: its content types and how many media items it has. */
+export type EditorTabsContext = {
+    contentTypes?: string[];
+    mediaCount?: number;
+};
+
 /** Tabs the editor offers for an item; an empty list means no pencil. */
 export const editorTabsFor = (
     item: MediaItem,
     rules: MediaRules[],
+    context: EditorTabsContext = {},
 ): EditorTab[] => {
     if (isVideo(item)) {
-        return offeredTabs(VIDEO_TABS, rules);
+        const tabs = offeredTabs(VIDEO_TABS, rules);
+
+        // Marmara AI fork: a carousel's videos take no people tags.
+        return carouselDropsVideoTags(
+            context.contentTypes ?? [],
+            context.mediaCount ?? 1,
+        )
+            ? tabs.filter((tab) => tab !== 'tags')
+            : tabs;
     }
 
     if (!isImage(item)) {

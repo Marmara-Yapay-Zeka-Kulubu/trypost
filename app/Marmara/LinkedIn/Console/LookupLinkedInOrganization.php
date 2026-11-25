@@ -60,8 +60,8 @@ class LookupLinkedInOrganization extends Command
         }
 
         $lookup = $resolver->lookup($vanity, $token);
-        // The fresh answer replaces whatever the publishers had cached.
-        $resolver->remember($vanity, $lookup);
+        // A found organization replaces the cached one for every channel; a failure is cached for this channel.
+        $resolver->remember($vanity, $lookup, $token, $account->id);
 
         if (! $lookup->resolved()) {
             $this->error('Not resolved'.($lookup->status !== null ? " (HTTP {$lookup->status})" : '').": {$lookup->reason}");

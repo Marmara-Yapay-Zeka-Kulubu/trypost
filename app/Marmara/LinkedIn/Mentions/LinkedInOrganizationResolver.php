@@ -25,10 +25,14 @@ use Throwable;
  *     LinkedIn-Version: MARMARA_LINKEDIN_API_VERSION
  *     X-Restli-Protocol-Version: 2.0.0
  *
- * A found organization is cached for 30 days, any failure (not found, 401,
- * 403, 429, server error, no answer, call budget used up) for 15 minutes, so
- * a post's retries and the next posts do not call again. Each call takes a
- * unit of the module's daily LinkedIn call budget.
+ * A found organization is cached for 30 days for everyone (the URN is the
+ * same whichever token found it). Any failure (not found, 401, 403, 429,
+ * server error, no answer, call budget used up) is cached for 15 minutes for
+ * the channel whose token failed only (its social account id, else a sha256
+ * of the token; never the token itself): one channel's token lacking the
+ * permission must not turn another, authorized channel's mentions into plain
+ * text. So a post's retries and the next posts do not call again. Each call
+ * takes a unit of the module's daily LinkedIn call budget.
  *
  * @see https://learn.microsoft.com/linkedin/marketing/community-management/organizations/organization-lookup-api
  */
@@ -47,37 +51,73 @@ class LinkedInOrganizationResolver
 
     /**
      * The organization for a vanity name, from the cache or one lookup.
+     *
+     * @param  string|null  $accountId  the publishing channel (social account id), which keys a cached failure
      */
-    public function resolve(string $vanity, string $token): OrganizationLookup
+    public function resolve(string $vanity, string $token, ?string $accountId = null): OrganizationLookup
     {
         $vanity = CompanyMentions::vanity($vanity);
-        $key = self::CACHE_PREFIX.sha1($vanity);
-        $cached = Cache::get($key);
+        $found = $this->cached($vanity);
 
-        if (is_array($cached)) {
-            return is_string($cached['id'] ?? null)
-                ? OrganizationLookup::found($cached['id'], is_string($cached['name'] ?? null) ? $cached['name'] : null)
-                : OrganizationLookup::failed((string) ($cached['reason'] ?? 'not resolved (cached)'), is_int($cached['status'] ?? null) ? $cached['status'] : null);
+        if ($found !== null) {
+            return $found;
+        }
+
+        $missed = Cache::get($this->missKey($vanity, $token, $accountId));
+
+        if (is_array($missed)) {
+            return OrganizationLookup::failed((string) ($missed['reason'] ?? 'not resolved (cached)'), is_int($missed['status'] ?? null) ? $missed['status'] : null);
         }
 
         $lookup = $this->lookup($vanity, $token);
-        $this->remember($vanity, $lookup);
+        $this->remember($vanity, $lookup, $token, $accountId);
 
         return $lookup;
     }
 
     /**
-     * Caches a lookup's answer: 30 days when found, 15 minutes otherwise.
+     * The organization a lookup already found (any channel's), without a call.
      */
-    public function remember(string $vanity, OrganizationLookup $lookup): void
+    public function cached(string $vanity): ?OrganizationLookup
     {
-        $key = self::CACHE_PREFIX.sha1(CompanyMentions::vanity($vanity));
+        $cached = Cache::get($this->foundKey(CompanyMentions::vanity($vanity)));
+
+        // Only a found organization is shared; an older failure stored here is ignored.
+        return is_array($cached) && is_string($cached['id'] ?? null)
+            ? OrganizationLookup::found($cached['id'], is_string($cached['name'] ?? null) ? $cached['name'] : null)
+            : null;
+    }
+
+    /**
+     * Caches a lookup's answer: found for 30 days for every channel, a
+     * failure for 15 minutes for this channel only.
+     */
+    public function remember(string $vanity, OrganizationLookup $lookup, string $token = '', ?string $accountId = null): void
+    {
+        $vanity = CompanyMentions::vanity($vanity);
 
         if ($lookup->resolved()) {
-            Cache::put($key, ['id' => $lookup->id, 'name' => $lookup->name], now()->addDays(self::FOUND_CACHE_DAYS));
+            Cache::put($this->foundKey($vanity), ['id' => $lookup->id, 'name' => $lookup->name], now()->addDays(self::FOUND_CACHE_DAYS));
+            Cache::forget($this->missKey($vanity, $token, $accountId));
         } else {
-            Cache::put($key, ['reason' => $lookup->reason, 'status' => $lookup->status], now()->addMinutes(self::MISS_CACHE_MINUTES));
+            Cache::put($this->missKey($vanity, $token, $accountId), ['reason' => $lookup->reason, 'status' => $lookup->status], now()->addMinutes(self::MISS_CACHE_MINUTES));
         }
+    }
+
+    private function foundKey(string $vanity): string
+    {
+        return self::CACHE_PREFIX.sha1($vanity);
+    }
+
+    /**
+     * Per channel: the social account id when known, else a sha256 of the
+     * token (the token itself is never stored).
+     */
+    private function missKey(string $vanity, string $token, ?string $accountId): string
+    {
+        $channel = filled($accountId) ? 'account:'.$accountId : 'token:'.hash('sha256', $token);
+
+        return self::CACHE_PREFIX.'miss:'.sha1($vanity).':'.sha1($channel);
     }
 
     /**

@@ -183,7 +183,9 @@ class ContentTypeCompatibleWithMedia implements DataAwareRule, ValidationRule
         }
 
         // Marmara AI fork: a feed image's people tags need x and y; stories and
-        // reels take a username only (app/Marmara/README.md, Instagram people tags).
+        // reels take a username only. Tags on a carousel's videos are accepted
+        // and not sent (Meta takes none there), so existing drafts keep working
+        // (app/Marmara/README.md, Instagram people tags).
         if (InstagramUserTags::needsPosition($contentType) && InstagramUserTags::anyImageTagWithoutPosition($media)) {
             $fail(InstagramUserTags::positionRequiredMessage());
 
