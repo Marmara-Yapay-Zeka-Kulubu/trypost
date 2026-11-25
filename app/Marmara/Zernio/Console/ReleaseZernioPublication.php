@@ -32,6 +32,7 @@ class ReleaseZernioPublication extends Command
         $attempt->update([
             'last_status' => ZernioPublication::STATUS_FAILED,
             'last_error' => 'Released by an operator after a manual check.',
+            'request_body' => null,
         ]);
 
         $this->info('Released. Retry the post (posts:retry or from the app) to publish it again.');

@@ -304,6 +304,56 @@ test('a Zernio page without a native token sends the plain name when Zernio cann
     Http::assertSentCount(3);
 });
 
+test('a create whose answer was lost is resent byte for byte, although the mention resolves in between', function () {
+    config()->set('marmara-linkedin.api', 'https://api.linkedin.com');
+    $this->page->update(['access_token' => 'zernio-managed:'.ZERNIO_LI_ACCOUNT, 'meta' => ['organization_id' => '104857600', 'managed_by' => 'zernio']]);
+    $sent = [];
+    Http::fake([
+        // Before the generic `/accounts*` stub: the first matching stub wins.
+        zernioMentionUrl().'*' => Http::sequence()
+            ->push(['error' => 'Organization not found'], 404)
+            ->push(['urn' => 'urn:li:organization:123', 'type' => 'organization', 'displayName' => 'Akbank T.A.Ş.']),
+        ...zernioLinkedInFakes(),
+        // Replaces the `/posts` stub of zernioLinkedInFakes() in place: the first answer is lost.
+        ZERNIO_LI_API.'/posts' => function (Request $request) use (&$sent) {
+            $sent[] = ['body' => $request->body(), 'key' => $request->header('Idempotency-Key')[0] ?? null];
+
+            return count($sent) === 1
+                ? Http::failedConnection('cURL error 28: Operation timed out after 30000 milliseconds')($request)
+                : Http::response(zernioLinkedInPostBody('published', ['platformPostId' => ZERNIO_LI_URN]), 201);
+        },
+    ]);
+    $post = zernioLinkedInPost($this->page, $this->user);
+    $post->forceFill(['content' => 'Teşekkürler @[Akbank](https://www.linkedin.com/company/akbank)'])->save();
+
+    (new PublishToSocialPlatform($post->fresh()))->handle();
+
+    $attempt = ZernioPublication::query()->where('post_id', $post->id)->first();
+    expect($post->fresh()->publish_status)->toBe(PlatformStatus::Retrying)
+        ->and($attempt->last_status)->toBe(ZernioPublication::STATUS_UNKNOWN)
+        ->and($attempt->request_body)->toBe($sent[0]['body'])
+        ->and(json_decode($sent[0]['body'], true)['content'])->toBe('Teşekkürler Akbank')
+        // Auth is a header: neither the Zernio key nor a LinkedIn token is in the body.
+        ->and($attempt->request_body)->not->toContain('sk_test_key')
+        ->and($attempt->request_body)->not->toContain('zernio-managed');
+
+    // The miss expires and the company now resolves (and is cached): a payload built now differs.
+    $this->travel(20)->minutes();
+    expect(app(ZernioLinkedInPageChannel::class)->payload($post->fresh(), ZERNIO_LI_ACCOUNT, $attempt->reference())['content'])
+        ->toBe('Teşekkürler @[Akbank T.A.Ş.](urn:li:organization:123)');
+
+    (new PublishToSocialPlatform($post->fresh()))->handle();
+
+    expect($post->fresh()->publish_status)->toBe(PlatformStatus::Published)
+        ->and($sent)->toHaveCount(2)
+        ->and($sent[1]['key'])->toBe($sent[0]['key'])
+        ->and($sent[1]['key'])->toBe($attempt->idempotency_key)
+        ->and($sent[1]['body'])->toBe($sent[0]['body'])
+        ->and(ZernioPublication::query()->where('post_id', $post->id)->value('request_body'))->toBeNull();
+    // The retry resolved nothing: one lookup for the first build, one for the payload above.
+    expect(collect(Http::recorded())->filter(fn (array $pair): bool => zernioMentionSent($pair[0]))->count())->toBe(2);
+});
+
 test('one image, several images and a video go to Zernio as LinkedIn media', function (array $media, array $expected) {
     $post = zernioLinkedInPost($this->page, $this->user, [], $media);
     Http::fake(zernioLinkedInFakes());

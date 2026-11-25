@@ -12,13 +12,15 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /**
  * The current Zernio attempt of a TryPost post. `first_attempt_at` and
  * `idempotency_key` belong to the attempt and never change during it; only a
- * definitive failure starts a new attempt.
+ * definitive failure starts a new attempt. `request_body` is the exact JSON
+ * sent with that key, kept only while the key may be sent again.
  *
  * @property int $id
  * @property string $post_id
  * @property string $zernio_account_id
  * @property string|null $zernio_post_id
  * @property string $idempotency_key
+ * @property string|null $request_body
  * @property CarbonInterface $first_attempt_at
  * @property CarbonInterface|null $last_attempt_at
  * @property string $last_status
@@ -51,6 +53,7 @@ class ZernioPublication extends Model
         'zernio_account_id',
         'zernio_post_id',
         'idempotency_key',
+        'request_body',
         'first_attempt_at',
         'last_attempt_at',
         'last_status',

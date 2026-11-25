@@ -7,10 +7,14 @@ use App\Enums\Post\Status as PostStatus;
 use App\Enums\PostPlatform\ContentType;
 use App\Enums\SocialAccount\Status as AccountStatus;
 use App\Enums\TikTok\PrivacyLevel;
+use App\Exceptions\PlatformUnavailableException;
 use App\Exceptions\Social\ErrorCategory;
 use App\Jobs\PublishToSocialPlatform;
 use App\Jobs\ResolveTikTokVideoId;
+use App\Marmara\Zernio\Exceptions\ZernioPublishException;
 use App\Marmara\Zernio\Models\ZernioPublication;
+use App\Marmara\Zernio\Publishing\ZernioPostFlow;
+use App\Marmara\Zernio\Publishing\ZernioTikTokChannel;
 use App\Marmara\Zernio\ZernioTikTokPublisher;
 use App\Models\Post;
 use App\Models\SocialAccount;
@@ -346,6 +350,133 @@ test('a Zernio outage is retried with the same idempotency key', function () {
         ->values()
         ->all();
     expect($keys)->toBe([$attempt->idempotency_key, $attempt->idempotency_key]);
+    $bodies = Http::recorded(fn (Request $request): bool => $request->method() === 'POST')
+        ->map(fn (array $pair): string => $pair[0]->body())
+        ->values()
+        ->all();
+    expect($bodies[1])->toBe($bodies[0])
+        ->and(zernioAttempt($post)->request_body)->toBeNull();
+});
+
+test('a lost create answer is resent with the stored body, even after the post was edited', function () {
+    $post = zernioTikTokPost($this->account, $this->user);
+    $sent = [];
+
+    Http::fake([
+        ...zernioAccountsFake(),
+        ZERNIO_API.'/posts' => function (Request $request) use (&$sent) {
+            $sent[] = ['body' => $request->body(), 'key' => $request->header('Idempotency-Key')[0] ?? null];
+
+            return count($sent) === 1
+                ? Http::failedConnection('cURL error 28: Operation timed out after 30000 milliseconds')($request)
+                : Http::response(zernioPostBody('published', ['platformPostId' => ZERNIO_VIDEO_ID]), 201);
+        },
+    ]);
+
+    expect(fn () => app(ZernioPostFlow::class)->publish($post, ZERNIO_ACCOUNT, app(ZernioTikTokChannel::class)))
+        ->toThrow(PlatformUnavailableException::class);
+
+    $attempt = zernioAttempt($post);
+    expect($attempt->last_status)->toBe(ZernioPublication::STATUS_UNKNOWN)
+        ->and($attempt->request_body)->toBe($sent[0]['body'])
+        // Auth is a header: the stored body carries no key or token.
+        ->and($attempt->request_body)->not->toContain('sk_test_key');
+
+    // Rebuilding the payload now would send a different body under the same key.
+    $post->forceFill(['content' => 'Düzenlenmiş açıklama'])->save();
+
+    $result = app(ZernioPostFlow::class)->publish($post->fresh(), ZERNIO_ACCOUNT, app(ZernioTikTokChannel::class));
+
+    expect($result['id'])->toBe(ZERNIO_VIDEO_ID)
+        ->and($sent)->toHaveCount(2)
+        ->and($sent[1]['key'])->toBe($attempt->idempotency_key)
+        ->and($sent[1]['body'])->toBe($sent[0]['body'])
+        ->and(json_decode($sent[1]['body'], true)['content'])->toBe('Marmara AI kulübü tanıtım videosu')
+        // The Zernio post exists: the key and its body are never sent again.
+        ->and(zernioAttempt($post)->request_body)->toBeNull()
+        ->and(zernioAttempt($post)->zernio_post_id)->toBe(ZERNIO_POST);
+});
+
+test('after a definitive refusal the next attempt has a new key and a newly built body', function () {
+    $post = zernioTikTokPost($this->account, $this->user);
+    $flow = app(ZernioPostFlow::class);
+    $channel = app(ZernioTikTokChannel::class);
+
+    Http::fake([
+        ...zernioAccountsFake(),
+        ZERNIO_API.'/posts' => Http::sequence()
+            ->push(['error' => 'Temporarily unavailable'], 503)
+            ->push(['error' => 'Invalid privacy level', 'code' => 'validation_error'], 422)
+            ->push(zernioPostBody('published', ['platformPostId' => ZERNIO_VIDEO_ID]), 201),
+    ]);
+
+    expect(fn () => $flow->publish($post, ZERNIO_ACCOUNT, $channel))->toThrow(PlatformUnavailableException::class);
+    $first = zernioAttempt($post);
+    expect($first->request_body)->not->toBeNull();
+
+    expect(fn () => $flow->publish($post, ZERNIO_ACCOUNT, $channel))->toThrow(ZernioPublishException::class);
+    // Refused: this key is never sent again, so its body is dropped with it.
+    expect(zernioAttempt($post)->last_status)->toBe(ZernioPublication::STATUS_REJECTED)
+        ->and(zernioAttempt($post)->idempotency_key)->toBe($first->idempotency_key)
+        ->and(zernioAttempt($post)->request_body)->toBeNull();
+
+    $post->forceFill(['content' => 'Düzeltilmiş açıklama'])->save();
+    $flow->publish($post->fresh(), ZERNIO_ACCOUNT, $channel);
+
+    $posts = Http::recorded(fn (Request $request): bool => $request->method() === 'POST' && $request->url() === ZERNIO_API.'/posts')
+        ->map(fn (array $pair): Request => $pair[0])
+        ->values();
+    $third = $posts[2];
+
+    expect($posts)->toHaveCount(3)
+        ->and($posts[1]->body())->toBe($posts[0]->body())
+        ->and($third->header('Idempotency-Key')[0])->not->toBe($first->idempotency_key)
+        ->and($third->header('Idempotency-Key')[0])->toBe(zernioAttempt($post)->idempotency_key)
+        ->and($third->body())->not->toBe($posts[0]->body())
+        ->and($third['content'])->toBe('Düzeltilmiş açıklama')
+        ->and($third['tags'])->toBe([zernioAttempt($post)->reference()]);
+});
+
+test('an attempt sent before bodies were stored is rebuilt on its retry, under the same key', function () {
+    $post = zernioTikTokPost($this->account, $this->user);
+    ZernioPublication::query()->create([
+        'post_id' => $post->id,
+        'zernio_account_id' => ZERNIO_ACCOUNT,
+        'idempotency_key' => 'b0b0b0b0-0000-4000-8000-000000000005',
+        'first_attempt_at' => now()->subHour(),
+        'last_status' => ZernioPublication::STATUS_UNKNOWN,
+    ]);
+
+    Http::fake([
+        ...zernioAccountsFake(),
+        ZERNIO_API.'/posts' => Http::response(zernioPostBody('published', ['platformPostId' => ZERNIO_VIDEO_ID]), 201),
+    ]);
+
+    app(ZernioPostFlow::class)->publish($post, ZERNIO_ACCOUNT, app(ZernioTikTokChannel::class));
+
+    Http::assertSent(fn (Request $request): bool => $request->method() === 'POST'
+        && $request->hasHeader('Idempotency-Key', 'b0b0b0b0-0000-4000-8000-000000000005')
+        && $request['content'] === 'Marmara AI kulübü tanıtım videosu');
+    expect(zernioAttempt($post)->request_body)->toBeNull();
+});
+
+test('releasing an attempt drops its stored body with its key', function () {
+    $post = zernioTikTokPost($this->account, $this->user);
+    ZernioPublication::query()->create([
+        'post_id' => $post->id,
+        'zernio_account_id' => ZERNIO_ACCOUNT,
+        'idempotency_key' => 'b0b0b0b0-0000-4000-8000-000000000006',
+        'request_body' => '{"content":"x"}',
+        'first_attempt_at' => now()->subHour(),
+        'last_status' => ZernioPublication::STATUS_UNKNOWN,
+    ]);
+
+    $this->artisan('marmara:zernio:release', ['post' => $post->id])
+        ->expectsConfirmation('Only continue if Zernio has no live post for it. Allow a new Zernio post on the next retry?', 'yes')
+        ->assertSuccessful();
+
+    expect(zernioAttempt($post)->last_status)->toBe(ZernioPublication::STATUS_FAILED)
+        ->and(zernioAttempt($post)->request_body)->toBeNull();
 });
 
 test('a TikTok account that is not mapped keeps publishing natively while Zernio is enabled', function () {

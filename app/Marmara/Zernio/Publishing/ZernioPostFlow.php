@@ -19,7 +19,10 @@ use Illuminate\Support\Str;
  * Publishes one TryPost post through Zernio, for any ZernioChannel: one
  * attempt row per post (marmara_zernio_publications), an Idempotency-Key per
  * attempt, a reference tag to find a create whose answer was lost, and the
- * status of an existing Zernio post read instead of a new create.
+ * status of an existing Zernio post read instead of a new create. The exact
+ * JSON body sent with a key is stored on the attempt and resent byte for byte
+ * on every retry with that key (Zernio refuses a changed body under a reused
+ * key), so nothing in the payload (mentions, media URLs) is built twice.
  *
  * It answers PublishToSocialPlatform like a native publisher: an `id`/`url`
  * array on success, PlatformUnavailableException while the platform is still
@@ -70,6 +73,8 @@ class ZernioPostFlow
             'zernio_account_id' => $zernioAccountId,
             'zernio_post_id' => null,
             'idempotency_key' => (string) Str::uuid(),
+            // A new key: the body of the previous one is never sent again.
+            'request_body' => null,
             'first_attempt_at' => now(),
             'last_attempt_at' => null,
             'last_status' => ZernioPublication::STATUS_PREPARING,
@@ -119,14 +124,15 @@ class ZernioPostFlow
 
     /**
      * Sends the create request of the attempt. A request already sent whose
-     * answer was lost is sent again with the same Idempotency-Key, so Zernio
-     * answers with the post it created instead of a second one.
+     * answer was lost is sent again with the same Idempotency-Key and the
+     * same stored body, so Zernio answers with the post it created instead
+     * of a second one (or a 422 for a changed body).
      *
      * @return array{id: string, url: ?string}
      */
     private function create(Post $post, ZernioPublication $attempt, string $zernioAccountId, ZernioChannel $channel): array
     {
-        $payload = $channel->payload($post, $zernioAccountId, $attempt->reference());
+        $body = $this->requestBody($post, $attempt, $zernioAccountId, $channel);
 
         // first_attempt_at is when the first create request left; it never
         // moves afterwards, so a lost answer is not resent past Zernio's
@@ -135,13 +141,16 @@ class ZernioPostFlow
             $attempt->first_attempt_at = now();
         }
 
+        // Saved with the status, before the request leaves: a request whose
+        // answer is lost always has its body on the attempt.
         $attempt->fill([
+            'request_body' => $body,
             'last_status' => ZernioPublication::STATUS_UNKNOWN,
             'last_attempt_at' => now(),
         ])->save();
 
         try {
-            $response = $this->client->createPost($payload, $attempt->idempotency_key);
+            $response = $this->client->createPostBody($body, $attempt->idempotency_key);
         } catch (ConnectionException $e) {
             $attempt->update(['last_error' => $e->getMessage()]);
 
@@ -156,7 +165,7 @@ class ZernioPostFlow
             }
 
             $exception = ZernioPublishException::fromApiResponse($response, $channel->platform()->value);
-            $attempt->update(['last_status' => ZernioPublication::STATUS_REJECTED, 'last_error' => $exception->userMessage]);
+            $attempt->update(['last_status' => ZernioPublication::STATUS_REJECTED, 'last_error' => $exception->userMessage, 'request_body' => null]);
 
             throw $exception;
         }
@@ -165,12 +174,13 @@ class ZernioPostFlow
         $zernioPostId = $this->postIdOf($zernioPost);
 
         if ($zernioPostId === null) {
-            $attempt->update(['last_status' => ZernioPublication::STATUS_NEEDS_MANUAL_CHECK, 'last_error' => 'Zernio answered without a post id.']);
+            $attempt->update(['last_status' => ZernioPublication::STATUS_NEEDS_MANUAL_CHECK, 'last_error' => 'Zernio answered without a post id.', 'request_body' => null]);
 
             throw $this->needsManualCheck($attempt, $channel);
         }
 
-        $attempt->update(['zernio_post_id' => $zernioPostId, 'last_status' => ZernioPublication::STATUS_PROCESSING]);
+        // The post exists: the key is never sent again, so neither is its body.
+        $attempt->update(['zernio_post_id' => $zernioPostId, 'last_status' => ZernioPublication::STATUS_PROCESSING, 'request_body' => null]);
 
         Log::info('Marmara Zernio: post created', [
             'platform' => $channel->platform()->value,
@@ -180,6 +190,22 @@ class ZernioPostFlow
         ]);
 
         return $this->settle($post, $attempt, $zernioPost, $zernioAccountId, $response->body(), $channel);
+    }
+
+    /**
+     * The JSON body of the attempt's create request: the one already sent with
+     * its key when there is one, else the channel's payload built now (media
+     * uploads and mention lookups included) and encoded once. An attempt
+     * whose request left before bodies were stored has none and is rebuilt,
+     * as before.
+     */
+    private function requestBody(Post $post, ZernioPublication $attempt, string $zernioAccountId, ZernioChannel $channel): string
+    {
+        if ($attempt->last_status !== ZernioPublication::STATUS_PREPARING && filled($attempt->request_body)) {
+            return (string) $attempt->request_body;
+        }
+
+        return ZernioClient::encodeBody($channel->payload($post, $zernioAccountId, $attempt->reference()));
     }
 
     /**
@@ -199,13 +225,14 @@ class ZernioPostFlow
                 'last_status' => ZernioPublication::STATUS_NEEDS_MANUAL_CHECK,
                 'last_attempt_at' => now(),
                 'last_error' => 'The create request got no answer and Zernio has no post with its reference.',
+                'request_body' => null,
             ]);
 
             throw $this->needsManualCheck($attempt, $channel);
         }
 
         $zernioPostId = (string) $this->postIdOf($found);
-        $attempt->update(['zernio_post_id' => $zernioPostId, 'last_status' => ZernioPublication::STATUS_PROCESSING, 'last_attempt_at' => now()]);
+        $attempt->update(['zernio_post_id' => $zernioPostId, 'last_status' => ZernioPublication::STATUS_PROCESSING, 'last_attempt_at' => now(), 'request_body' => null]);
 
         return $this->settle($post, $attempt, $found, $zernioAccountId, (string) json_encode($found), $channel);
     }

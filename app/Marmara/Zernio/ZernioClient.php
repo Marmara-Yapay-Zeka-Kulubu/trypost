@@ -48,9 +48,32 @@ class ZernioClient
      */
     public function createPost(array $payload, string $idempotencyKey): Response
     {
+        return $this->createPostBody(self::encodeBody($payload), $idempotencyKey);
+    }
+
+    /**
+     * The create request with an already encoded JSON body, sent as is: a
+     * retry under the same Idempotency-Key must carry the same bytes.
+     *
+     * @see https://docs.zernio.com/posts/create-post
+     */
+    public function createPostBody(string $body, string $idempotencyKey): Response
+    {
         return $this->request()
             ->withHeaders(['Idempotency-Key' => $idempotencyKey])
-            ->post('/posts', $payload);
+            ->withBody($body, 'application/json')
+            ->post('/posts');
+    }
+
+    /**
+     * The JSON a payload is sent as: the same flags as Guzzle's `json`
+     * option, so the bytes match what `post($url, $payload)` would send.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    public static function encodeBody(array $payload): string
+    {
+        return json_encode($payload, JSON_THROW_ON_ERROR);
     }
 
     /**

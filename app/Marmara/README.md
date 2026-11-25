@@ -95,7 +95,7 @@ own mapping (see "Per-platform switch" below).
 | `app/Marmara/Zernio/ZernioServiceProvider.php` | Rebinds `TikTokPublisher` in the container, registers the commands |
 | `app/Marmara/Zernio/ZernioTikTokPublisher.php` | Extends `TikTokPublisher`; publishes mapped accounts through Zernio, the rest natively |
 | `app/Marmara/Zernio/ZernioLinkedInPagePublisher.php` | Extends `LinkedInPagePublisher`; same for mapped LinkedIn company pages |
-| `app/Marmara/Zernio/Publishing/ZernioPostFlow.php` | The shared publish flow: attempt row, Idempotency-Key, reference tag, status polling, lost-create recovery |
+| `app/Marmara/Zernio/Publishing/ZernioPostFlow.php` | The shared publish flow: attempt row, Idempotency-Key and its stored request body, reference tag, status polling, lost-create recovery |
 | `app/Marmara/Zernio/Publishing/ZernioChannel.php` + `ZernioTikTokChannel.php`, `ZernioLinkedInPageChannel.php` | Per-platform payload (media rules, settings) and result (post id, URL) |
 | `app/Marmara/Zernio/Publishing/ZernioMediaHost.php` | Media URL for Zernio: TryPost's public URL or a presigned upload |
 | `app/Marmara/Zernio/ZernioTikTokPayload.php` | TryPost TikTok meta to Zernio `tiktokSettings` |
@@ -125,6 +125,7 @@ Tests sit in `tests/Feature/Marmara/` rather than `tests/Marmara/`: that way
 
 Migration: `marmara_zernio_publications` (`post_id` unique, cascades with the
 post; `zernio_account_id`, `zernio_post_id`, `idempotency_key`,
+`request_body` (added by `2026_11_25_120000_add_request_body_…`),
 `first_attempt_at`, `last_attempt_at`, `last_status`, `last_error`,
 timestamps). It lives in the module (`app/Marmara/Zernio/database/migrations`)
 and runs with `php artisan migrate` like the others. The attempt is kept here,
@@ -207,13 +208,32 @@ them, on these upstream contracts. If a merge changes one, re-check the module:
      marks the attempt failed, so the next retry starts a new attempt).
    - the create request got no answer (timeout, 5xx, idempotency conflict):
      it is sent again with the same key while `first_attempt_at` (set when the
-     first request left, never moved) is under 23 hours old. Older, it is not
+     first request left, never moved) is under 23 hours old, with the same
+     body byte for byte (see "Same key, same body" below). Older, it is not
      sent again: the post is looked up with `GET /posts?tags={reference}` (then
      `updatedSince` + metadata); found, it is adopted; not found, the post fails
      with "Needs a manual check in Zernio" and stays blocked until an operator
      runs `php artisan marmara:zernio:release {post id}` after checking Zernio.
    - the attempt failed definitively (Zernio failed it, or refused the create
      with a 4xx): a new attempt with a new key and reference.
+   Same key, same body: Zernio refuses a changed body under a reused
+   Idempotency-Key (422), and TryPost would record that as a refusal. A
+   payload built again can differ (a LinkedIn company mention resolved in
+   the meantime through the cache, a native token or Zernio's mention
+   endpoint; a new presigned media URL; an edit of the post). So the flow
+   encodes the payload once (`ZernioClient::encodeBody`, the same JSON as
+   Guzzle's `json` option) and saves it in `request_body` together with
+   `last_status = unknown`, before the request leaves; every retry with that
+   key sends the stored string (`createPostBody`) without calling the
+   channel, so no media upload or mention lookup runs again and an edit made
+   while the outcome is unknown is not sent under the old key. The body lives
+   as long as its key may be sent again: it is cleared when the Zernio post is
+   created or adopted, when Zernio refuses the create (rejected), when the
+   attempt needs a manual check, on `marmara:zernio:release`, and when a new
+   attempt (new key) starts, which builds a new body. It holds only what
+   Zernio receives (text, media URLs, settings, reference); the API key is a
+   header and is never in it. An attempt whose request left before this
+   column existed has no body and is rebuilt once, as before.
 4. Zernio's answer for the TikTok target:
    - `published`: the post is marked published with the TikTok video id and
      `https://www.tiktok.com/@{username}/video/{id}`, like the native
