@@ -56,7 +56,7 @@ class ZernioLinkedInPageChannel implements ZernioChannel
 
         return array_filter([
             // Company mentions as Zernio's `@[Name](urn:li:organization:<id>)` when resolved, else the display name.
-            'content' => app(ZernioCompanyMentions::class)->content((string) (app(ContentSanitizer::class)->forPost($post) ?? ''), $post),
+            'content' => app(ZernioCompanyMentions::class)->content((string) (app(ContentSanitizer::class)->forPost($post) ?? ''), $post, $zernioAccountId),
             'mediaItems' => $mediaItems,
             'platforms' => [$target],
             'publishNow' => true,

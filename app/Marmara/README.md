@@ -1863,13 +1863,28 @@ written ([LinkedIn](https://docs.zernio.com/platforms/linkedin),
 [Resolve LinkedIn mention](https://docs.zernio.com/utilities/linkedin-mentions)).
 It can also resolve `@[Name](https://www.linkedin.com/company/<vanity>)`
 itself, but then rejects the whole post when a URL does not resolve
-(`linkedin_mentions_invalid`), so TryPost sends only URNs: a URN marker as
-is; a vanity another channel already found (the cache above) with LinkedIn's
-name, without a call; otherwise looked up with a native LinkedIn token of the
-workspace (the post's channel when it has one, else another connected
-LinkedIn page, else a profile; a Zernio placeholder token is never used).
-Without such a token, or not resolved: the display name as plain text, as
-before. Zernio documents no escaping inside `@[...]`, so `[` and `]` are
+(`linkedin_mentions_invalid`), so TryPost sends only URNs, resolved in this
+order: a URN marker as is; a vanity another channel already found (the
+cache above) with LinkedIn's name, without a call; otherwise looked up with a
+native LinkedIn token of the workspace (the post's channel when it has one,
+else another connected LinkedIn page, else a profile; a Zernio placeholder
+token is never used); with no such token, or when it does not resolve,
+Zernio's own resolver with the Zernio account the page publishes with
+([Get LinkedIn mention](https://docs.zernio.com/linkedin-mentions/get-linkedin-mentions)):
+
+    GET {ZERNIO_BASE_URL}/accounts/{zernio account id}/linkedin-mentions?url=https://www.linkedin.com/company/<vanity>
+    Authorization: Bearer <ZERNIO_API_KEY>
+
+(3 s connect / 5 s total; the answer's `urn` must be
+`urn:li:organization:<id>`, and its `displayName`, LinkedIn's name, is used
+like the native `localizedName`). A found organization goes into the same
+30-day cache as the native lookup, so either path serves the other. A failure
+(4xx, 5xx, 429, no answer, no key, not an organization URN) is cached for 15
+minutes for that Zernio account only
+(`marmara-zernio:linkedin-mention:miss:<sha1 vanity>:<sha1 account>`).
+Not resolved: the display name as plain text, as before, with one warning
+(vanity, status, reason; never a key or token).
+Zernio documents no escaping inside `@[...]`, so `[` and `]` are
 dropped from the name. The first comment gets the display name, like a native
 comment. The docs show the URN form with `urn:li:person:` only; that it takes
 `urn:li:organization:` the same way is not verified against the live API (the

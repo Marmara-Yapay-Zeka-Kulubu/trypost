@@ -213,12 +213,63 @@ test('company mentions go to Zernio as organization URNs, resolved with the page
         && $request['content'] === 'Teşekkürler @[Akbank T.A.Ş.](urn:li:organization:123) ve @[Marmara AI](urn:li:organization:789) (sponsor)');
     Http::assertSent(fn (Request $request): bool => str_starts_with($request->url(), 'https://api.linkedin.com/rest/organizations')
         && $request->hasHeader('Authorization', 'Bearer li-native-token'));
+    // Resolved natively: Zernio's resolver is not asked.
+    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/linkedin-mentions'));
 });
 
-test('a Zernio page without a native token sends a vanity mention as the plain name, until a native LinkedIn channel can resolve it', function () {
+function zernioMentionUrl(string $account = ZERNIO_LI_ACCOUNT): string
+{
+    return ZERNIO_LI_API.'/accounts/'.$account.'/linkedin-mentions';
+}
+
+function zernioMentionSent(Request $request, string $account = ZERNIO_LI_ACCOUNT): bool
+{
+    return str_starts_with($request->url(), zernioMentionUrl($account).'?')
+        && str_contains($request->url(), 'url='.rawurlencode('https://www.linkedin.com/company/akbank'));
+}
+
+test('a Zernio page without a native token resolves a vanity mention through Zernio, cached for the next posts', function () {
     config()->set('marmara-linkedin.api', 'https://api.linkedin.com');
     $this->page->update(['access_token' => 'zernio-managed:'.ZERNIO_LI_ACCOUNT, 'meta' => ['organization_id' => '104857600', 'managed_by' => 'zernio']]);
     Http::fake([
+        // Before the generic `/accounts*` stub: the first matching stub wins.
+        zernioMentionUrl().'*' => Http::response([
+            'urn' => 'urn:li:organization:123',
+            'type' => 'organization',
+            'displayName' => 'Akbank T.A.Ş.',
+            'vanityName' => 'akbank',
+            'mentionFormat' => '@[Akbank T.A.Ş.](urn:li:organization:123)',
+        ]),
+        ...zernioLinkedInFakes(),
+    ]);
+    $post = zernioLinkedInPost($this->page, $this->user);
+    $post->forceFill(['content' => 'Teşekkürler @[Akbank](https://www.linkedin.com/company/akbank) ve @[Marmara AI](urn:li:organization:789)'])->save();
+
+    (new PublishToSocialPlatform($post->fresh()))->handle();
+
+    expect($post->fresh()->publish_status)->toBe(PlatformStatus::Published);
+    Http::assertSent(fn (Request $request): bool => $request->url() === ZERNIO_LI_API.'/posts'
+        && $request['content'] === 'Teşekkürler @[Akbank T.A.Ş.](urn:li:organization:123) ve @[Marmara AI](urn:li:organization:789)');
+    Http::assertSent(fn (Request $request): bool => zernioMentionSent($request)
+        && $request->hasHeader('Authorization', 'Bearer sk_test_key'));
+    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), 'api.linkedin.com'));
+
+    // The next post reads the shared cache: no second call.
+    $next = zernioLinkedInPost($this->page, $this->user);
+    $next->forceFill(['content' => 'Yine @[Akbank](https://www.linkedin.com/company/akbank)'])->save();
+
+    expect(app(ZernioLinkedInPageChannel::class)->payload($next->fresh(), ZERNIO_LI_ACCOUNT, 'trypost-ref')['content'])
+        ->toBe('Yine @[Akbank T.A.Ş.](urn:li:organization:123)');
+    expect(collect(Http::recorded())->filter(fn (array $pair): bool => zernioMentionSent($pair[0]))->count())->toBe(1);
+});
+
+test('a Zernio page without a native token sends the plain name when Zernio cannot resolve, cached per Zernio account, until a native LinkedIn channel can resolve it', function () {
+    config()->set('marmara-linkedin.api', 'https://api.linkedin.com');
+    $this->page->update(['access_token' => 'zernio-managed:'.ZERNIO_LI_ACCOUNT, 'meta' => ['organization_id' => '104857600', 'managed_by' => 'zernio']]);
+    $other = '8c2d3e4f5a6b7c8d9e0f1a2b';
+    Http::fake([
+        zernioMentionUrl().'*' => Http::response(['error' => 'Organization not found'], 404),
+        zernioMentionUrl($other).'*' => Http::response(['error' => 'Organization not found'], 404),
         'https://api.linkedin.com/rest/organizations*' => Http::response(['elements' => [['id' => 123, 'localizedName' => 'Akbank', 'vanityName' => 'akbank']]]),
     ]);
     $post = zernioLinkedInPost($this->page, $this->user);
@@ -226,8 +277,17 @@ test('a Zernio page without a native token sends a vanity mention as the plain n
     $channel = app(ZernioLinkedInPageChannel::class);
 
     expect($channel->payload($post->fresh(), ZERNIO_LI_ACCOUNT, 'trypost-ref')['content'])
+        ->toBe('Teşekkürler Akbank ve @[Marmara AI](urn:li:organization:789)')
+        // The miss is cached for this Zernio account: no second call.
+        ->and($channel->payload($post->fresh(), ZERNIO_LI_ACCOUNT, 'trypost-ref')['content'])
         ->toBe('Teşekkürler Akbank ve @[Marmara AI](urn:li:organization:789)');
-    Http::assertNothingSent();
+    Http::assertSentCount(1);
+    Http::assertSent(fn (Request $request): bool => zernioMentionSent($request));
+
+    // Another Zernio account has its own miss cache.
+    $channel->payload($post->fresh(), $other, 'trypost-ref');
+    Http::assertSentCount(2);
+    Http::assertSent(fn (Request $request): bool => zernioMentionSent($request, $other));
 
     // A natively connected LinkedIn profile in the workspace lends its token.
     SocialAccount::factory()->linkedin()->create([
@@ -241,6 +301,7 @@ test('a Zernio page without a native token sends a vanity mention as the plain n
         ->toBe('Teşekkürler @[Akbank](urn:li:organization:123) ve @[Marmara AI](urn:li:organization:789)');
     Http::assertSent(fn (Request $request): bool => str_starts_with($request->url(), 'https://api.linkedin.com/rest/organizations')
         && $request->hasHeader('Authorization', 'Bearer li-profile-token'));
+    Http::assertSentCount(3);
 });
 
 test('one image, several images and a video go to Zernio as LinkedIn media', function (array $media, array $expected) {

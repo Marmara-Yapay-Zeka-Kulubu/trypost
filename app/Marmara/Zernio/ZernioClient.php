@@ -80,6 +80,18 @@ class ZernioClient
     }
 
     /**
+     * A LinkedIn profile or company URL (or vanity name) to its mention URN
+     * and LinkedIn name, through the given Zernio LinkedIn account. Short
+     * budget: it runs inside a publish.
+     *
+     * @see https://docs.zernio.com/linkedin-mentions/get-linkedin-mentions
+     */
+    public function linkedInMention(string $accountId, string $url): Response
+    {
+        return $this->quickRequest()->get('/accounts/'.rawurlencode($accountId).'/linkedin-mentions', ['url' => $url]);
+    }
+
+    /**
      * Stored post analytics: one post (`postId`) or a page of posts, those
      * published through Zernio and those synced from the platform (`source`).
      *

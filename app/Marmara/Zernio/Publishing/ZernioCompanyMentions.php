@@ -10,9 +10,12 @@ use App\Marmara\LinkedIn\Mentions\CompanyMentions;
 use App\Marmara\LinkedIn\Mentions\LinkedInOrganizationResolver;
 use App\Marmara\LinkedIn\Mentions\OrganizationLookup;
 use App\Marmara\LinkedIn\NativeLinkedInAccounts;
+use App\Marmara\Zernio\ZernioClient;
 use App\Models\Post;
 use App\Models\SocialAccount;
 use App\Support\Analytics\AnalyticsAccessToken;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Cache;
 use Throwable;
 
 /**
@@ -24,22 +27,37 @@ use Throwable;
  * https://docs.zernio.com/utilities/linkedin-mentions). Zernio can also
  * resolve `@[Name](https://www.linkedin.com/company/<vanity>)` itself, but it
  * rejects the whole post when it cannot (`linkedin_mentions_invalid`), and a
- * mention must never fail a publish. So the company is resolved here like the
- * native publisher does, and only a resolved URN is sent:
+ * mention must never fail a publish. So the company is resolved here and only
+ * a resolved URN is sent:
  *
- * - a `urn:li:organization:<id>` marker is sent as is;
- * - a vanity already found by any channel (the resolver's cache) is sent
- *   with LinkedIn's name, without a call;
- * - otherwise it is looked up with a native LinkedIn token of the workspace
- *   (the post's channel, else another connected LinkedIn page, else a
- *   profile): Zernio pages often have none;
- * - no token or not resolved: the display name as plain text (as before).
+ * 1. a `urn:li:organization:<id>` marker is sent as is;
+ * 2. a vanity already found by any channel (the resolver's 30-day cache) is
+ *    sent with LinkedIn's name, without a call;
+ * 3. otherwise it is looked up with a native LinkedIn token of the workspace
+ *    (the post's channel, else another connected LinkedIn page, else a
+ *    profile): Zernio pages often have none;
+ * 4. no native token, or not resolved with it: Zernio's own resolver
+ *    (`GET /accounts/{id}/linkedin-mentions?url=...`) with the Zernio account
+ *    the page publishes with. A found organization goes into the same shared
+ *    cache as step 3; a failure is cached for 15 minutes for that Zernio
+ *    account only (hashed key);
+ * 5. not resolved: the display name as plain text (one warning, no secrets).
+ *
+ * @see https://docs.zernio.com/linkedin-mentions/get-linkedin-mentions
  */
 class ZernioCompanyMentions
 {
-    public function __construct(private readonly LinkedInOrganizationResolver $resolver) {}
+    private const string ZERNIO_MISS_PREFIX = 'marmara-zernio:linkedin-mention:miss:';
 
-    public function content(string $content, Post $post): string
+    public function __construct(
+        private readonly LinkedInOrganizationResolver $resolver,
+        private readonly ZernioClient $client,
+    ) {}
+
+    /**
+     * @param  string|null  $zernioAccountId  the Zernio LinkedIn account the page publishes with (step 4)
+     */
+    public function content(string $content, Post $post, ?string $zernioAccountId = null): string
     {
         $mentions = CompanyMentions::find($content);
 
@@ -71,6 +89,13 @@ class ZernioCompanyMentions
                     ? OrganizationLookup::failed('no native LinkedIn token for the Zernio page')
                     : $this->resolver->resolve($vanity, $channel['token'], $channel['account_id']);
 
+                if (! $lookup->resolved() && filled($zernioAccountId)) {
+                    $zernio = $this->resolveWithZernio($vanity, (string) $zernioAccountId);
+                    $lookup = $zernio->resolved()
+                        ? $zernio
+                        : OrganizationLookup::failed($lookup->reason.'; Zernio: '.$zernio->reason, $zernio->status ?? $lookup->status);
+                }
+
                 if (! $lookup->resolved()) {
                     LinkedInOrganizationResolver::warn($vanity, $lookup);
                 }
@@ -91,6 +116,84 @@ class ZernioCompanyMentions
     private function markup(string $name, string $id): string
     {
         return '@['.str_replace(['[', ']'], '', $name).'](urn:li:organization:'.$id.')';
+    }
+
+    /**
+     * Step 4: Zernio's resolver, behind a 15-minute miss cache per Zernio
+     * account. Never throws; the API key is never logged or cached.
+     */
+    private function resolveWithZernio(string $vanity, string $zernioAccountId): OrganizationLookup
+    {
+        $vanity = CompanyMentions::vanity($vanity);
+        $missKey = $this->zernioMissKey($vanity, $zernioAccountId);
+        $missed = Cache::get($missKey);
+
+        if (is_array($missed)) {
+            return OrganizationLookup::failed((string) ($missed['reason'] ?? 'not resolved (cached)'), is_int($missed['status'] ?? null) ? $missed['status'] : null);
+        }
+
+        $lookup = $this->zernioLookup($vanity, $zernioAccountId);
+
+        if ($lookup->resolved()) {
+            // The same shared cache the native resolver fills and reads.
+            $this->resolver->remember($vanity, $lookup);
+        } else {
+            Cache::put($missKey, ['reason' => $lookup->reason, 'status' => $lookup->status], now()->addMinutes(LinkedInOrganizationResolver::MISS_CACHE_MINUTES));
+        }
+
+        return $lookup;
+    }
+
+    private function zernioLookup(string $vanity, string $zernioAccountId): OrganizationLookup
+    {
+        if ($vanity === '') {
+            return OrganizationLookup::failed('empty vanity name');
+        }
+
+        try {
+            $response = $this->client->linkedInMention($zernioAccountId, 'https://www.linkedin.com/company/'.rawurlencode($vanity));
+        } catch (ConnectionException) {
+            return OrganizationLookup::failed('Zernio did not answer in time');
+        } catch (Throwable $exception) {
+            return OrganizationLookup::failed('Zernio request failed: '.class_basename($exception));
+        }
+
+        $status = $response->status();
+
+        if (! $response->successful()) {
+            $message = data_get($response->json(), 'error') ?? data_get($response->json(), 'message');
+
+            return OrganizationLookup::failed(
+                match (true) {
+                    $status === 401 => 'Zernio refused the key or the account must be reconnected',
+                    $status === 403 => 'Zernio refused access',
+                    $status === 404 => 'not found',
+                    $status === 429 => 'rate limited',
+                    default => 'Zernio answered with an error',
+                }.(is_string($message) && trim($message) !== '' ? ': '.mb_substr(trim($message), 0, 200) : ''),
+                $status,
+            );
+        }
+
+        $urn = data_get($response->json(), 'urn');
+        $type = data_get($response->json(), 'type');
+
+        if (! is_string($urn) || preg_match('/^urn:li:organization:(\d+)$/', $urn, $match) !== 1 || ($type !== null && $type !== 'organization')) {
+            return OrganizationLookup::failed('Zernio did not answer an organization URN', $status);
+        }
+
+        $name = data_get($response->json(), 'displayName');
+
+        return OrganizationLookup::found($match[1], is_string($name) && trim($name) !== '' ? trim($name) : null, $status);
+    }
+
+    /**
+     * Per Zernio account, like the native per-channel misses; hashed, never
+     * a raw id or key.
+     */
+    private function zernioMissKey(string $vanity, string $zernioAccountId): string
+    {
+        return self::ZERNIO_MISS_PREFIX.sha1($vanity).':'.sha1('zernio-account:'.$zernioAccountId);
     }
 
     /**
