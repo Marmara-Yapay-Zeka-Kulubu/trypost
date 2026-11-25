@@ -8,8 +8,9 @@ export type SourceMetaValue = string | number | boolean | null | SourceMetaValue
 
 export interface MediaUserTag {
     username: string;
-    x: number;
-    y: number;
+    // Marmara AI fork: optional, stories and reels take a username only.
+    x?: number;
+    y?: number;
 }
 
 export interface MediaItem {

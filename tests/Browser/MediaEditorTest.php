@@ -757,7 +757,7 @@ test('a reel video gets a Thumbnail segment whose frame is saved as the cover of
     $page->click("@composer-{$accountId}-edit-0");
     waitForState($page, '@media-editor-cover', 'true');
 
-    expect(mediaEditorSegmentIds($page))->toBe(['media-editor-thumbnail-tab'])
+    expect(mediaEditorSegmentIds($page))->toBe(['media-editor-thumbnail-tab', 'media-editor-tags-tab']) // Marmara AI fork: reels take people tags
         ->and($page->script("document.querySelector('[data-testid=\"media-editor-thumbnail-tab\"]').getAttribute('aria-pressed')"))->toBe('true')
         ->and($page->script("document.querySelector('[data-testid=\"media-editor-apply\"]').disabled"))->toBeTrue();
 

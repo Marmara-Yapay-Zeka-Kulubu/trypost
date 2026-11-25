@@ -12,10 +12,13 @@ use App\Marmara\LinkedIn\Analytics\LinkedInAnalyticsPlatformGate;
 use App\Marmara\LinkedIn\Connect\LinkedInBasicProfileExtendSocialite;
 use App\Marmara\LinkedIn\Console\AlignLinkedInPageIdentity;
 use App\Marmara\LinkedIn\Console\BackfillLinkedInAnalytics;
+use App\Marmara\LinkedIn\Console\LookupLinkedInOrganization;
 use App\Marmara\LinkedIn\Console\TestLinkedInConnection;
+use App\Marmara\LinkedIn\Mentions\MentionAwareContentSanitizer;
 use App\Services\Analytics\Collectors\Followers\FollowerCollectorFactory;
 use App\Services\Analytics\Collectors\Metrics\PublicationMetricsCollectorFactory;
 use App\Services\Analytics\Collectors\Publications\PublicationHistoryCollectorFactory;
+use App\Services\Social\ContentSanitizer;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
@@ -23,7 +26,8 @@ use SocialiteProviders\Manager\SocialiteWasCalled;
 
 /**
  * Marmara AI fork module: native LinkedIn page analytics (Community
- * Management API), next to the Zernio module.
+ * Management API), next to the Zernio module, and company mentions in
+ * LinkedIn posts (Mentions/).
  *
  * The three collector factories and the analytics platform gate are wrapped
  * with `extend()`, so whatever the container hands out without this module
@@ -46,6 +50,10 @@ class LinkedInServiceProvider extends ServiceProvider
 
         $this->app->extend(FollowerCollectorFactory::class, fn (FollowerCollectorFactory $previous, Application $app): FollowerCollectorFactory => $app->make(LinkedInFollowerCollectorFactory::class, ['previous' => $previous]));
 
+        // Company mention markers (`@[Name](linkedin.com/company/<vanity>)`):
+        // the display name on every network, a mention on LinkedIn.
+        $this->app->bind(ContentSanitizer::class, MentionAwareContentSanitizer::class);
+
         $this->app->extend(AnalyticsPlatformGate::class, fn (AnalyticsPlatformGate $previous, Application $app): AnalyticsPlatformGate => $app->make(LinkedInAnalyticsPlatformGate::class, ['previous' => $previous]));
     }
 
@@ -60,6 +68,7 @@ class LinkedInServiceProvider extends ServiceProvider
             $this->commands([
                 AlignLinkedInPageIdentity::class,
                 BackfillLinkedInAnalytics::class,
+                LookupLinkedInOrganization::class,
                 TestLinkedInConnection::class,
             ]);
         }

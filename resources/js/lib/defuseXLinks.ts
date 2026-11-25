@@ -1,3 +1,4 @@
+import { companyMentionsToText } from '@/marmara/linkedin/companyMentions';
 import { Platform } from '@/types/platform';
 
 /**
@@ -31,9 +32,16 @@ export const defuseXLinks = (content: string, tlds: ReadonlySet<string>): string
 /**
  * The content as the given platform will show it. Only X rewrites anything today,
  * so every other network gets its text back untouched.
+ *
+ * Marmara AI fork: a LinkedIn company mention marker counts and previews as its
+ * display name on every network (app/Marmara/README.md).
  */
 export const contentForPlatform = (
     content: string,
     platform: string,
     tlds: ReadonlySet<string>,
-): string => (platform === Platform.X && tlds.size > 0 ? defuseXLinks(content, tlds) : content);
+): string => {
+    const text = companyMentionsToText(content);
+
+    return platform === Platform.X && tlds.size > 0 ? defuseXLinks(text, tlds) : text;
+};

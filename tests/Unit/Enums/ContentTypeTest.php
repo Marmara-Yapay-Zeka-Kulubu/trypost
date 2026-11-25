@@ -446,7 +446,8 @@ test('media rules carry crop presets and editor tab availability', function () {
         'crop_presets' => ['3:4', '4:5', '1:1', '1.91:1'],
     ]);
 
-    expect(ContentType::InstagramStory->mediaRules()['supports_user_tags'])->toBeFalse();
+    // Marmara AI fork: stories and reels take people tags too (app/Marmara/README.md).
+    expect(ContentType::InstagramStory->mediaRules()['supports_user_tags'])->toBeTrue();
 
     expect(ContentType::TikTokPhoto->mediaRules())->toMatchArray([
         'supports_alt_text' => false,

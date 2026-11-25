@@ -7,6 +7,7 @@ namespace App\Rules;
 use App\Actions\Media\ResolveWorkspaceMedia;
 use App\Enums\Media\Type as MediaType;
 use App\Enums\PostPlatform\ContentType;
+use App\Marmara\Instagram\InstagramUserTags;
 use App\Models\Media;
 use App\Models\Post;
 use App\Models\Workspace;
@@ -177,6 +178,14 @@ class ContentTypeCompatibleWithMedia implements DataAwareRule, ValidationRule
 
         if (count($media) > $contentType->maxMediaCount()) {
             $fail(trans('posts.form.warnings.max_files_exceeded', ['max' => $contentType->maxMediaCount(), 'current' => count($media)]));
+
+            return;
+        }
+
+        // Marmara AI fork: a feed image's people tags need x and y; stories and
+        // reels take a username only (app/Marmara/README.md, Instagram people tags).
+        if (InstagramUserTags::needsPosition($contentType) && InstagramUserTags::anyImageTagWithoutPosition($media)) {
+            $fail(InstagramUserTags::positionRequiredMessage());
 
             return;
         }

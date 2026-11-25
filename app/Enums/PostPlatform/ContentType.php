@@ -8,6 +8,7 @@ use App\Dto\MediaItem;
 use App\Enums\Analytics\PublicationContentType;
 use App\Enums\Media\Type as MediaType;
 use App\Enums\SocialAccount\Platform as SocialPlatform;
+use App\Marmara\Instagram\InstagramUserTags;
 use App\Models\SocialAccount;
 use App\Support\Social\MastodonPoll;
 use App\Support\Social\Poll;
@@ -559,11 +560,13 @@ enum ContentType: string
     }
 
     /**
-     * Whether the editor offers Tag People (Instagram posts only, not stories or reels).
+     * Whether the editor offers Tag People: Instagram feed images ({username,
+     * x, y}), stories and reels ({username}, x and y optional).
      */
     public function supportsUserTags(): bool
     {
-        return $this === self::InstagramFeed;
+        // Marmara AI fork: stories and reels too (app/Marmara/README.md, Instagram people tags).
+        return InstagramUserTags::supports($this);
     }
 
     /**

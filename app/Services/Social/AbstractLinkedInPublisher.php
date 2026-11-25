@@ -11,6 +11,8 @@ use App\Exceptions\PlatformUnavailableException;
 use App\Exceptions\Social\ErrorCategory;
 use App\Exceptions\Social\LinkedInPublishException;
 use App\Exceptions\TokenExpiredException;
+use App\Marmara\LinkedIn\Mentions\CompanyMentions;
+use App\Marmara\LinkedIn\Mentions\LinkedInCompanyMentions;
 use App\Models\Post;
 use App\Models\SocialAccount;
 use App\Services\Http\SafeHttpFetcher;
@@ -231,7 +233,8 @@ abstract class AbstractLinkedInPublisher
     private function articleCard(string $content): ?LinkCardMetadata
     {
         try {
-            return app(LinkCardFetcher::class)->fetch($content);
+            // Marmara AI fork: a company mention's link is not the post's link (app/Marmara/README.md).
+            return app(LinkCardFetcher::class)->fetch(CompanyMentions::toPlainText($content));
         } catch (Throwable $e) {
             Log::warning("{$this->label()} link preview lookup failed", ['error' => $e->getMessage()]);
 
@@ -364,7 +367,8 @@ abstract class AbstractLinkedInPublisher
     {
         return [
             'author' => $this->authorUrn(),
-            'commentary' => $this->toLittleText($content ?? ''),
+            // Marmara AI fork: company mention markers become LinkedIn mentions (app/Marmara/README.md, LinkedIn company mentions).
+            'commentary' => app(LinkedInCompanyMentions::class)->commentary($content ?? '', $this->accessToken, $this->toLittleText(...)),
             'visibility' => 'PUBLIC',
             'distribution' => [
                 'feedDistribution' => 'MAIN_FEED',

@@ -7,6 +7,7 @@ namespace App\Marmara\Zernio\Publishing;
 use App\Dto\MediaItem;
 use App\Enums\SocialAccount\Platform;
 use App\Exceptions\Social\ErrorCategory;
+use App\Marmara\LinkedIn\Mentions\CompanyMentions;
 use App\Marmara\Zernio\Exceptions\ZernioPublishException;
 use App\Models\Post;
 use App\Services\Social\ContentSanitizer;
@@ -54,7 +55,8 @@ class ZernioLinkedInPageChannel implements ZernioChannel
         }
 
         return array_filter([
-            'content' => (string) (app(ContentSanitizer::class)->forPost($post) ?? ''),
+            // Zernio gets no mention: the LinkedIn mention marker becomes its display name.
+            'content' => CompanyMentions::toPlainText((string) (app(ContentSanitizer::class)->forPost($post) ?? '')),
             'mediaItems' => $mediaItems,
             'platforms' => [$target],
             'publishNow' => true,

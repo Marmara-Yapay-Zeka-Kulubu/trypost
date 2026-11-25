@@ -44,6 +44,9 @@ import {
 } from '@/lib/mediaEditor';
 import { isVideo } from '@/lib/mediaType';
 import { captureVideoFrame } from '@/lib/videoFrame';
+// Marmara AI fork: username-only people tags for stories and reels.
+import UsernameTagsPanel from '@/marmara/instagram/UsernameTagsPanel.vue';
+import { tagsNeedPosition } from '@/marmara/instagram/userTags';
 import type { CoverImage, CoverSource, MediaItem, MediaUserTag } from '@/types/media';
 
 export type MediaEditChange = {
@@ -218,6 +221,13 @@ const showsItemPicker = computed(() => {
     return editingItems.value.length > 1;
 });
 
+/**
+ * Marmara AI fork: tags are placed on the image only where a feed image takes
+ * them; a video, a story or a reel takes usernames (app/Marmara/README.md).
+ */
+const positionedTags = computed(() =>
+    tagsNeedPosition(props.contentTypes, activeIsVideo.value),
+);
 const supportsCustomCover = computed(() =>
     rules.value.some((rule) => rule.supportsCustomVideoCover),
 );
@@ -683,7 +693,7 @@ watch(tagging, (isTagging) => {
                                 @error="onImageError"
                                 @press="onStagePress"
                             >
-                                <template v-if="tab === 'tags'">
+                                <template v-if="tab === 'tags' && positionedTags">
                                     <span
                                         v-for="(tag, tagIndex) in edit.userTags"
                                         :key="`${tag.username}-${tagIndex}`"
@@ -695,8 +705,8 @@ watch(tagging, (isTagging) => {
                                         "
                                         :data-testid="`media-editor-tag-marker-${tagIndex}`"
                                         :style="{
-                                            left: `${tag.x * 100}%`,
-                                            top: `${tag.y * 100}%`,
+                                            left: `${(tag.x ?? 0.5) * 100}%`,
+                                            top: `${(tag.y ?? 0.5) * 100}%`,
                                         }"
                                         >{{ tagIndex + 1 }}</span
                                     >
@@ -874,6 +884,10 @@ watch(tagging, (isTagging) => {
                         v-model:edit="edit"
                         :media-id="activeItem.id"
                         :generates="generatesAltText"
+                    />
+                    <UsernameTagsPanel
+                        v-else-if="tab === 'tags' && edit && !positionedTags"
+                        v-model:edit="edit"
                     />
                     <MediaEditorTagsPanel
                         v-else-if="tab === 'tags' && edit"

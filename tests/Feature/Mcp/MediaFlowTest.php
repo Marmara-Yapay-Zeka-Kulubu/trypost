@@ -398,7 +398,7 @@ test('list-content-types-tool shows every media rule a save enforces', function 
         'supports_video_cover' => true,
         'supports_alt_text' => true,
     ])
-        ->and($rows[ContentType::InstagramStory->value])->toMatchArray(['aspect_ratio_min' => null, 'aspect_ratio_max' => null, 'video_aspect_ratio_min' => 0.1, 'video_aspect_ratio_max' => 10.0, 'auto_fits_image' => true, 'supports_user_tags' => false])
+        ->and($rows[ContentType::InstagramStory->value])->toMatchArray(['aspect_ratio_min' => null, 'aspect_ratio_max' => null, 'video_aspect_ratio_min' => 0.1, 'video_aspect_ratio_max' => 10.0, 'auto_fits_image' => true, 'supports_user_tags' => true]) // Marmara AI fork: stories take people tags
         ->and($rows[ContentType::GoogleBusinessPost->value])->toMatchArray(['image_min_width' => 250, 'image_min_height' => 250])
         ->and($rows[ContentType::ThreadsPost->value])->toMatchArray(['aspect_ratio_min' => 0.1, 'video_aspect_ratio_min' => null]);
 

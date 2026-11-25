@@ -235,6 +235,14 @@ class PostMediaRules
                 return;
             }
 
+            // Marmara AI fork: x and y are optional here (stories and reels take a
+            // username only); a feed image's tags must have both, which
+            // ContentTypeCompatibleWithMedia checks per content type
+            // (app/Marmara/README.md, Instagram people tags).
+            if ($x === null && $y === null) {
+                continue;
+            }
+
             if (! is_numeric($x) || ! is_numeric($y) || $x < 0 || $x > 1 || $y < 0 || $y > 1) {
                 $fail('validation.between.numeric')->translate(['attribute' => $attribute, 'min' => 0, 'max' => 1]);
 

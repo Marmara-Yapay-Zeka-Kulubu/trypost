@@ -20,7 +20,11 @@ channel, with replies, for the team and for Echo / Hermes) and
 of the club's shared Google Drive folder) and
 [Members](#members-posts-credited-to-the-whatsapp-sender) (posts Hermes
 creates are credited to the member who asked, a creator filter and per
-member counts). Each lists its own upstream touch points.
+member counts) and
+[Instagram people tags](#instagram-people-tags-on-stories-and-reels) (tags on
+stories and reels, not only feed images) and
+[LinkedIn company mentions](#linkedin-company-mentions) (`@[Name](linkedin.com/company/<vanity>)`
+in a post's text). Each lists its own upstream touch points.
 
 ## Upstream merges
 
@@ -578,7 +582,7 @@ analytics. Publishing is unchanged: TryPost's native `LinkedInPagePublisher`
 | `app/Marmara/LinkedIn/Analytics/LinkedInPostMetrics.php` | Batched, cached share statistics and video views; the metric mapping |
 | `app/Marmara/LinkedIn/Analytics/Collectors/*` | History (posts finder), post metrics, followers; each hands a channel it does not measure to the previous collector |
 | `app/Marmara/LinkedIn/Analytics/Factories/*`, `Analytics/LinkedInAnalyticsPlatformGate.php` | Wrappers around whatever the container hands out without this module (upstream's or Zernio's) |
-| `app/Marmara/LinkedIn/Console/*` | `marmara:linkedin:test`, `marmara:linkedin:analytics-backfill`, `marmara:linkedin:align-page-id` |
+| `app/Marmara/LinkedIn/Console/*` | `marmara:linkedin:test`, `marmara:linkedin:analytics-backfill`, `marmara:linkedin:align-page-id`, `marmara:linkedin-org` ([company mentions](#linkedin-company-mentions)) |
 | `app/Marmara/LinkedIn/Connect/BasicProfileLinkedInProvider.php`, `LinkedInBasicProfileExtendSocialite.php` | The `linkedin-openid` Socialite driver without OpenID Connect (`MARMARA_LINKEDIN_PAGE_BASIC_PROFILE`, below) |
 | `config/marmara-linkedin.php` | Module config |
 | `tests/Feature/Marmara/LinkedIn/*` | Pest tests |
@@ -1719,3 +1723,152 @@ run and a create with `on_behalf_of_user_id` fails on the missing column):
 
 Hook point for designs: a post's `user_id` is the member it is credited to,
 `agent_user_id` tells it came through the agent.
+
+## Instagram people tags on stories and reels
+
+Upstream tags people (`media.*.meta.user_tags`) on Instagram feed images only.
+Meta's content publishing API takes `user_tags` on image and video stories
+(since July 9, 2025) and on reels too, with only `username` required there
+([IG User Media](https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference/ig-user/media)).
+
+| Content type | Tag shape | x / y |
+| --- | --- | --- |
+| `instagram_feed` image (and carousel images) | `{username, x, y}` | required (0-1 from the top-left corner) |
+| `instagram_story` (image or video) | `{username}` | optional, not sent |
+| `instagram_reel`, a feed post with a single video (published as a Reel) | `{username}` | optional, not sent |
+
+- `ContentType::supportsUserTags()` is true for feed, story and reel
+  (`InstagramUserTags::supports()`), so `supports_user_tags` in the editor
+  payload, `list-content-types-tool` and the REST listing says so.
+- Shape validation (`PostMediaRules::validateUserTags()`) accepts a tag
+  without `x` and `y`; a tag with only one of them, or one outside 0-1, is
+  still refused. Up to 20 tags, usernames `[A-Za-z0-9._]{1,30}` (a leading
+  `@` is allowed and stripped).
+- The content type is only known where `ContentTypeCompatibleWithMedia`
+  runs (scheduling, queueing, publishing, and the publish job itself): for
+  `instagram_feed` a tag on an image without `x`/`y` fails with "The Tagged
+  people (x, y) field is required." (existing `validation.required`). Drafts
+  are not checked, like every media rule.
+- `InstagramPublisher` sends `user_tags` on image and video stories and on
+  reels as `[{"username": "..."}]` (`InstagramUserTags::usernames()`: `@`
+  stripped, duplicates dropped, at most 20). Feed images keep upstream's
+  `MediaItem::userTags()` (`{username, x, y}`, tags without a position left
+  out). Videos in a carousel get no tags (not sent, as upstream).
+- Editor: the "Tag People" tab is offered for videos too (reels, video
+  stories, feed videos). On a feed image the tags are placed on the image as
+  before; on a video, and on images of a post that has no
+  `instagram_feed` channel (stories only), `UsernameTagsPanel.vue` shows a
+  username list instead (`tagsNeedPosition()`). Existing translations only.
+
+### Files
+
+| Path | What |
+| --- | --- |
+| `app/Marmara/Instagram/InstagramUserTags.php` | Which content types take tags, which need a position, the story / reel tag list, the feed position check and its message |
+| `resources/js/marmara/instagram/userTags.ts`, `UsernameTagsPanel.vue` | Whether the editor places tags on the image; the username list panel |
+| `tests/Feature/Marmara/Instagram/InstagramUserTagsTest.php` | Pest tests |
+
+### Upstream touch points
+
+| File | Change |
+| --- | --- |
+| `app/Enums/PostPlatform/ContentType.php` | `use InstagramUserTags`; `supportsUserTags()` returns `InstagramUserTags::supports($this)`, docblock |
+| `app/Support/PostMediaRules.php` | `validateUserTags()`: a tag with neither `x` nor `y` passes (`continue`) |
+| `app/Rules/ContentTypeCompatibleWithMedia.php` | `use InstagramUserTags`; in `validate()`, before `failOnDimensionRules()`, the feed position check |
+| `app/Services/Social/InstagramPublisher.php` | `use InstagramUserTags`; `publishReel()` adds `user_tags`; `publishStory()` sends `user_tags` after the image / video branch instead of inside the image branch |
+| `app/Mcp/Concerns/DescribesPostMedia.php`, `app/Mcp/Tools/Post/AttachMediaFromUploadTool.php`, `AttachMediaFromUrlTool.php`, `app/Mcp/Tools/Platform/ListContentTypesTool.php`, `app/Support/PostPlatformMetaRules.php` | The `user_tags` sentence of the descriptions |
+| `resources/js/lib/mediaEditor.ts` | `VIDEO_TABS` gets the `tags` tab |
+| `resources/js/types/media.ts` | `MediaUserTag.x` / `y` optional |
+| `resources/js/components/posts/composer/MediaEditorDialog.vue` | Imports, `positionedTags`, stage markers only when positioned (`tag.x ?? 0.5`), `<UsernameTagsPanel>` before `<MediaEditorTagsPanel>` |
+| `tests/Unit/Enums/ContentTypeTest.php`, `tests/Feature/Mcp/MediaFlowTest.php`, `tests/Browser/MediaEditorTest.php` | Story `supports_user_tags` true; a reel's segments include `media-editor-tags-tab` |
+
+## LinkedIn company mentions
+
+A post's text can mention a LinkedIn company page:
+
+    @[Display Name](https://www.linkedin.com/company/<vanity>)
+
+The link may also be `linkedin.com/company/<vanity>` or `www.linkedin.com/company/<vanity>/`
+(no scheme, trailing `/`), or the organization's URN:
+`@[Display Name](urn:li:organization:123)`. The display name is 1-100
+characters without `]` or a line break. Anything else (a person's profile, a
+mistyped link) stays as typed.
+
+**On LinkedIn** (profile and page publishers, `AbstractLinkedInPublisher::basePayload()`),
+`LinkedInCompanyMentions::commentary()` builds the `commentary`:
+
+- the text between markers is escaped exactly as before (`toLittleText()`,
+  hashtags kept);
+- a vanity is resolved with the publishing channel's own token:
+
+      GET https://api.linkedin.com/rest/organizations?q=vanityName&vanityName=<vanity>
+      Authorization: Bearer <channel token>
+      LinkedIn-Version: <MARMARA_LINKEDIN_API_VERSION, 202610>
+      X-Restli-Protocol-Version: 2.0.0
+
+  ([organization lookup](https://learn.microsoft.com/linkedin/marketing/community-management/organizations/organization-lookup-api));
+  the element whose `vanityName` matches (else the first) gives `id` and
+  `localizedName`;
+- the marker becomes `@[<localizedName>](urn:li:organization:<id>)`, the name
+  escaped per `little` (every reserved character). LinkedIn only links a
+  mention whose text is the page's exact name and otherwise shows plain text
+  without an error, so LinkedIn's `localizedName` is used, the display name
+  only when LinkedIn gives none. A URN marker needs no call and uses the
+  display name as is ([little text format](https://learn.microsoft.com/linkedin/marketing/community-management/shares/little-text-format));
+- found: cached 30 days; any failure (empty answer, 401, 403, 404, 429,
+  5xx, no answer in 5 / 20 s, daily call budget used up): cached 15 minutes.
+  Cache key `marmara-linkedin:organization-vanity:<sha1(lower vanity)>`.
+  Each call takes a unit of `MARMARA_LINKEDIN_DAILY_CALL_BUDGET`; a 429 sets
+  the module's back-off like the analytics calls;
+- not resolved: the display name is published as plain, escaped text and
+  `LinkedIn company mention published as plain text` is logged as a warning
+  (vanity, status, reason; never the token). **A mention never fails the
+  publish.**
+
+**Everywhere else** the marker is its display name. `LinkedInServiceProvider`
+binds `MentionAwareContentSanitizer` (a subclass) in place of TryPost's
+`ContentSanitizer`, which every publisher, preview and character count gets
+from the container: `sanitize()`, `displayText()` (the per-network character
+limits) and `plainText()` (the overall length, mail excerpts) replace the
+marker by the name on every network; `forPost()` keeps it only for LinkedIn
+and LinkedIn pages. So Instagram, X, Facebook, TikTok and the rest publish
+the name, a LinkedIn thread reply (comment) gets the name, Zernio's LinkedIn
+page channel strips it (`CompanyMentions::toPlainText()`), and the length
+counts the name, not the link. In the editor `contentForPlatform()`
+(`resources/js/lib/defuseXLinks.ts`) does the same, so the counter and the
+previews show the name. Known limitation: LinkedIn may count the mention's
+text differently from the display name (only matters near the 3,000 limit).
+
+Which permission LinkedIn wants for the vanity lookup is not verified with
+the club's app: check on prod with
+
+    php artisan marmara:linkedin-org akbank [--account=<channel id|username|org id>]
+
+It uses the first LinkedIn page channel with a native token (else a LinkedIn
+profile), prints the request, then the organization URN, name and the
+mention it would write, or `Not resolved (HTTP 403): ...`. One call; its
+answer replaces the cached one. A 403 means mentions publish as plain names.
+
+### Files
+
+| Path | What |
+| --- | --- |
+| `app/Marmara/LinkedIn/Mentions/CompanyMentions.php` | The marker pattern, `find()`, `toPlainText()` |
+| `app/Marmara/LinkedIn/Mentions/LinkedInOrganizationResolver.php`, `OrganizationLookup.php` | The vanity lookup, its cache and budget |
+| `app/Marmara/LinkedIn/Mentions/LinkedInCompanyMentions.php` | The commentary with mentions, the fallback |
+| `app/Marmara/LinkedIn/Mentions/MentionAwareContentSanitizer.php` | The display name on every other path |
+| `app/Marmara/LinkedIn/Console/LookupLinkedInOrganization.php` | `marmara:linkedin-org` |
+| `resources/js/marmara/linkedin/companyMentions.ts` | The editor's mirror of the pattern |
+| `tests/Feature/Marmara/LinkedIn/LinkedInCompanyMentionsTest.php` | Pest tests |
+
+### Upstream touch points
+
+| File | Change |
+| --- | --- |
+| `app/Services/Social/AbstractLinkedInPublisher.php` | `use CompanyMentions`, `use LinkedInCompanyMentions`; `basePayload()` builds `commentary` through `LinkedInCompanyMentions::commentary()` with `$this->toLittleText(...)`; `articleCard()` fetches the link card from `CompanyMentions::toPlainText($content)` (a mention's link is not the post's link) |
+| `resources/js/lib/defuseXLinks.ts` | `contentForPlatform()` runs `companyMentionsToText()` first |
+
+The `ContentSanitizer` binding lives in `LinkedInServiceProvider::register()`
+(no upstream edit); it relies on every caller resolving `ContentSanitizer`
+from the container (`app(...)` or constructor injection), which is the case
+in v2.1.0.

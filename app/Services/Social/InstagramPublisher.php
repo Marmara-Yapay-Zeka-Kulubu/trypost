@@ -14,6 +14,7 @@ use App\Exceptions\PlatformUnavailableException;
 use App\Exceptions\Social\ErrorCategory;
 use App\Exceptions\Social\InstagramPublishException;
 use App\Exceptions\Social\SocialPublishException;
+use App\Marmara\Instagram\InstagramUserTags;
 use App\Models\Post;
 use App\Services\Social\Concerns\HasSocialHttpClient;
 use App\Services\Social\Concerns\HostsProcessedImages;
@@ -140,6 +141,8 @@ class InstagramPublisher
             ...$this->sharedOptions(),
             ...$this->collaboratorsParam(),
             ...$this->reelOptions(),
+            // Marmara AI fork: people tags on reels, username only (app/Marmara/README.md, Instagram people tags).
+            ...$this->jsonListParam('user_tags', InstagramUserTags::usernames($media)),
         ], 'reel container');
 
         return $this->finishContainer($instagramId, $accessToken, $containerId);
@@ -160,11 +163,11 @@ class InstagramPublisher
         } else {
             $dimensions = ContentType::InstagramStory->preferredImageDimensions();
             $params['image_url'] = $this->fitImageToCanvas($media->url, data_get($dimensions, 'width'), data_get($dimensions, 'height'));
-            $params = [...$params, ...$this->jsonListParam('user_tags', array_map(
-                fn (array $tag): array => ['username' => $tag['username']],
-                $media->userTags(),
-            ))];
         }
+
+        // Marmara AI fork: image and video stories, username only, with or
+        // without a position (app/Marmara/README.md, Instagram people tags).
+        $params = [...$params, ...$this->jsonListParam('user_tags', InstagramUserTags::usernames($media))];
 
         $containerId = $this->createContainer($instagramId, $params, 'story container');
 

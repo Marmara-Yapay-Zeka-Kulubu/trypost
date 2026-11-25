@@ -155,6 +155,8 @@ type OptionalTab = {
 const VIDEO_TABS: OptionalTab[] = [
     { tab: 'thumbnail', offeredBy: hasThumbnail },
     { tab: 'alt', offeredBy: (rule) => rule.supportsVideoAltText },
+    // Marmara AI fork: reels and video stories take people tags (username only).
+    { tab: 'tags', offeredBy: (rule) => rule.supportsUserTags },
 ];
 
 const IMAGE_TABS: OptionalTab[] = [
